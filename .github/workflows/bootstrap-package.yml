@@ -22,7 +22,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          cat .bootstrap/part* | base64 --decode > /tmp/laravel-infrastructure.zip
+          {
+            head -c 8000 .bootstrap/part01
+            cat .bootstrap/part02 .bootstrap/part03 .bootstrap/part04 .bootstrap/part05 .bootstrap/part06 .bootstrap/part07 .bootstrap/part08 .bootstrap/part09 .bootstrap/part10
+          } | base64 --decode > /tmp/laravel-infrastructure.zip
+
+          unzip -tq /tmp/laravel-infrastructure.zip
+
           rm -rf /tmp/laravel-infrastructure-package
           mkdir -p /tmp/laravel-infrastructure-package
           unzip -q /tmp/laravel-infrastructure.zip -d /tmp/laravel-infrastructure-package
