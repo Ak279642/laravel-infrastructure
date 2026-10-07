@@ -89,6 +89,33 @@ final class RepositoryCacheHardeningTest extends TestCase
         self::assertCount(0, $repository->get());
     }
 
+    public function test_repository_cache_can_be_disabled_globally_without_changing_repository_code(): void
+    {
+        $this->app['config']->set(
+            'laravel-infrastructure.cache.enabled',
+            false,
+        );
+
+        $repository = $this->repository();
+
+        $repository->create([
+            'account_id' => 1,
+            'name' => 'Initial',
+            'status' => 'active',
+        ]);
+
+        self::assertSame('Initial', $repository->get()->first()->name);
+
+        DB::table('cache_hardening_users')
+            ->where('id', 1)
+            ->update(['name' => 'Direct Write']);
+
+        self::assertSame(
+            'Direct Write',
+            $repository->get()->first()->name,
+        );
+    }
+
     public function test_without_cache_is_clone_scoped_and_consumed_by_one_operation(): void
     {
         $repository = $this->repository();
