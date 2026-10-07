@@ -53,6 +53,7 @@ trait HasCache
     public function withoutCache(): static
     {
         $repository = clone $this;
+        $repository->query = clone $this->query;
         $repository->cacheBypassOnce = true;
 
         return $repository;
