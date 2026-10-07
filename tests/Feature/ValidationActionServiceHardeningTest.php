@@ -306,6 +306,38 @@ final class ValidationActionServiceHardeningTest extends TestCase
         self::assertFalse($context->has('candidate'));
     }
 
+    public function test_additive_validation_failure_restores_remembered_identity_map(): void
+    {
+        $existing = Batch3Product::query()->create(['name' => 'Existing']);
+        $candidate = Batch3Product::query()->create(['name' => 'Candidate']);
+
+        $context = $this->app->make(ValidationContext::class);
+        $context->remember($existing);
+
+        $errors = $this->app->make(RepositoryValidationService::class)->errors([
+            new RepositoryValidationRule(
+                repository: Batch3ProductRepository::class,
+                exists: ['product_id'],
+            ),
+            new RepositoryValidationRule(
+                repository: Batch3RecordRepository::class,
+                exists: ['missing_record_id'],
+            ),
+        ], [
+            'product_id' => $candidate->getKey(),
+            'missing_record_id' => 999,
+        ], resetContext: false);
+
+        self::assertArrayHasKey('missing_record_id', $errors);
+        self::assertSame(
+            $existing,
+            $context->findModel(Batch3Product::class, $existing->getKey()),
+        );
+        self::assertNull(
+            $context->findModel(Batch3Product::class, $candidate->getKey()),
+        );
+    }
+
     public function test_validation_configuration_failure_clears_partially_resolved_context(): void
     {
         $product = Batch3Product::query()->create(['name' => 'One']);
