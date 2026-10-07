@@ -51,6 +51,7 @@ final class CustomLog
         if (! (bool) config('laravel-infrastructure.logging.enabled', true)) {
             return false;
         }
+
         return (bool) config('laravel-infrastructure.logging.domain_enabled.'.self::domainName($domain), true);
     }
 
@@ -139,6 +140,7 @@ final class CustomLog
         }
         if (is_string($value)) {
             $max = (int) config('laravel-infrastructure.logging.max_string_length', 4096);
+
             return strlen($value) > $max ? substr($value, 0, $max).'...[truncated]' : $value;
         }
         if (! is_array($value)) {
@@ -152,6 +154,7 @@ final class CustomLog
         foreach (array_slice($value, 0, $limit, true) as $itemKey => $itemValue) {
             $sanitized[$itemKey] = self::sanitize($itemValue, is_string($itemKey) ? $itemKey : null, $depth + 1);
         }
+
         return $sanitized;
     }
 
@@ -163,6 +166,7 @@ final class CustomLog
                 return true;
             }
         }
+
         return false;
     }
 
