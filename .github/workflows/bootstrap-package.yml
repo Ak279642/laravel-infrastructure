@@ -37,6 +37,7 @@ jobs:
 
           rm -rf .bootstrap
           rm -f .github/workflows/bootstrap-package.yml
+          rm -f .github/workflows/tests.yml
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
