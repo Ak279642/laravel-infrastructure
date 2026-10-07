@@ -10,121 +10,155 @@ use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
+/**
+ * @template TModel of Model
+ */
 interface RepositoryInterface
 {
     /**
-     * Get all records.
+     * @param list<string> $columns
+     * @return Collection<int, TModel>
      */
     public function all(array $columns = ['*']): Collection;
 
     /**
-     * Get records with optional conditions.
+     * @param array<string, mixed> $filters
+     * @param list<string> $columns
+     * @return Collection<int, TModel>
      */
     public function get(array $filters = [], array $columns = ['*']): Collection;
 
     /**
-     * Get first record.
+     * @param array<string, mixed> $filters
+     * @param list<string> $columns
+     * @return TModel|null
      */
     public function first(array $filters = [], array $columns = ['*']): ?Model;
 
     /**
-     * Get first record or fail.
-     *
-     * @throws ModelNotFoundException
+     * @param array<string, mixed> $filters
+     * @param list<string> $columns
+     * @return TModel
      */
     public function firstOrFail(array $filters = [], array $columns = ['*']): Model;
 
     /**
-     * Find record by ID.
+     * @param list<string> $with
+     * @param list<string> $columns
+     * @return TModel|null
      */
     public function find(int|string $id, array $with = [], array $columns = ['*']): ?Model;
 
     /**
-     * Find record by ID or fail.
-     *
-     * @throws ModelNotFoundException
+     * @param list<string> $with
+     * @param list<string> $columns
+     * @return TModel
      */
     public function findOrFail(int|string $id, array $with = [], array $columns = ['*']): Model;
 
     /**
-     * Create new record.
+     * @param array<string, mixed> $data
+     * @param list<string> $with
+     * @return TModel
      */
     public function create(array $data, bool $refresh = false, array $with = []): Model;
 
     /**
-     * Update existing record.
+     * @param TModel|int|string $id
+     * @param array<string, mixed> $data
+     * @param list<string> $with
+     * @return TModel
      */
     public function update(int|string|Model $id, array $data, bool $refresh = false, array $with = []): Model;
 
     /**
-     * Delete record.
+     * @param array<string, mixed> $attributes
+     * @param array<string, mixed> $values
+     * @return TModel
      */
+    public function updateOrCreate(array $attributes, array $values = []): Model;
+
+    /** @param TModel|int|string $id */
     public function delete(int|string|Model $id): bool;
 
-    /**
-     * Force delete record (permanent).
-     */
+    /** @param TModel|int|string $id */
     public function forceDelete(int|string|Model $id): bool;
 
-    /**
-     * Restore soft-deleted record.
-     */
+    /** @param TModel|int|string $id */
     public function restore(int|string|Model $id): bool;
 
-    /**
-     * Check if record exists.
-     */
+    /** @param array<string, mixed> $filters */
     public function exists(array $filters = []): bool;
 
-    /**
-     * Get count of records.
-     */
+    /** @param array<string, mixed> $filters */
+    public function doesntExist(array $filters = []): bool;
+
+    /** @param array<string, mixed> $filters */
     public function count(array $filters = []): int;
 
+    /** @param array<string, mixed> $filters */
+    public function sum(string $column, array $filters = []): float|int|null;
+
+    /** @param array<string, mixed> $filters */
+    public function avg(string $column, array $filters = []): float|int|null;
+
+    /** @param array<string, mixed> $filters */
+    public function min(string $column, array $filters = []): mixed;
+
+    /** @param array<string, mixed> $filters */
+    public function max(string $column, array $filters = []): mixed;
+
     /**
-     * Paginate results.
+     * @param array<string, mixed> $filters
+     * @return \Illuminate\Support\Collection<array-key, mixed>
+     */
+    public function pluck(string $column, ?string $key = null, array $filters = []): \Illuminate\Support\Collection;
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return \Illuminate\Support\Collection<array-key, int>
+     */
+    public function groupCount(string $column, array $filters = []): \Illuminate\Support\Collection;
+
+    /**
+     * @param array<string, mixed> $filters
+     * @param list<string> $columns
+     * @return LengthAwarePaginator<int, TModel>
      */
     public function paginate(
         array $filters = [],
         int $perPage = 15,
         array $columns = ['*'],
         string $pageName = 'page',
-        ?int $page = null
+        ?int $page = null,
     ): LengthAwarePaginator;
 
     /**
-     * Simple paginate.
+     * @param list<string> $columns
+     * @return Paginator<int, TModel>
      */
     public function simplePaginate(
         int $perPage = 15,
         array $columns = ['*'],
         string $pageName = 'page',
-        ?int $page = null
+        ?int $page = null,
     ): Paginator;
 
     /**
-     * Cursor paginate.
+     * @param list<string> $columns
+     * @return CursorPaginator<int, TModel>
      */
     public function cursorPaginate(
         int $perPage = 15,
         array $columns = ['*'],
         string $cursorName = 'cursor',
-        mixed $cursor = null
+        mixed $cursor = null,
     ): CursorPaginator;
 
-    /**
-     * Begin a transaction.
-     */
-
-    /**
-     * Get a fresh query builder instance.
-     */
+    /** @return Builder<TModel> */
     public function query(): Builder;
 
-    /**
-     * Get the underlying model instance.
-     */
+    /** @return TModel */
     public function getModel(): Model;
 }
