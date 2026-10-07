@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories;
 
-use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryInterface;
+use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasBulkCache;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasCache;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasFilters;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasRelations;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasScopes;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasSorting;
-use Ak279642\LaravelInfrastructure\Cache\CacheManager;
-use Ak279642\LaravelInfrastructure\Cache\CacheTag;
+use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryInterface;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -34,14 +34,23 @@ abstract class BaseRepository implements RepositoryInterface
     use HasSorting;
 
     protected Builder $query;
+
     protected array $searchable = [];
+
     protected array $allowedFilters = [];
+
     protected array $allowedSorts = [];
+
     protected array $allowedRelations = [];
+
     protected array $defaultRelations = [];
+
     protected array $defaultOrder = [];
+
     protected bool $strictFilters = false;
+
     protected bool $strictSorts = false;
+
     protected bool $strictRelations = false;
 
     public function __construct(
@@ -100,7 +109,7 @@ abstract class BaseRepository implements RepositoryInterface
     public function firstOrFail(array $filters = [], array $columns = ['*']): Model
     {
         return $this->first($filters, $columns)
-            ?? throw (new ModelNotFoundException())->setModel($this->model::class);
+            ?? throw (new ModelNotFoundException)->setModel($this->model::class);
     }
 
     public function find(int|string $id, array $with = [], array $columns = ['*']): ?Model
@@ -114,6 +123,7 @@ abstract class BaseRepository implements RepositoryInterface
             if ($with !== []) {
                 $this->applyRelations($query, $with);
             }
+
             return $query->find($id, $columns);
         }, ['id' => $id, 'with' => $with, 'columns' => $columns]);
     }
@@ -121,7 +131,7 @@ abstract class BaseRepository implements RepositoryInterface
     public function findOrFail(int|string $id, array $with = [], array $columns = ['*']): Model
     {
         return $this->find($id, $with, $columns)
-            ?? throw (new ModelNotFoundException())->setModel($this->model::class, [$id]);
+            ?? throw (new ModelNotFoundException)->setModel($this->model::class, [$id]);
     }
 
     public function create(array $data, bool $refresh = false, array $with = []): Model
@@ -161,6 +171,7 @@ abstract class BaseRepository implements RepositoryInterface
     {
         $model = $this->query()->updateOrCreate($attributes, $values);
         $this->clearCache();
+
         return $model;
     }
 
@@ -171,6 +182,7 @@ abstract class BaseRepository implements RepositoryInterface
         if ($deleted) {
             $this->clearCache();
         }
+
         return $deleted;
     }
 
@@ -181,6 +193,7 @@ abstract class BaseRepository implements RepositoryInterface
         if ($deleted) {
             $this->clearCache();
         }
+
         return $deleted;
     }
 
@@ -194,6 +207,7 @@ abstract class BaseRepository implements RepositoryInterface
         if ($restored) {
             $this->clearCache();
         }
+
         return $restored;
     }
 
@@ -296,6 +310,7 @@ abstract class BaseRepository implements RepositoryInterface
         if ($relations !== []) {
             $model->load($relations);
         }
+
         return $model;
     }
 
@@ -305,6 +320,7 @@ abstract class BaseRepository implements RepositoryInterface
         if ($relations !== []) {
             $model->loadMissing($relations);
         }
+
         return $model;
     }
 
@@ -334,11 +350,13 @@ abstract class BaseRepository implements RepositoryInterface
                                 $builder->orWhereJsonContains($jsonField, (string) $jsonValue);
                             }
                         }
+
                         continue;
                     }
                     $builder->orWhere($field, $value);
                 }
             });
+
             return $query->first();
         }, ['fields' => $fields, 'ignore' => $ignore, 'where' => $where]);
     }
@@ -346,7 +364,7 @@ abstract class BaseRepository implements RepositoryInterface
     public function findWhereIn(string $field, array $values, array $where = []): Collection
     {
         if ($values === []) {
-            return new Collection();
+            return new Collection;
         }
 
         return $this->cacheRemember('findWhereIn', function () use ($field, $values, $where): Collection {
@@ -354,6 +372,7 @@ abstract class BaseRepository implements RepositoryInterface
             foreach ($where as $column => $value) {
                 $query->where($column, $value);
             }
+
             return $query->get();
         }, ['field' => $field, 'values' => $values, 'where' => $where]);
     }
@@ -368,6 +387,7 @@ abstract class BaseRepository implements RepositoryInterface
             if ($with !== []) {
                 $this->applyRelations($query, $with);
             }
+
             return $query->first();
         }, ['id' => $id, 'where' => $where, 'with' => $with]);
     }
