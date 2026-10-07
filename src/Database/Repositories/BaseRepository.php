@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Repositories;
 
 use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryInterface;
+use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryValidationRepository;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasBulkCache;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasCache;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasFilters;
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection as BaseCollection;
 use Illuminate\Support\LazyCollection;
 
-abstract class BaseRepository implements RepositoryInterface
+abstract class BaseRepository implements RepositoryInterface, RepositoryValidationRepository
 {
     use HasBulkCache;
     use HasCache;
@@ -306,7 +307,7 @@ abstract class BaseRepository implements RepositoryInterface
         return $model;
     }
 
-    public function findDuplicate(array $fields, ?int $ignore = null, array $where = []): ?Model
+    public function findDuplicate(array $fields, int|string|null $ignore = null, array $where = []): ?Model
     {
         if ($fields === []) {
             return null;
