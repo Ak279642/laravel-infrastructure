@@ -77,6 +77,12 @@ trait HasCache
 
     protected function initializeCache(): void
     {
+        $this->cacheEnabled = $this->cacheEnabled
+            && (bool) config(
+                'laravel-infrastructure.cache.enabled',
+                true,
+            );
+
         if ($this->cacheTtl !== null) {
             return;
         }
@@ -117,8 +123,20 @@ trait HasCache
             ttl: $this->cacheForever ? null : $this->cacheTtl,
             callback: $callback,
             tags: $tags,
-            lockSeconds: $this->cacheLockSeconds,
-            waitSeconds: $this->cacheLockWaitSeconds,
+            lockSeconds: max(
+                1,
+                (int) config(
+                    'laravel-infrastructure.cache.lock_seconds',
+                    $this->cacheLockSeconds,
+                ),
+            ),
+            waitSeconds: max(
+                0,
+                (int) config(
+                    'laravel-infrastructure.cache.lock_wait_seconds',
+                    $this->cacheLockWaitSeconds,
+                ),
+            ),
         );
     }
 
