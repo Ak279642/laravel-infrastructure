@@ -32,6 +32,7 @@ final class CacheTag
                 foreach ($value as $item) {
                     $walk($item);
                 }
+
                 return;
             }
 
