@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 trait HasBulkCache
 {
@@ -68,14 +69,17 @@ trait HasBulkCache
                 true,
             )
         ) {
-            $query->withTrashed();
+            $query->withoutGlobalScope(SoftDeletingScope::class);
         }
 
         $models = $query->get();
         $affected = 0;
 
         foreach ($models as $model) {
-            if ($model->restore()) {
+            if (
+                is_callable([$model, 'restore'])
+                && call_user_func([$model, 'restore'])
+            ) {
                 $affected++;
             }
         }
@@ -99,14 +103,17 @@ trait HasBulkCache
                 true,
             )
         ) {
-            $query->withTrashed();
+            $query->withoutGlobalScope(SoftDeletingScope::class);
         }
 
         $models = $query->get();
         $affected = 0;
 
         foreach ($models as $model) {
-            if ($model->forceDelete()) {
+            if (
+                is_callable([$model, 'forceDelete'])
+                && call_user_func([$model, 'forceDelete'])
+            ) {
                 $affected++;
             }
         }
