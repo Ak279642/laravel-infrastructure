@@ -410,9 +410,9 @@ abstract class BaseRepository implements RepositoryInterface
     protected function findFromContext(int|string $id, array $with = []): ?Model
     {
         $context = $this->validationContext ?? app(ValidationContext::class);
-        $model = $context->getModel($this->model::class);
+        $model = $context->findModel($this->model::class, $id);
 
-        if (! $model || (string) $model->getKey() !== (string) $id) {
+        if (! $model) {
             return null;
         }
 
