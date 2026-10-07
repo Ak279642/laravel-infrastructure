@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Cache;
 
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheBypassed;
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheHit;
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheInvalidated;
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheMiss;
 use DateInterval;
 use DateTimeInterface;
 use Illuminate\Cache\Repository;
@@ -12,7 +16,9 @@ use Illuminate\Cache\TaggedCache;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Store;
+use Illuminate\Contracts\Events\Dispatcher;
 use Throwable;
 
 final class CacheManager
@@ -24,6 +30,7 @@ final class CacheManager
     public function __construct(
         private readonly Factory $cache,
         private readonly ?string $storeName = null,
+        private readonly ?Dispatcher $events = null,
     ) {
         $this->store = $this->resolveStore();
         $this->tagsSupported = $this->resolveTagsSupport();
@@ -35,17 +42,25 @@ final class CacheManager
         array $tags = [],
     ): mixed {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
+
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
+
+            return $default;
+        }
+
         $store = $this->store($tags);
 
-        $value = $store->get($key, $default);
+        if ($store->has($key)) {
+            $this->emit(new CacheHit($key, $tags));
 
-        // Log::info('Cache GET', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'hit' => $value !== $default,
-        // ]);
+            return $store->get($key);
+        }
 
-        return $value;
+        $this->emit(new CacheMiss($key, $tags));
+
+        return $default;
     }
 
     /**
@@ -56,20 +71,26 @@ final class CacheManager
         array $keys,
         array $tags = [],
     ): array {
+        $tags = CacheTag::tags(...$tags);
+
+        if ($this->tagsUnsupported($tags)) {
+            foreach ($keys as $key) {
+                $this->emit(new CacheBypassed(
+                    $this->normalizeKey($key),
+                    'tags_unsupported',
+                    $tags,
+                ));
+            }
+
+            return array_fill_keys($keys, null);
+        }
+
         $normalizedKeys = array_map(
-            fn (string $key) => $this->normalizeKey($key),
+            fn (string $key): string => $this->normalizeKey($key),
             $keys,
         );
 
-        $result = $this->store($tags)->many($normalizedKeys);
-
-        // Log::info('Cache MANY', [
-        //     'keys' => $normalizedKeys,
-        //     'tags' => $tags,
-        //     'count' => count($result),
-        // ]);
-
-        return $result;
+        return $this->store($tags)->many($normalizedKeys);
     }
 
     public function put(
@@ -79,21 +100,20 @@ final class CacheManager
         array $tags = [],
     ): bool {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
 
-        $result = $this->store($tags)->put(
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
+
+            return false;
+        }
+
+        return $this->write(
+            $this->store($tags),
             $key,
             $value,
             $ttl,
         );
-
-        // Log::info('Cache PUT', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'ttl' => $ttl,
-        //     'success' => $result,
-        // ]);
-
-        return $result;
     }
 
     /**
@@ -104,25 +124,42 @@ final class CacheManager
         DateInterval|DateTimeInterface|int|null $ttl = null,
         array $tags = [],
     ): bool {
+        $tags = CacheTag::tags(...$tags);
+
+        if ($this->tagsUnsupported($tags)) {
+            foreach (array_keys($values) as $key) {
+                $this->emit(new CacheBypassed(
+                    $this->normalizeKey((string) $key),
+                    'tags_unsupported',
+                    $tags,
+                ));
+            }
+
+            return false;
+        }
+
         $normalizedValues = [];
 
         foreach ($values as $key => $value) {
-            $normalizedValues[$this->normalizeKey($key)] = $value;
+            $normalizedValues[$this->normalizeKey((string) $key)] = $value;
         }
 
-        $result = $this->store($tags)->putMany(
+        if ($ttl === null) {
+            $success = true;
+
+            foreach ($normalizedValues as $key => $value) {
+                if (! $this->store($tags)->forever($key, $value)) {
+                    $success = false;
+                }
+            }
+
+            return $success;
+        }
+
+        return $this->store($tags)->putMany(
             $normalizedValues,
             $ttl,
         );
-
-        // Log::info('Cache PUT MANY', [
-        //     'keys' => array_keys($normalizedValues),
-        //     'tags' => $tags,
-        //     'ttl' => $ttl,
-        //     'success' => $result,
-        // ]);
-
-        return $result;
     }
 
     public function forever(
@@ -157,48 +194,100 @@ final class CacheManager
         array $tags = [],
     ): mixed {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
 
-        // Log::info('Cache LOOKUP', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'ttl' => $ttl,
-        //     'mode' => 'standard',
-        // ]);
+        if ($this->tagsUnsupported($tags)) {
+            return $this->bypassNormalized(
+                $key,
+                $callback,
+                $tags,
+                'tags_unsupported',
+            );
+        }
 
         $store = $this->store($tags);
 
         if ($store->has($key)) {
-            $cached = $store->get($key);
-            // Log::info('Cache HIT', [
-            //     'key' => $key,
-            //     'tags' => $tags,
-            //     'mode' => 'standard',
-            // ]);
+            $this->emit(new CacheHit($key, $tags));
 
-            return $cached;
+            return $store->get($key);
         }
 
-        // Log::info('Cache MISS', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'mode' => 'standard',
-        // ]);
+        $this->emit(new CacheMiss($key, $tags));
 
-        $value = $callback();
+        if (! $this->locksEnabled()) {
+            return $this->populate(
+                $store,
+                $key,
+                $ttl,
+                $callback,
+            );
+        }
 
-        $store->put(
-            $key,
-            $value,
-            $ttl,
+        $lock = $this->lock(
+            $this->rememberLockName($key),
+            max(1, (int) config(
+                'laravel-infrastructure.cache.lock.seconds',
+                10,
+            )),
         );
 
-        // Log::info('Cache WRITE', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'mode' => 'standard',
-        // ]);
+        if (! $lock) {
+            return $this->populate(
+                $store,
+                $key,
+                $ttl,
+                $callback,
+            );
+        }
 
-        return $value;
+        $waitSeconds = max(0, (int) config(
+            'laravel-infrastructure.cache.lock.wait_seconds',
+            3,
+        ));
+
+        try {
+            if ($waitSeconds === 0) {
+                if (! $lock->get()) {
+                    return $this->bypassNormalized(
+                        $key,
+                        $callback,
+                        $tags,
+                        'lock_unavailable',
+                    );
+                }
+
+                try {
+                    return $this->populateAfterLock(
+                        $store,
+                        $key,
+                        $ttl,
+                        $callback,
+                        $tags,
+                    );
+                } finally {
+                    $lock->release();
+                }
+            }
+
+            return $lock->block(
+                $waitSeconds,
+                fn () => $this->populateAfterLock(
+                    $store,
+                    $key,
+                    $ttl,
+                    $callback,
+                    $tags,
+                ),
+            );
+        } catch (LockTimeoutException) {
+            return $this->bypassNormalized(
+                $key,
+                $callback,
+                $tags,
+                'lock_timeout',
+            );
+        }
     }
 
     public function rememberForever(
@@ -214,25 +303,38 @@ final class CacheManager
         );
     }
 
+    public function bypass(
+        string $key,
+        callable $callback,
+        array $tags = [],
+        string $reason = 'disabled',
+    ): mixed {
+        return $this->bypassNormalized(
+            $this->normalizeKey($key),
+            $callback,
+            CacheTag::tags(...$tags),
+            $reason,
+        );
+    }
+
     public function pull(
         string $key,
         mixed $default = null,
         array $tags = [],
     ): mixed {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
 
-        $value = $this->store($tags)->pull(
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
+
+            return $default;
+        }
+
+        return $this->store($tags)->pull(
             $key,
             $default,
         );
-
-        // Log::info('Cache PULL', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'hit' => $value !== $default,
-        // ]);
-
-        return $value;
     }
 
     public function add(
@@ -242,21 +344,27 @@ final class CacheManager
         array $tags = [],
     ): bool {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
 
-        $result = $this->store($tags)->add(
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
+
+            return false;
+        }
+
+        if ($ttl === null) {
+            return $this->store($tags)->add(
+                $key,
+                $value,
+                PHP_INT_MAX,
+            );
+        }
+
+        return $this->store($tags)->add(
             $key,
             $value,
             $ttl,
         );
-
-        // Log::info('Cache ADD', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'ttl' => $ttl,
-        //     'success' => $result,
-        // ]);
-
-        return $result;
     }
 
     public function increment(
@@ -265,6 +373,13 @@ final class CacheManager
         array $tags = [],
     ): int|bool {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
+
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
+
+            return false;
+        }
 
         return $this->store($tags)->increment(
             $key,
@@ -278,6 +393,13 @@ final class CacheManager
         array $tags = [],
     ): int|bool {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
+
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
+
+            return false;
+        }
 
         return $this->store($tags)->decrement(
             $key,
@@ -290,16 +412,15 @@ final class CacheManager
         array $tags = [],
     ): bool {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
 
-        $result = $this->store($tags)->has($key);
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
 
-        // Log::info('Cache HAS', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'result' => $result,
-        // ]);
+            return false;
+        }
 
-        return $result;
+        return $this->store($tags)->has($key);
     }
 
     public function missing(
@@ -314,16 +435,15 @@ final class CacheManager
         array $tags = [],
     ): bool {
         $key = $this->normalizeKey($key);
+        $tags = CacheTag::tags(...$tags);
 
-        $result = $this->store($tags)->forget($key);
+        if ($this->tagsUnsupported($tags)) {
+            $this->emit(new CacheBypassed($key, 'tags_unsupported', $tags));
 
-        // Log::info('Cache FORGET', [
-        //     'key' => $key,
-        //     'tags' => $tags,
-        //     'success' => $result,
-        // ]);
+            return false;
+        }
 
-        return $result;
+        return $this->store($tags)->forget($key);
     }
 
     public function forgetMany(
@@ -333,7 +453,7 @@ final class CacheManager
         $success = true;
 
         foreach ($keys as $key) {
-            if (! $this->forget($key, $tags)) {
+            if (! $this->forget((string) $key, $tags)) {
                 $success = false;
             }
         }
@@ -377,34 +497,36 @@ final class CacheManager
 
     public function flushTags(array $tags): bool
     {
-        if (! $this->supportsTags()) {
-            // Log::warning('Cache TAG FLUSH skipped - tags unsupported', [
-            //     'tags' => $tags,
-            // ]);
-
-            return false;
-        }
-
         $normalizedTags = CacheTag::tags(...$tags);
 
         if ($normalizedTags === []) {
             return false;
         }
 
+        if (! $this->supportsTags()) {
+            $this->emit(new CacheBypassed(
+                '',
+                'tags_unsupported',
+                $normalizedTags,
+            ));
+
+            return false;
+        }
+
         try {
             $result = $this->store($normalizedTags)->flush();
 
-            // Log::info('Cache TAG FLUSH', [
-            //     'tags' => $normalizedTags,
-            //     'success' => $result,
-            // ]);
+            $this->emit(new CacheInvalidated(
+                $normalizedTags,
+                $result,
+            ));
 
             return $result;
-        } catch (Throwable $e) {
-            // Log::error('Cache TAG FLUSH failed', [
-            //     'tags' => $normalizedTags,
-            //     'error' => $e->getMessage(),
-            // ]);
+        } catch (Throwable) {
+            $this->emit(new CacheInvalidated(
+                $normalizedTags,
+                false,
+            ));
 
             return false;
         }
@@ -414,9 +536,7 @@ final class CacheManager
     {
         $result = $this->store->flush();
 
-        // Log::info('Cache FLUSH ALL', [
-        //     'success' => $result,
-        // ]);
+        $this->emit(new CacheInvalidated([], $result));
 
         return $result;
     }
@@ -433,7 +553,21 @@ final class CacheManager
 
     private function normalizeKey(string $key): string
     {
-        return '_'.ltrim($key, '_');
+        $key = trim($key);
+
+        $prefix = trim(
+            (string) config(
+                'laravel-infrastructure.cache.key_prefix',
+                'laravel-infrastructure',
+            ),
+            " :\t\n\r\0\x0B",
+        );
+
+        $key = ltrim($key, ':');
+
+        return $prefix === ''
+            ? $key
+            : $prefix.':'.$key;
     }
 
     private function resolveStore(): Repository
@@ -448,16 +582,108 @@ final class CacheManager
 
     private function store(array $tags = []): Repository|TaggedCache
     {
-        $normalizedTags = CacheTag::tags(...$tags);
-
-        if ($normalizedTags === []) {
+        if ($tags === []) {
             return $this->store;
         }
 
-        if (! $this->tagsSupported) {
-            return $this->store;
+        return $this->store->tags($tags);
+    }
+
+    private function tagsUnsupported(array $tags): bool
+    {
+        return $tags !== [] && ! $this->tagsSupported;
+    }
+
+    private function locksEnabled(): bool
+    {
+        return (bool) config(
+            'laravel-infrastructure.cache.lock.enabled',
+            true,
+        );
+    }
+
+    private function rememberLockName(string $normalizedKey): string
+    {
+        return 'laravel-infrastructure:remember:'.hash(
+            'sha256',
+            $normalizedKey,
+        );
+    }
+
+    private function populate(
+        Repository|TaggedCache $store,
+        string $key,
+        DateInterval|DateTimeInterface|int|null $ttl,
+        callable $callback,
+    ): mixed {
+        $value = $callback();
+
+        $this->write($store, $key, $value, $ttl);
+
+        return $value;
+    }
+
+    private function populateAfterLock(
+        Repository|TaggedCache $store,
+        string $key,
+        DateInterval|DateTimeInterface|int|null $ttl,
+        callable $callback,
+        array $tags,
+    ): mixed {
+        if ($store->has($key)) {
+            $this->emit(new CacheHit($key, $tags));
+
+            return $store->get($key);
         }
 
-        return $this->store->tags($normalizedTags);
+        return $this->populate(
+            $store,
+            $key,
+            $ttl,
+            $callback,
+        );
+    }
+
+    private function write(
+        Repository|TaggedCache $store,
+        string $key,
+        mixed $value,
+        DateInterval|DateTimeInterface|int|null $ttl,
+    ): bool {
+        if ($ttl === null) {
+            return $store->forever($key, $value);
+        }
+
+        return $store->put($key, $value, $ttl);
+    }
+
+    private function bypassNormalized(
+        string $normalizedKey,
+        callable $callback,
+        array $tags,
+        string $reason,
+    ): mixed {
+        $this->emit(new CacheBypassed(
+            $normalizedKey,
+            $reason,
+            $tags,
+        ));
+
+        return $callback();
+    }
+
+    private function emit(object $event): void
+    {
+        if (
+            $this->events === null
+            || ! (bool) config(
+                'laravel-infrastructure.cache.events.enabled',
+                false,
+            )
+        ) {
+            return;
+        }
+
+        $this->events->dispatch($event);
     }
 }

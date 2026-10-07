@@ -4,45 +4,39 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Cache;
 
+use Ak279642\LaravelInfrastructure\Exceptions\InvalidCacheConfigurationException;
 use BackedEnum;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use JsonSerializable;
+use Stringable;
 use UnitEnum;
 
 final class CacheKey
 {
     private function __construct() {}
 
-    /**
-     * Generate a deterministic cache key.
-     */
     public static function make(string $resource, array $params = []): string
     {
-        $resource = strtolower(trim($resource, ':'));
+        $resource = self::normalizeResource($resource);
         $params = self::normalize($params);
 
-        return empty($params)
+        return $params === []
             ? $resource
             : $resource.':'.self::hash($params);
     }
 
-    /**
-     * Mark an array or collection as unordered.
-     */
     public static function unordered(array|Collection $value): UnorderedArray
     {
         return new UnorderedArray(
-            $value instanceof Collection ? $value->all() : $value
+            $value instanceof Collection ? $value->all() : $value,
         );
     }
 
-    /**
-     * Generate a human-readable cache key.
-     */
     public static function readable(string $resource, array $params = []): string
     {
-        $resource = strtolower(trim($resource, ':'));
+        $resource = self::normalizeResource($resource);
         $params = self::normalize($params);
 
         ksort($params);
@@ -56,20 +50,30 @@ final class CacheKey
                         $value,
                         JSON_UNESCAPED_UNICODE
                         | JSON_UNESCAPED_SLASHES
-                        | JSON_THROW_ON_ERROR
+                        | JSON_THROW_ON_ERROR,
                     )
-                    : $value
+                    : (string) $value
             );
         }
 
-        return empty($parts)
+        return $parts === []
             ? $resource
             : $resource.':'.implode(':', $parts);
     }
 
-    /**
-     * Generate deterministic hash.
-     */
+    private static function normalizeResource(string $resource): string
+    {
+        $resource = strtolower(trim($resource, " :\t\n\r\0\x0B"));
+
+        if ($resource === '') {
+            throw new InvalidCacheConfigurationException(
+                'Cache key resource must not be empty.',
+            );
+        }
+
+        return $resource;
+    }
+
     private static function hash(array $data): string
     {
         ksort($data);
@@ -80,14 +84,11 @@ final class CacheKey
                 $data,
                 JSON_UNESCAPED_UNICODE
                 | JSON_UNESCAPED_SLASHES
-                | JSON_THROW_ON_ERROR
-            )
+                | JSON_THROW_ON_ERROR,
+            ),
         );
     }
 
-    /**
-     * Normalize values recursively.
-     */
     private static function normalize(mixed $value): mixed
     {
         if ($value === null) {
@@ -99,11 +100,14 @@ final class CacheKey
         }
 
         if ($value instanceof Model) {
-            return $value->getKey();
+            return [
+                'model' => $value::class,
+                'key' => $value->getKey(),
+            ];
         }
 
         if ($value instanceof Collection) {
-            return self::normalize($value->toArray());
+            return self::normalize($value->all());
         }
 
         if ($value instanceof BackedEnum) {
@@ -116,6 +120,24 @@ final class CacheKey
 
         if ($value instanceof DateTimeInterface) {
             return $value->format('Y-m-d\TH:i:s.uP');
+        }
+
+        if ($value instanceof JsonSerializable) {
+            return self::normalize($value->jsonSerialize());
+        }
+
+        if ($value instanceof Stringable) {
+            return (string) $value;
+        }
+
+        if (is_object($value) || is_resource($value)) {
+            $type = is_object($value)
+                ? $value::class
+                : get_resource_type($value);
+
+            throw new InvalidCacheConfigurationException(
+                "Unsupported cache-key parameter type [{$type}].",
+            );
         }
 
         if (is_bool($value)) {
@@ -139,9 +161,6 @@ final class CacheKey
         return $normalized;
     }
 
-    /**
-     * Normalize and deterministically sort an unordered collection.
-     */
     private static function normalizeUnordered(array $values): array
     {
         $normalized = self::normalize($values);
@@ -154,14 +173,19 @@ final class CacheKey
 
         foreach ($normalized as $item) {
             $decorated[] = [
-                json_encode($item, JSON_THROW_ON_ERROR),
+                json_encode(
+                    $item,
+                    JSON_UNESCAPED_UNICODE
+                    | JSON_UNESCAPED_SLASHES
+                    | JSON_THROW_ON_ERROR,
+                ),
                 $item,
             ];
         }
 
         usort(
             $decorated,
-            static fn (array $a, array $b): int => strcmp($a[0], $b[0])
+            static fn (array $a, array $b): int => $a[0] <=> $b[0],
         );
 
         return array_column($decorated, 1);

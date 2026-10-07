@@ -4,30 +4,29 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Exceptions\SortNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
 
 trait HasSorting
 {
-    /**
-     * Apply sorting to the query.
-     */
-    protected function applySorting(Builder $query, string|array $sort): Builder
-    {
+    protected function applySorting(
+        Builder $query,
+        string|array $sort,
+    ): Builder {
         if (is_string($sort)) {
-            $sort = preg_split('/\s*,\s*/', trim($sort), -1, PREG_SPLIT_NO_EMPTY);
+            $sort = preg_split(
+                '/\s*,\s*/',
+                trim($sort),
+                -1,
+                PREG_SPLIT_NO_EMPTY,
+            ) ?: [];
         }
 
         foreach ($sort as $key => $value) {
-            // Associative format: ['created_at' => 'desc']
             if (is_string($key) && is_string($value)) {
                 $column = $key;
                 $direction = strtolower($value);
-
-                if (! in_array($direction, ['asc', 'desc'], true)) {
-                    $direction = 'asc';
-                }
-            } else {
-                // Existing format: ['created_at', '-id']
+            } elseif (is_string($value)) {
                 $column = $value;
                 $direction = 'asc';
 
@@ -35,80 +34,108 @@ trait HasSorting
                     $direction = 'desc';
                     $column = substr($column, 1);
                 }
-            }
-
-            if (! $this->isSortAllowed($column)) {
+            } else {
                 continue;
             }
 
-            $query->orderBy($column, $direction);
+            if (! $this->isSortAllowed($column)) {
+                if ($this->strictSorts) {
+                    throw new SortNotAllowedException(
+                        $column,
+                        static::class,
+                        $this->allowedSorts,
+                    );
+                }
+
+                continue;
+            }
+
+            if (! in_array(
+                $direction,
+                ['asc', 'desc'],
+                true,
+            )) {
+                $direction = 'asc';
+            }
+
+            $query->orderBy(
+                $column,
+                $direction,
+            );
         }
 
         return $query;
     }
 
-    /**
-     * Determine whether the column is allowed for sorting.
-     */
     protected function isSortAllowed(string $column): bool
     {
-        return $this->allowedSorts === []
-            || in_array($column, $this->allowedSorts, true);
+        return in_array(
+            $column,
+            $this->allowedSorts,
+            true,
+        );
     }
 
-    /**
-     * Apply order by.
-     */
-    public function orderBy(string $column, string $direction = 'asc'): static
-    {
+    public function orderBy(
+        string $column,
+        string $direction = 'asc',
+    ): static {
         if (! $this->isSortAllowed($column)) {
-            return $this;
+            if ($this->strictSorts) {
+                throw new SortNotAllowedException(
+                    $column,
+                    static::class,
+                    $this->allowedSorts,
+                );
+            }
+
+            return clone $this;
         }
 
         $direction = strtolower($direction);
 
-        if (! in_array($direction, ['asc', 'desc'], true)) {
+        if (! in_array(
+            $direction,
+            ['asc', 'desc'],
+            true,
+        )) {
             $direction = 'asc';
         }
 
-        $this->query->orderBy($column, $direction);
+        $clone = $this->forkQuery();
+        $clone->query->orderBy(
+            $column,
+            $direction,
+        );
 
-        return $this;
+        return $clone;
     }
 
-    /**
-     * Apply descending order.
-     */
     public function orderByDesc(string $column): static
     {
-        if ($this->isSortAllowed($column)) {
-            $this->query->orderByDesc($column);
-        }
-
-        return $this;
+        return $this->orderBy(
+            $column,
+            'desc',
+        );
     }
 
-    /**
-     * Order by latest.
-     */
-    public function latest(string $column = 'created_at'): static
-    {
-        if ($this->isSortAllowed($column)) {
-            $this->query->latest($column);
-        }
-
-        return $this;
+    public function latest(
+        string $column = 'created_at',
+    ): static {
+        return $this->orderBy(
+            $column,
+            'desc',
+        );
     }
 
-    /**
-     * Order by oldest.
-     */
-    public function oldest(string $column = 'created_at'): static
-    {
-        if ($this->isSortAllowed($column)) {
-            $this->query->oldest($column);
-        }
-
-        return $this;
+    public function oldest(
+        string $column = 'created_at',
+    ): static {
+        return $this->orderBy(
+            $column,
+            'asc',
+        );
     }
+
+    abstract protected function forkQuery(): static;
 }

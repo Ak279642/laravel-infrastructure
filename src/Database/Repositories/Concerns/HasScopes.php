@@ -8,15 +8,15 @@ use Illuminate\Database\Eloquent\Builder;
 
 trait HasScopes
 {
-    /**
-     * Apply model scopes to the query.
-     */
-    protected function applyScopes(Builder $query, array|string $scopes): Builder
-    {
-        $scopes = $this->normalizeScopes($scopes);
-
-        foreach ($scopes as $scope) {
-            if (! $this->hasScope($query, $scope)) {
+    protected function applyScopes(
+        Builder $query,
+        array|string $scopes,
+    ): Builder {
+        foreach ($this->normalizeScopes($scopes) as $scope) {
+            if (
+                ! $this->isScopeAllowed($scope)
+                || ! $this->hasScope($query, $scope)
+            ) {
                 continue;
             }
 
@@ -26,43 +26,58 @@ trait HasScopes
         return $query;
     }
 
-    /**
-     * Apply a single scope with optional arguments.
-     */
-    public function scope(string $scope, mixed ...$args): static
-    {
-        if ($this->hasScope($this->query, $scope)) {
-            $this->query->{$scope}(...$args);
+    public function scope(
+        string $scope,
+        mixed ...$args,
+    ): static {
+        $clone = $this->forkQuery();
+
+        if (
+            $this->isScopeAllowed($scope)
+            && $this->hasScope($clone->query, $scope)
+        ) {
+            $clone->query->{$scope}(...$args);
         }
 
-        return $this;
+        return $clone;
     }
 
-    /**
-     * Normalize scopes.
-     */
-    protected function normalizeScopes(array|string $scopes): array
-    {
+    protected function normalizeScopes(
+        array|string $scopes,
+    ): array {
         if (is_string($scopes)) {
             $scopes = preg_split(
                 '/\s*,\s*/',
                 trim($scopes),
                 -1,
-                PREG_SPLIT_NO_EMPTY
-            );
+                PREG_SPLIT_NO_EMPTY,
+            ) ?: [];
         }
 
-        return array_values(array_unique($scopes));
+        return array_values(array_unique(array_filter(
+            $scopes,
+            'is_string',
+        )));
     }
 
-    /**
-     * Check whether the model defines the given local scope.
-     */
-    protected function hasScope(Builder $query, string $scope): bool
-    {
+    protected function hasScope(
+        Builder $query,
+        string $scope,
+    ): bool {
         return method_exists(
             $query->getModel(),
-            'scope'.ucfirst($scope)
+            'scope'.ucfirst($scope),
         );
     }
+
+    protected function isScopeAllowed(string $scope): bool
+    {
+        return in_array(
+            $scope,
+            $this->allowedScopes,
+            true,
+        );
+    }
+
+    abstract protected function forkQuery(): static;
 }

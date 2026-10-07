@@ -4,46 +4,105 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Exceptions\FilterNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
 
 trait HasFilters
 {
-    /**
-     * Apply filters to query.
-     */
-    protected function applyFilters(Builder $query, array $filters): Builder
-    {
+    private const RESERVED_FILTER_KEYS = [
+        'search',
+        'scopes',
+        'with',
+        'sort',
+        'sort_by',
+        'sort_order',
+        'page',
+        'per_page',
+        'search_columns',
+        'with_count',
+    ];
+
+    private const FILTER_OPERATORS = [
+        '=',
+        '!=',
+        '<>',
+        '>',
+        '>=',
+        '<',
+        '<=',
+        'like',
+        'ilike',
+        'in',
+        'in_or_null',
+        'not_in',
+        'between',
+        'not_between',
+        'null',
+        'not_null',
+    ];
+
+    protected function applyFilters(
+        Builder $query,
+        array $filters,
+    ): Builder {
         foreach ($filters as $key => $value) {
-            if (in_array($key, [
-                'search',
-                'scopes',
-                'with',
-                'sort',
-                'sort_by',
-                'sort_order',
-                'page',
-                'per_page',
-                'search_columns',
-                'with_count',
-            ], true)) {
+            if (
+                ! is_string($key)
+                || in_array(
+                    $key,
+                    self::RESERVED_FILTER_KEYS,
+                    true,
+                )
+            ) {
                 continue;
             }
 
-            if (! $this->isFilterAllowed($key) && ! $this->isRelationFilter($key)) {
+            if (! $this->isFilterAllowed($key)) {
+                if ($this->strictFilters) {
+                    throw new FilterNotAllowedException(
+                        $key,
+                        static::class,
+                        $this->allowedFilters,
+                    );
+                }
+
                 continue;
             }
 
             if (str_contains($key, '.')) {
-                $this->applyNestedFilter($query, $key, $value);
+                if (! $this->isRelationFilter($key)) {
+                    if ($this->strictFilters) {
+                        throw new FilterNotAllowedException(
+                            $key,
+                            static::class,
+                            $this->allowedFilters,
+                        );
+                    }
+
+                    continue;
+                }
+
+                $this->applyNestedFilter(
+                    $query,
+                    $key,
+                    $value,
+                );
 
                 continue;
             }
 
             if (is_array($value)) {
-                $operator = strtolower($value['operator'] ?? '=');
-                $filterValue = $value['value'] ?? null;
+                [$operator, $filterValue] = $this->normalizeOperatorFilter(
+                    $key,
+                    $value,
+                );
 
-                $this->applyOperatorFilter($query, $key, $operator, $filterValue);
+                $this->applyOperatorFilter(
+                    $query,
+                    $key,
+                    $operator,
+                    $filterValue,
+                );
 
                 continue;
             }
@@ -54,119 +113,177 @@ trait HasFilters
         return $query;
     }
 
-    /**
-     * Apply nested relation filter.
-     */
-    protected function applyNestedFilter(Builder $query, string $key, mixed $value): Builder
-    {
+    protected function applyNestedFilter(
+        Builder $query,
+        string $key,
+        mixed $value,
+    ): Builder {
         $segments = explode('.', $key);
         $column = array_pop($segments);
         $relation = implode('.', $segments);
 
-        // Handle != and <> using whereDoesntHave
-        if (
-            is_array($value)
-            && in_array(strtolower($value['operator'] ?? ''), ['!=', '<>'], true)
-        ) {
-            return $query->whereDoesntHave($relation, function (Builder $q) use ($column, $value) {
-                $q->where($column, $value['value']);
-            });
-        }
+        if (is_array($value)) {
+            [$operator, $filterValue] = $this->normalizeOperatorFilter(
+                $key,
+                $value,
+            );
 
-        return $query->whereHas($relation, function (Builder $q) use ($column, $value) {
-            if (is_array($value)) {
-                $operator = strtolower($value['operator'] ?? '=');
-                $filterValue = $value['value'] ?? null;
-
-                $this->applyOperatorFilter($q, $column, $operator, $filterValue);
-
-                return;
+            if (in_array($operator, ['!=', '<>'], true)) {
+                return $query->whereDoesntHave(
+                    $relation,
+                    fn (Builder $nested): Builder => $nested->where(
+                        $column,
+                        '=',
+                        $filterValue,
+                    ),
+                );
             }
 
-            $q->where($column, $value);
-        });
+            return $query->whereHas(
+                $relation,
+                function (Builder $nested) use (
+                    $column,
+                    $operator,
+                    $filterValue,
+                ): void {
+                    $this->applyOperatorFilter(
+                        $nested,
+                        $column,
+                        $operator,
+                        $filterValue,
+                    );
+                },
+            );
+        }
+
+        return $query->whereHas(
+            $relation,
+            fn (Builder $nested): Builder => $nested->where(
+                $column,
+                $value,
+            ),
+        );
     }
 
-    /**
-     * Apply operator filter.
-     */
     protected function applyOperatorFilter(
         Builder $query,
         string $key,
         string $operator,
-        mixed $value
+        mixed $value,
     ): Builder {
         $driver = $query->getConnection()->getDriverName();
 
         return match ($operator) {
-            '=', '!=', '<>', '>', '>=', '<', '<=' => $query->where($key, $operator, $value),
-
-            'like' => $query->where(
+            '=', '!=', '<>', '>', '>=', '<', '<=' => $query->where(
                 $key,
-                $driver === 'pgsql' ? 'ILIKE' : 'LIKE',
-                "%{$value}%"
+                $operator,
+                $value,
             ),
 
-            'ilike' => $query->where($key, 'ILIKE', "%{$value}%"),
+            'like', 'ilike' => $query->where(
+                $key,
+                $driver === 'pgsql' ? 'ILIKE' : 'LIKE',
+                '%'.(string) $value.'%',
+            ),
 
-            'in' => ! empty($value)
+            'in' => (array) $value !== []
                 ? $query->whereIn($key, (array) $value)
                 : $query,
 
-            'in_or_null' => $query->where(function (Builder $q) use ($key, $value) {
-                $q->whereIn($key, (array) $value)->orWhereNull($key);
-            }),
+            'in_or_null' => (array) $value === []
+                ? $query->whereNull($key)
+                : $query->where(
+                    function (Builder $nested) use (
+                        $key,
+                        $value,
+                    ): void {
+                        $nested
+                            ->whereIn($key, (array) $value)
+                            ->orWhereNull($key);
+                    },
+                ),
 
-            'not_in' => ! empty($value)
+            'not_in' => (array) $value !== []
                 ? $query->whereNotIn($key, (array) $value)
                 : $query,
 
             'between' => is_array($value) && count($value) === 2
-                ? $query->whereBetween($key, $value)
+                ? $query->whereBetween($key, array_values($value))
                 : $query,
 
             'not_between' => is_array($value) && count($value) === 2
-                ? $query->whereNotBetween($key, $value)
+                ? $query->whereNotBetween($key, array_values($value))
                 : $query,
 
             'null' => $query->whereNull($key),
 
             'not_null' => $query->whereNotNull($key),
 
-            default => $query->where($key, $value),
+            default => $query,
         };
     }
 
-    /**
-     * Check if filter is allowed.
-     */
     protected function isFilterAllowed(string $key): bool
     {
-        return $this->allowedFilters === []
-            || in_array($key, $this->allowedFilters, true);
+        return in_array(
+            $key,
+            $this->allowedFilters,
+            true,
+        );
     }
 
-    /**
-     * Check if key is a relation filter.
-     */
     protected function isRelationFilter(string $key): bool
     {
-        return str_contains($key, '.');
+        if (! str_contains($key, '.')) {
+            return false;
+        }
+
+        $segments = explode('.', $key);
+        array_pop($segments);
+
+        return $this->isRelationAllowed(
+            implode('.', $segments),
+        );
     }
 
-    /**
-     * Apply search to query.
-     */
-    protected function applySearch(Builder $query, string $search, ?array $searchColumns = null): Builder
-    {
-        $searchable = $searchColumns ?? $this->searchable;
+    protected function applySearch(
+        Builder $query,
+        string $search,
+        ?array $searchColumns = null,
+    ): Builder {
+        $searchable = $this->searchable;
+
+        if ($searchColumns !== null) {
+            $requested = array_values(array_filter(
+                $searchColumns,
+                'is_string',
+            ));
+
+            $invalid = array_values(array_diff(
+                $requested,
+                $searchable,
+            ));
+
+            if ($invalid !== [] && $this->strictFilters) {
+                throw new FilterNotAllowedException(
+                    'search_columns:'.implode(',', $invalid),
+                    static::class,
+                    $searchable,
+                );
+            }
+
+            $searchable = array_values(array_intersect(
+                $requested,
+                $searchable,
+            ));
+        }
 
         if ($searchable === []) {
             return $query;
         }
 
         $terms = array_values(array_filter(
-            preg_split('/\s+/', trim($search))
+            preg_split('/\s+/', trim($search)) ?: [],
         ));
 
         if ($terms === []) {
@@ -176,38 +293,101 @@ trait HasFilters
         $driver = $query->getConnection()->getDriverName();
         $like = $driver === 'pgsql' ? 'ILIKE' : 'LIKE';
 
-        return $query->where(function (Builder $q) use ($terms, $like, $searchable) {
-            foreach ($terms as $term) {
-                $q->where(function (Builder $sub) use ($term, $like, $searchable) {
-                    foreach ($searchable as $column) {
-                        if (str_contains($column, '.')) {
-                            $this->applyNestedSearch($sub, $column, $term, $like);
+        return $query->where(
+            function (Builder $outer) use (
+                $terms,
+                $like,
+                $searchable,
+            ): void {
+                foreach ($terms as $term) {
+                    $outer->where(
+                        function (Builder $inner) use (
+                            $term,
+                            $like,
+                            $searchable,
+                        ): void {
+                            foreach ($searchable as $column) {
+                                if (str_contains($column, '.')) {
+                                    $this->applyNestedSearch(
+                                        $inner,
+                                        $column,
+                                        $term,
+                                        $like,
+                                    );
 
-                            continue;
-                        }
+                                    continue;
+                                }
 
-                        $sub->orWhere($column, $like, "%{$term}%");
-                    }
-                });
-            }
-        });
+                                $inner->orWhere(
+                                    $column,
+                                    $like,
+                                    "%{$term}%",
+                                );
+                            }
+                        },
+                    );
+                }
+            },
+        );
     }
 
-    /**
-     * Apply nested search.
-     */
     protected function applyNestedSearch(
         Builder $query,
         string $column,
         string $term,
-        string $like
+        string $like,
     ): Builder {
         $segments = explode('.', $column);
         $field = array_pop($segments);
         $relation = implode('.', $segments);
 
-        return $query->orWhereHas($relation, function (Builder $q) use ($field, $term, $like) {
-            $q->where($field, $like, "%{$term}%");
-        });
+        return $query->orWhereHas(
+            $relation,
+            fn (Builder $nested): Builder => $nested->where(
+                $field,
+                $like,
+                "%{$term}%",
+            ),
+        );
+    }
+
+    /**
+     * @return array{0:string,1:mixed}
+     */
+    private function normalizeOperatorFilter(
+        string $key,
+        array $value,
+    ): array {
+        if (
+            array_is_list($value)
+            && count($value) === 2
+            && is_string($value[0])
+        ) {
+            $operator = strtolower(trim($value[0]));
+            $filterValue = $value[1];
+        } else {
+            $operator = strtolower(
+                (string) ($value['operator'] ?? '='),
+            );
+            $filterValue = $value['value'] ?? null;
+        }
+
+        if (! in_array(
+            $operator,
+            self::FILTER_OPERATORS,
+            true,
+        )) {
+            if ($this->strictFilters) {
+                throw new FilterNotAllowedException(
+                    "{$key} operator {$operator}",
+                    static::class,
+                    $this->allowedFilters,
+                );
+            }
+
+            return ['=', $filterValue];
+        }
+
+        return [$operator, $filterValue];
     }
 }

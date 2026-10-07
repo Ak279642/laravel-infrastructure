@@ -4,83 +4,146 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
-use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Cache\CacheKey;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
-use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
+use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
+use Ak279642\LaravelInfrastructure\Exceptions\InvalidCacheConfigurationException;
 use DateInterval;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 
 trait HasCache
 {
-    protected ?int $cacheTtl = CacheTtl::MINUTES_5;
+    protected ?int $cacheTtl = null;
+
     protected bool $cacheEnabled = true;
+
     protected bool $cacheForever = false;
+
     protected array $extraCacheTags = [];
 
     public function cacheTtl(int $ttl): static
     {
-        $this->cacheTtl = $ttl;
-        return $this;
+        if ($ttl <= 0) {
+            throw new InvalidCacheConfigurationException(
+                'Repository cache TTL must be greater than zero.',
+            );
+        }
+
+        $clone = clone $this;
+        $clone->cacheTtl = $ttl;
+
+        return $clone;
     }
 
     public function rememberForever(): static
     {
-        $this->cacheForever = true;
-        return $this;
+        $clone = clone $this;
+        $clone->cacheForever = true;
+
+        return $clone;
     }
 
     public function cacheTags(array $tags): static
     {
-        $this->extraCacheTags = CacheTag::tags(...$tags);
-        return $this;
+        $clone = clone $this;
+        $clone->extraCacheTags = CacheTag::merge(
+            $this->extraCacheTags,
+            CacheTag::tags(...$tags),
+        );
+
+        return $clone;
     }
 
+    /**
+     * Disable cache for only the returned repository clone.
+     *
+     * This is safe for Octane, queue workers and container singletons because
+     * the original repository instance is never mutated.
+     */
     public function withoutCache(): static
     {
-        $this->cacheEnabled = false;
-        return $this;
+        $clone = clone $this;
+        $clone->cacheEnabled = false;
+
+        return $clone;
     }
 
+    /**
+     * @deprecated Repository caching is enabled by default. Prefer get() or
+     *             withoutCache()->get() for an explicitly fresh read.
+     */
     public function withCache(?int $ttl = null): static
     {
-        $this->cacheEnabled = true;
+        $clone = clone $this;
+        $clone->cacheEnabled = true;
+
         if ($ttl !== null) {
-            $this->cacheTtl = $ttl;
+            if ($ttl <= 0) {
+                throw new InvalidCacheConfigurationException(
+                    'Repository cache TTL must be greater than zero.',
+                );
+            }
+
+            $clone->cacheTtl = $ttl;
         }
-        return $this;
+
+        return $clone;
     }
 
     protected function initializeCache(): void {}
 
-    protected function cacheRemember(string $operation, callable $callback, array $params = []): mixed
-    {
-        if (! $this->cacheEnabled) {
-            return $callback();
-        }
-
+    protected function cacheRemember(
+        string $operation,
+        callable $callback,
+        array $params = [],
+    ): mixed {
         $key = $this->getCacheKey($operation, $params);
         $tags = $this->resolveCacheTags($params);
 
-        // Repository invalidation is tag based. On non-taggable stores we prefer
-        // correctness over serving cache entries that cannot be invalidated safely.
-        if ($tags !== [] && ! $this->getCacheManager()->supportsTags()) {
-            return $callback();
+        if (! $this->cacheEnabled) {
+            return $this->getCacheManager()->bypass(
+                $key,
+                $callback,
+                $tags,
+                'repository_disabled',
+            );
+        }
+
+        if ($this->hasCustomQueryState()) {
+            return $this->getCacheManager()->bypass(
+                $key,
+                $callback,
+                $tags,
+                'custom_query_state',
+            );
         }
 
         if ($this->cacheForever) {
-            return $this->getCacheManager()->rememberForever($key, $callback, $tags);
+            return $this->getCacheManager()->rememberForever(
+                $key,
+                $callback,
+                $tags,
+            );
         }
 
-        return $this->getCacheManager()->remember($key, $this->cacheTtl, $callback, $tags);
+        return $this->getCacheManager()->remember(
+            $key,
+            $this->resolvedCacheTtl(),
+            $callback,
+            $tags,
+        );
     }
 
-    protected function getCacheKey(string $operation, array $params = []): string
-    {
+    protected function getCacheKey(
+        string $operation,
+        array $params = [],
+    ): string {
         return CacheKey::make(
-            'repository:'.strtolower(str_replace('\\', '.', static::class)).':'.$operation,
+            'repository:'.strtolower(
+                str_replace('\\', '.', static::class),
+            ).':'.$operation,
             $params,
         );
     }
@@ -88,6 +151,7 @@ trait HasCache
     protected function resolveCacheTags(array $params = []): array
     {
         $model = $this->getModel();
+
         $tags = CacheTag::merge(
             [CacheTag::fromModel($model::class)],
             $this->extraCacheTags,
@@ -96,10 +160,14 @@ trait HasCache
         if ($model instanceof CacheableModel) {
             $relations = $params['with'] ?? [];
             $relations = is_array($relations) ? $relations : [];
+
             $tags = CacheTag::merge(
                 $tags,
                 [$model::cacheTag()],
-                $model->getCacheDependencyTags(null, $relations),
+                $model->getCacheDependencyTags(
+                    null,
+                    $relations,
+                ),
             );
         }
 
@@ -109,9 +177,16 @@ trait HasCache
     protected function flushCache(): void
     {
         $model = $this->getModel();
+
         $tags = $model instanceof CacheableModel
-            ? CacheTag::merge([$model::cacheTag()], $this->extraCacheTags)
-            : CacheTag::merge([CacheTag::fromModel($model::class)], $this->extraCacheTags);
+            ? CacheTag::merge(
+                [$model::cacheTag()],
+                $this->extraCacheTags,
+            )
+            : CacheTag::merge(
+                [CacheTag::fromModel($model::class)],
+                $this->extraCacheTags,
+            );
 
         if ($tags !== []) {
             $this->getCacheManager()->flushTags($tags);
@@ -123,5 +198,19 @@ trait HasCache
         return $this->cache;
     }
 
+    private function resolvedCacheTtl(): DateInterval|DateTimeInterface|int|null
+    {
+        return $this->cacheTtl
+            ?? max(
+                1,
+                (int) config(
+                    'laravel-infrastructure.cache.default_ttl',
+                    300,
+                ),
+            );
+    }
+
     abstract public function getModel(): Model;
+
+    abstract protected function hasCustomQueryState(): bool;
 }

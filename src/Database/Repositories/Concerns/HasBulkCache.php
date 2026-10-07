@@ -10,36 +10,43 @@ trait HasBulkCache
 {
     abstract protected function buildQuery(array $filters = []): Builder;
 
-    /**
-     * Bulk update records and invalidate all affected cache dependencies.
-     *
-     * @param  array<string, mixed>  $data
-     * @param  array<string, mixed>  $filters
-     */
-    public function bulkUpdate(array $data, array $filters = []): int
-    {
-        $models = $this->buildQuery($filters)->get();
+    abstract public function clearCache(): void;
+
+    public function bulkUpdate(
+        array $data,
+        array $filters = [],
+    ): int {
+        $models = $this
+            ->buildQuery($filters)
+            ->get();
+
         $affected = 0;
 
         foreach ($models as $model) {
             $model->fill($data);
 
-            if ($model->isDirty() && $model->save()) {
+            if (
+                $model->isDirty()
+                && $model->save()
+            ) {
                 $affected++;
             }
+        }
+
+        if ($affected > 0) {
+            $this->clearCache();
         }
 
         return $affected;
     }
 
-    /**
-     * Bulk delete records and invalidate all affected cache dependencies.
-     *
-     * @param  array<string, mixed>  $filters
-     */
-    public function bulkDelete(array $filters = []): int
-    {
-        $models = $this->buildQuery($filters)->get();
+    public function bulkDelete(
+        array $filters = [],
+    ): int {
+        $models = $this
+            ->buildQuery($filters)
+            ->get();
+
         $affected = 0;
 
         foreach ($models as $model) {
@@ -48,42 +55,58 @@ trait HasBulkCache
             }
         }
 
-        return $affected;
-    }
-
-    /**
-     * Bulk restore soft-deleted records.
-     *
-     * @param  array<string, mixed>  $filters
-     */
-    public function bulkRestore(array $filters = []): int
-    {
-        $models = $this->buildQuery($filters)->get();
-        $affected = 0;
-
-        foreach ($models as $model) {
-            if ($model->restore()) {
-                $affected++;
-            }
+        if ($affected > 0) {
+            $this->clearCache();
         }
 
         return $affected;
     }
 
-    /**
-     * Bulk force-delete records.
-     *
-     * @param  array<string, mixed>  $filters
-     */
-    public function bulkForceDelete(array $filters = []): int
-    {
-        $models = $this->buildQuery($filters)->get();
+    public function bulkRestore(
+        array $filters = [],
+    ): int {
+        $models = $this
+            ->buildQuery($filters)
+            ->get();
+
         $affected = 0;
 
         foreach ($models as $model) {
-            if ($model->forceDelete()) {
+            if (
+                method_exists($model, 'restore')
+                && $model->restore()
+            ) {
                 $affected++;
             }
+        }
+
+        if ($affected > 0) {
+            $this->clearCache();
+        }
+
+        return $affected;
+    }
+
+    public function bulkForceDelete(
+        array $filters = [],
+    ): int {
+        $models = $this
+            ->buildQuery($filters)
+            ->get();
+
+        $affected = 0;
+
+        foreach ($models as $model) {
+            if (
+                method_exists($model, 'forceDelete')
+                && $model->forceDelete()
+            ) {
+                $affected++;
+            }
+        }
+
+        if ($affected > 0) {
+            $this->clearCache();
         }
 
         return $affected;
