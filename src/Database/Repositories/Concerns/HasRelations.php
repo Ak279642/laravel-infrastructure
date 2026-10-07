@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Exceptions\RelationNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
 trait HasRelations
 {
-    /**
-     * Normalize relation input while preserving keyed relation constraints.
-     */
     protected function normalizeRelations(array|string $relations): array
     {
         if (is_string($relations)) {
@@ -26,16 +24,9 @@ trait HasRelations
         return $relations;
     }
 
-    /**
-     * Apply eager loaded relations.
-     *
-     * Invalid relation names are ignored so a stale/optional relation
-     * cannot break an otherwise valid repository query.
-     */
     protected function applyRelations(Builder $query, array|string $relations): Builder
     {
-        $relations = $this->normalizeRelations($relations);
-        $allowed = $this->getAllowedRelations($relations);
+        $allowed = $this->getAllowedRelations($this->normalizeRelations($relations));
 
         if ($allowed !== []) {
             $query->with($allowed);
@@ -44,9 +35,17 @@ trait HasRelations
         return $query;
     }
 
-    /**
-     * Filter relations by repository permissions and actual model relations.
-     */
+    protected function applyRelationCounts(Builder $query, array|string $relations): Builder
+    {
+        $allowed = $this->getAllowedRelations($this->normalizeRelations($relations));
+
+        if ($allowed !== []) {
+            $query->withCount($allowed);
+        }
+
+        return $query;
+    }
+
     protected function getAllowedRelations(array $relations): array
     {
         $result = [];
@@ -54,14 +53,15 @@ trait HasRelations
         foreach ($relations as $key => $value) {
             $relation = is_string($key) ? $key : $value;
 
-            if (! is_string($relation) || ! $this->relationExists($relation)) {
+            if (! is_string($relation)) {
                 continue;
             }
 
-            if (
-                $this->allowedRelations !== []
-                && ! in_array($relation, $this->allowedRelations, true)
-            ) {
+            $canonical = $this->canonicalRelationName($relation);
+
+            if (! $this->isRelationAllowed($canonical) || ! $this->relationExists($canonical)) {
+                $this->handleDisallowedRelation($canonical);
+
                 continue;
             }
 
@@ -71,14 +71,18 @@ trait HasRelations
         return $result;
     }
 
-    /**
-     * Determine whether a direct or nested Eloquent relation exists.
-     *
-     * Supports constrained relations such as `relation:id,name`.
-     */
+    protected function isRelationAllowed(string $relation): bool
+    {
+        return in_array(
+            $this->canonicalRelationName($relation),
+            array_map(fn (string $allowed): string => $this->canonicalRelationName($allowed), $this->allowedRelations),
+            true,
+        );
+    }
+
     protected function relationExists(string $relation): bool
     {
-        $relation = trim(explode(':', $relation, 2)[0]);
+        $relation = $this->canonicalRelationName($relation);
 
         if ($relation === '') {
             return false;
@@ -102,13 +106,9 @@ trait HasRelations
         return true;
     }
 
-    /**
-     * Eager load relations.
-     */
     public function with(array|string $relations): static
     {
-        $relations = $this->normalizeRelations($relations);
-        $relations = $this->getAllowedRelations($relations);
+        $relations = $this->getAllowedRelations($this->normalizeRelations($relations));
 
         if ($relations !== []) {
             $this->query->with($relations);
@@ -117,13 +117,9 @@ trait HasRelations
         return $this;
     }
 
-    /**
-     * Eager load relation counts.
-     */
     public function withCount(array|string $relations): static
     {
-        $relations = $this->normalizeRelations($relations);
-        $relations = $this->getAllowedRelations($relations);
+        $relations = $this->getAllowedRelations($this->normalizeRelations($relations));
 
         if ($relations !== []) {
             $this->query->withCount($relations);
@@ -132,13 +128,9 @@ trait HasRelations
         return $this;
     }
 
-    /**
-     * Eager load relation sums.
-     */
     public function withSum(array|string $relations, string $column): static
     {
-        $relations = $this->normalizeRelations($relations);
-        $relations = $this->getAllowedRelations($relations);
+        $relations = $this->getAllowedRelations($this->normalizeRelations($relations));
 
         foreach ($relations as $key => $value) {
             $relation = is_string($key) ? $key : $value;
@@ -151,13 +143,9 @@ trait HasRelations
         return $this;
     }
 
-    /**
-     * Eager load relation averages.
-     */
     public function withAvg(array|string $relations, string $column): static
     {
-        $relations = $this->normalizeRelations($relations);
-        $relations = $this->getAllowedRelations($relations);
+        $relations = $this->getAllowedRelations($this->normalizeRelations($relations));
 
         foreach ($relations as $key => $value) {
             $relation = is_string($key) ? $key : $value;
@@ -168,5 +156,21 @@ trait HasRelations
         }
 
         return $this;
+    }
+
+    protected function canonicalRelationName(string $relation): string
+    {
+        return trim(explode(':', $relation, 2)[0]);
+    }
+
+    protected function handleDisallowedRelation(string $relation): void
+    {
+        if ($this->strictFilters) {
+            throw RelationNotAllowedException::forRepository(
+                $relation,
+                static::class,
+                $this->allowedRelations,
+            );
+        }
     }
 }
