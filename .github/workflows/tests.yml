@@ -5,6 +5,9 @@ on:
   pull_request:
 
 env:
+  # Laravel 10 is intentionally supported for compatibility testing even when
+  # Composer's advisory policy would otherwise block installing old framework
+  # versions in the matrix. Security auditing runs separately on latest.
   COMPOSER_NO_BLOCKING: 1
 
 jobs:
@@ -56,3 +59,41 @@ jobs:
 
       - name: Run tests
         run: composer test
+
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Select latest supported framework
+        run: |
+          composer require --dev --no-update \
+            "laravel/framework:^13.0" \
+            "orchestra/testbench:^11.0"
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Validate Composer metadata
+        run: composer validate --strict
+
+      - name: Architecture tests
+        run: composer test:architecture
+
+      - name: Static analysis
+        run: composer analyse
+
+      - name: Formatting
+        run: composer format:check
+
+      - name: Production dependency security audit
+        env:
+          COMPOSER_NO_BLOCKING: 0
+        run: composer audit --no-dev
