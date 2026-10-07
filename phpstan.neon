@@ -6,5 +6,3 @@ parameters:
     paths:
         - src
     tmpDir: .phpstan-cache
-    checkMissingIterableValueType: true
-    reportUnmatchedIgnoredErrors: true
