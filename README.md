@@ -213,9 +213,11 @@ final class ProductRepository extends BaseRepository
 
 # 3. Use repository directly in a controller
 
-You do not need a Service or Action for simple CRUD.
+For simple CRUD, inject the repository directly. Controllers should return the package response helpers instead of returning resources/models directly.
 
 ```php
+use Ak279642\LaravelInfrastructure\Http\Responses\MessageResponse;
+use Ak279642\LaravelInfrastructure\Http\Responses\ResourceResponse;
 use Illuminate\Http\Request;
 
 final class ProductController
@@ -226,21 +228,27 @@ final class ProductController
 
     public function index(Request $request)
     {
-        return ProductResource::collection(
-            $this->products->paginate(
-                filters: $request->all(),
-                perPage: 20,
-            ),
+        $paginator = $this->products->paginate(
+            filters: $request->all(),
+            perPage: 20,
+        );
+
+        return ResourceResponse::make(
+            ProductResource::collection($paginator),
+            'Products loaded.',
         );
     }
 
     public function show(int $id)
     {
-        return new ProductResource(
-            $this->products->findOrFail(
-                $id,
-                ['category', 'orders'],
-            ),
+        $product = $this->products->findOrFail(
+            $id,
+            ['category', 'orders'],
+        );
+
+        return ResourceResponse::make(
+            new ProductResource($product),
+            'Product loaded.',
         );
     }
 
@@ -280,12 +288,12 @@ final class ProductController
     {
         $this->products->delete($id);
 
-        return MessageResponse::make('Product deleted.');
+        return MessageResponse::make(
+            'Product deleted.',
+        );
     }
 }
 ```
-
----
 
 # 4. One GET usage showing query features
 
@@ -409,16 +417,29 @@ $repo->simplePaginate(perPage: 20);
 
 $repo->cursorPaginate(perPage: 20);
 
-$repo->chunk(500, function ($products): void {
-    // process chunk
-});
+// Real case: export every product in batches of 500.
+// $products is the Collection fetched by the repository for this chunk.
+$repo->chunk(
+    500,
+    function ($products) use ($csvExporter): void {
+        foreach ($products as $product) {
+            $csvExporter->write([
+                $product->id,
+                $product->name,
+                $product->price,
+            ]);
+        }
+    },
+);
 
+// Real case: process a large table with low memory usage.
 foreach ($repo->lazy(500) as $product) {
-    // low-memory processing
+    $searchIndexer->index($product);
 }
 
+// Real case: stream rows one at a time.
 foreach ($repo->cursor() as $product) {
-    // cursor processing
+    $feedWriter->write($product);
 }
 ```
 
@@ -448,19 +469,25 @@ $repo->restore($id);
 
 ```php
 $repo->bulkUpdate(
+    // DATA: values to update
     ['status' => 'archived'],
+
+    // CONDITION: rows matching this filter are updated
     ['status' => 'inactive'],
 );
 
 $repo->bulkDelete([
+    // CONDITION: soft-delete/archive matching rows
     'status' => 'archived',
 ]);
 
 $repo->bulkRestore([
+    // CONDITION: restore matching soft-deleted rows
     'status' => 'archived',
 ]);
 
 $repo->bulkForceDelete([
+    // CONDITION: permanently delete matching rows
     'status' => 'archived',
 ]);
 ```
@@ -482,29 +509,41 @@ $repo->loadMissing(
 );
 ```
 
-### Sorting helpers
+### Sorting + scope real use cases
 
 ```php
-$repo->orderBy('name');
+// Published products, newest first.
+$newestPublished = $products
+    ->scope('published')
+    ->orderByDesc('created_at')
+    ->get();
 
-$repo->orderByDesc('created_at');
+// Published products alphabetically.
+$alphabetical = $products
+    ->scope('published')
+    ->orderBy('name')
+    ->get();
 
-$repo->latest('created_at');
+// Latest product.
+$latestProduct = $products
+    ->latest('created_at')
+    ->first();
 
-$repo->oldest('created_at');
+// Oldest product.
+$oldestProduct = $products
+    ->oldest('created_at')
+    ->first();
 ```
 
-### Scope helper
-
-```php
-$repo->scope('published')->get();
-```
+`scope('published')` calls the model's allowed `scopePublished()`. Sorting helpers only work with columns listed in `$allowedSorts`.
 
 ---
 
 # 6. Transactions directly in a controller
 
-Inject `TransactionManager` and use repositories inside the transaction.
+Inject `TransactionManager` when several repository writes must succeed or fail as one unit.
+
+`run()` starts the database transaction, commits when the callback finishes successfully, rolls everything back when an exception is thrown, and can retry deadlocks when `attempts` is greater than 1.
 
 ```php
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
@@ -590,7 +629,18 @@ final class CreateOrderAction extends BaseAction
 }
 ```
 
-Controller:
+The Action returns the domain model/result, not an HTTP Resource:
+
+```php
+public function execute(array $data): Order
+{
+    return $this->transactional(
+        fn () => $this->service->create($data),
+    );
+}
+```
+
+The Controller converts that model to the API response:
 
 ```php
 public function store(
@@ -665,7 +715,61 @@ afterDelete
 
 ---
 
-# 9. Repository validation + automatic model reuse
+# 9. Custom repository methods + cache
+
+Add domain-specific query methods in your repository when the query is reused or deserves a clear name.
+
+```php
+use Illuminate\Database\Eloquent\Collection;
+
+final class ProductRepository extends BaseRepository
+{
+    // ...allow-lists...
+
+    public function featured(int $limit = 10): Collection
+    {
+        $limit = max(1, min($limit, 100));
+
+        return $this->cacheRemember(
+            operation: 'featured',
+            callback: fn () => $this->query()
+                ->where('status', 'published')
+                ->where('is_featured', true)
+                ->orderByDesc('created_at')
+                ->limit($limit)
+                ->get(),
+            params: [
+                'limit' => $limit,
+            ],
+        );
+    }
+}
+```
+
+Usage:
+
+```php
+$featured = $products->featured(12);
+
+return ResourceResponse::make(
+    ProductResource::collection($featured),
+    'Featured products loaded.',
+);
+```
+
+Because the custom method uses the repository's protected `cacheRemember()`, it gets the same configured cache store, TTL, locking, model tags, and invalidation behavior as built-in repository reads.
+
+If a custom method intentionally requires a fresh query, either do not wrap that method in `cacheRemember()` or expose a built-in operation through:
+
+```php
+$fresh = $products
+    ->withoutCache()
+    ->get(['status' => 'published']);
+```
+
+---
+
+# 10. Repository validation + automatic model reuse
 
 Use `RepositoryFormRequest` when request validation also needs repository existence/uniqueness checks.
 
@@ -755,7 +859,7 @@ load allowed relations while resolving
 
 ---
 
-# 10. Cache
+# 11. Cache
 
 ## Global enable / disable
 
@@ -844,7 +948,7 @@ no caching of reads inside open DB transactions
 
 ---
 
-# 11. Slugs
+# 12. Slugs
 
 Multiple fields:
 
@@ -870,7 +974,7 @@ A manually supplied non-empty slug is preserved.
 
 ---
 
-# 12. Automatic files
+# 13. Automatic files
 
 Configure file fields:
 
@@ -902,7 +1006,51 @@ The package handles storage path assignment, replacement cleanup, failed-save cl
 
 ---
 
-# 13. Storage orphan audit
+## Access uploaded documents
+
+Public-disk files can use the package storage URL helper:
+
+```php
+use Ak279642\LaravelInfrastructure\Files\FileStorage;
+
+$url = app(FileStorage::class)->url(
+    $product->image_path,
+    'public',
+);
+```
+
+For private/protected documents, expose an application route by model ID instead of accepting an arbitrary filesystem path:
+
+```php
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+
+Route::get(
+    '/products/{product}/document',
+    function (Product $product) {
+        // Add your authorization/policy check here.
+        abort_unless(
+            is_string($product->document_path)
+                && Storage::disk('private')->exists(
+                    $product->document_path,
+                ),
+            404,
+        );
+
+        return Storage::disk('private')->download(
+            $product->document_path,
+        );
+    },
+)->name('products.document');
+```
+
+This keeps the stored path server-controlled and lets the application enforce authorization before serving private files.
+
+> The package currently provides file storage/lifecycle helpers, but does not auto-register a public download route. The route above is the safe application-level pattern.
+
+---
+
+# 14. Storage orphan audit
 
 Preview only:
 
@@ -920,7 +1068,7 @@ Only directories explicitly owned by configured models are scanned.
 
 ---
 
-# 14. Database backup
+# 15. Database backup
 
 Default connection:
 
@@ -962,7 +1110,7 @@ Main config:
 
 ---
 
-# 15. Security middleware
+# 16. Security middleware
 
 Aliases:
 
@@ -988,7 +1136,7 @@ Route::middleware([
 
 ---
 
-# 16. Request correlation ID
+# 17. Request correlation ID
 
 Add the middleware by class:
 
@@ -1019,7 +1167,7 @@ The same request ID is available to package response/logging infrastructure.
 
 ---
 
-# 17. Logging
+# 18. Logging
 
 ```php
 use Ak279642\LaravelInfrastructure\Logging\CustomLog;
@@ -1055,7 +1203,7 @@ Sensitive values such as passwords, tokens, authorization headers, cookies, API 
 
 ---
 
-# 18. API responses
+# 19. API responses
 
 Message:
 
@@ -1078,7 +1226,7 @@ Paginated Laravel resource collections include pagination metadata automatically
 
 ---
 
-# 19. Exception normalization
+# 20. Exception normalization
 
 Enabled by default:
 
@@ -1110,7 +1258,21 @@ Normal HTML/web exception rendering remains controlled by the host application.
 
 ---
 
-# 20. Main environment config
+## Throw package exceptions from business code
+
+```php
+use Ak279642\LaravelInfrastructure\Exceptions\BusinessLogicException;
+
+if ($product->stock < $quantity) {
+    throw new BusinessLogicException(
+        'Insufficient product stock.',
+    );
+}
+```
+
+For JSON/API requests the package renderer converts supported exceptions to the standard error envelope.
+
+# 21. Main environment config
 
 ```dotenv
 # Repository cache
@@ -1152,7 +1314,7 @@ config/laravel-infrastructure.php
 
 ---
 
-# 21. Which layer should I use?
+# 22. Which layer should I use?
 
 ```text
 Need simple CRUD?
