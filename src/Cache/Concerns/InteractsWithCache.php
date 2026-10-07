@@ -30,8 +30,14 @@ trait InteractsWithCache
         static::deleted(CacheObserver::class.'@deleted');
 
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
-            static::restored(CacheObserver::class.'@restored');
-            static::forceDeleted(CacheObserver::class.'@forceDeleted');
+            static::registerModelEvent(
+                'restored',
+                CacheObserver::class.'@restored',
+            );
+            static::registerModelEvent(
+                'forceDeleted',
+                CacheObserver::class.'@forceDeleted',
+            );
         }
     }
 
@@ -81,7 +87,7 @@ trait InteractsWithCache
                 $this->getNestedRelationDependencyTags($relation),
             );
 
-            $root = explode('.', $relation)[0] ?? '';
+            $root = explode('.', $relation)[0];
 
             if ($root !== '' && $this->relationLoaded($root)) {
                 $loaded = $this->getRelation($root);
