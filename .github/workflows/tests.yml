@@ -89,12 +89,7 @@ jobs:
 
       - name: Formatting
         if: always()
-        run: |
-          if ! composer format:check; then
-            composer format
-            git diff -- src tests
-            exit 1
-          fi
+        run: composer format:check
 
       - name: Architecture
         if: always()
