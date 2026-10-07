@@ -106,10 +106,12 @@ trait HasCache
 
     protected function getCacheKey(string $operation, array $params = []): string
     {
+        $model = $this->getModel();
+
         return CacheKey::make(
             'repository:'.strtolower(str_replace('\\', '.', static::class)).':'.$operation,
             [
-                'model' => strtolower(str_replace('\\', '.', $this->getModel()::class)),
+                'model' => strtolower(str_replace('\\', '.', $model::class)),
                 'params' => $params,
             ],
         );
