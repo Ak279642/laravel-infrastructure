@@ -171,7 +171,7 @@ final class RepositoryQuerySecurityTest extends TestCase
     }
 }
 
-final class QuerySecurityRepository extends BaseRepository
+class QuerySecurityRepository extends BaseRepository
 {
     protected array $searchable = ['name', 'email'];
     protected array $allowedFilters = ['status', 'age', 'account.name'];
