@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
 use Ak279642\LaravelInfrastructure\Models\BaseModel;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Schema;
@@ -43,12 +44,13 @@ final class ModelSlugFileAuditTest extends TestCase
             $table->id();
             $table->string('title');
             $table->string('seo_title');
-            $table->string('slug')->unique();
-            $table->string('seo_slug')->unique();
+            $table->string('slug')->nullable()->unique();
+            $table->string('seo_slug')->nullable()->unique();
             $table->string('avatar_path')->nullable();
             $table->string('document_path')->nullable();
             $table->string('legacy_path')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Storage::fake('public');
@@ -79,6 +81,43 @@ final class ModelSlugFileAuditTest extends TestCase
 
         self::assertSame('annual-report', $first->fresh()->slug);
         self::assertSame('financial-results', $first->fresh()->seo_slug);
+    }
+
+    public function test_slug_generation_handles_unicode_and_empty_slug_sources(): void
+    {
+        $unicode = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Über Café',
+            'seo_title' => 'Résumé Search',
+        ]);
+
+        self::assertSame('uber-cafe', $unicode->slug);
+        self::assertSame('resume-search', $unicode->seo_slug);
+
+        $empty = ModelSlugFileAuditDocument::query()->create([
+            'title' => '---',
+            'seo_title' => '***',
+        ]);
+
+        self::assertNull($empty->slug);
+        self::assertNull($empty->seo_slug);
+    }
+
+    public function test_soft_deleted_records_continue_reserving_unique_slugs(): void
+    {
+        $deleted = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Reserved Slug',
+            'seo_title' => 'Reserved SEO',
+        ]);
+
+        $deleted->delete();
+
+        $replacement = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Reserved Slug',
+            'seo_title' => 'Reserved SEO',
+        ]);
+
+        self::assertSame('reserved-slug-1', $replacement->slug);
+        self::assertSame('reserved-seo-1', $replacement->seo_slug);
     }
 
     public function test_uploaded_files_are_automatically_stored_in_model_configured_directories(): void
@@ -183,6 +222,7 @@ final class ModelSlugFileAuditTest extends TestCase
 
 final class ModelSlugFileAuditDocument extends BaseModel
 {
+    use SoftDeletes;
     protected $table = 'model_slug_file_audit_documents';
 
     protected $fillable = [
