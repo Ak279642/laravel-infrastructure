@@ -181,6 +181,76 @@ final class ValidationActionServiceHardeningTest extends TestCase
         );
     }
 
+    public function test_validation_uses_existing_context_before_querying_repository(): void
+    {
+        $product = Batch3Product::query()->create(['name' => 'Already Loaded']);
+
+        $context = $this->app->make(ValidationContext::class);
+        $context->remember($product);
+
+        $this->app['db']->connection()->enableQueryLog();
+
+        $errors = $this->app->make(RepositoryValidationService::class)->errors([
+            new RepositoryValidationRule(
+                repository: Batch3ProductRepository::class,
+                exists: ['product_id'],
+                resolve: [
+                    [
+                        'field' => 'product_id',
+                        'as' => 'product',
+                    ],
+                ],
+            ),
+        ], [
+            'product_id' => $product->getKey(),
+        ], resetContext: false);
+
+        self::assertSame([], $errors);
+        self::assertSame($product, $context->requireModel('product'));
+        self::assertSame([], $this->app['db']->connection()->getQueryLog());
+    }
+
+    public function test_validation_queries_missing_model_once_then_remembers_it_automatically(): void
+    {
+        $product = Batch3Product::query()->create(['name' => 'Needs Query']);
+
+        $context = $this->app->make(ValidationContext::class);
+        $context->clear();
+
+        $this->app['db']->connection()->enableQueryLog();
+
+        $errors = $this->app->make(RepositoryValidationService::class)->errors([
+            new RepositoryValidationRule(
+                repository: Batch3ProductRepository::class,
+                exists: ['product_id'],
+            ),
+        ], [
+            'product_id' => $product->getKey(),
+        ]);
+
+        self::assertSame([], $errors);
+        self::assertSame(
+            $product->getKey(),
+            $context->findModel(Batch3Product::class, $product->getKey())?->getKey(),
+        );
+
+        $queriesAfterValidation = count(
+            $this->app['db']->connection()->getQueryLog(),
+        );
+
+        self::assertGreaterThan(0, $queriesAfterValidation);
+
+        $repository = $this->app->make(Batch3ProductRepository::class);
+        self::assertSame(
+            $product->getKey(),
+            $repository->findOrFail($product->getKey())->getKey(),
+        );
+        self::assertCount(
+            $queriesAfterValidation,
+            $this->app['db']->connection()->getQueryLog(),
+        );
+    }
+
     public function test_string_ignore_identifier_is_supported_by_unique_validation(): void
     {
         $record = Batch3Record::query()->create([
