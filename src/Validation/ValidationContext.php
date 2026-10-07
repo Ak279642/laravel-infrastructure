@@ -103,7 +103,7 @@ class ValidationContext
             : $value->all();
 
         foreach ($models as $model) {
-            if (! $model instanceof Model || $model->getKey() === null) {
+            if ($model->getKey() === null) {
                 continue;
             }
 
@@ -147,8 +147,7 @@ class ValidationContext
 
             if ($value instanceof Collection) {
                 $remaining = $value->reject(
-                    static fn ($item): bool => $item instanceof Model
-                        && $item::class === $class
+                    static fn (Model $item): bool => $item::class === $class
                         && (string) $item->getKey() === (string) $key,
                 )->values();
 
@@ -279,7 +278,7 @@ class ValidationContext
             : $value->all();
 
         foreach ($models as $model) {
-            if (! $model instanceof Model || $model->getKey() === null) {
+            if ($model->getKey() === null) {
                 continue;
             }
 
@@ -308,7 +307,7 @@ class ValidationContext
     private function matches(Model $model, array $where): bool
     {
         foreach ($where as $column => $expected) {
-            if (! is_string($column) || $column === '') {
+            if ($column === '') {
                 return false;
             }
 
