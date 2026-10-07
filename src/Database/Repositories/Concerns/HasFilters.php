@@ -134,7 +134,9 @@ trait HasFilters
         $searchable = $this->resolveSearchColumns($searchColumns);
 
         if ($searchable === []) {
-            return $query;
+            return $searchColumns === null
+                ? $query
+                : $query->whereRaw('1 = 0');
         }
 
         $terms = array_values(array_filter(
