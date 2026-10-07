@@ -56,8 +56,6 @@ class ResourceResponse
         if ($paginator instanceof CursorPaginator) {
             return [
                 'per_page' => $paginator->perPage(),
-                'from' => $paginator->firstItem(),
-                'to' => $paginator->lastItem(),
                 'has_more_pages' => $paginator->hasMorePages(),
                 'next_cursor' => $paginator->nextCursor()?->encode(),
                 'previous_cursor' => $paginator->previousCursor()?->encode(),
