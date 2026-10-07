@@ -263,6 +263,32 @@ protected function slugOptions(): array
 
 The source can be one column or a fallback list. The first non-empty source value is used.
 
+### Multiple slug fields on one model
+
+For models that need different slugs for different purposes, declare `slugFields()`. Each slug column has its own source, uniqueness, regeneration and scope settings:
+
+```php
+protected function slugFields(): array
+{
+    return [
+        'slug' => [
+            'source' => 'name',
+            'unique' => true,
+            'regenerate_on_update' => true,
+        ],
+
+        'seo_slug' => [
+            'source' => 'seo_title',
+            'unique' => true,
+            'regenerate_on_update' => false,
+        ],
+    ];
+}
+```
+
+Declaring a field in `slugFields()` enables that field automatically unless its own `enabled` option is set to `false`. The existing single-field `slugOptions()` API remains supported for backward compatibility.
+
+
 ### Scoped unique slugs
 
 For tenant/organization-specific uniqueness:
@@ -329,21 +355,86 @@ $url = $files->url($path, 'public');
 protected function fileAttributes(): array
 {
     return [
-        'avatar',
-
-        'document_path' => [
-            'disk' => 'private',
+        'avatar_path' => [
+            'disk' => 'public',
+            'directory' => 'customers/avatars',
+            'auto_upload' => true,
+            'audit' => true,
             'delete_on_replace' => true,
             'delete_on_delete' => true,
             'delete_on_soft_delete' => false,
+        ],
+
+        'contract_path' => [
+            'disk' => 'private',
+            'directory' => 'customers/contracts',
+            'auto_upload' => true,
+            'audit' => true,
         ],
     ];
 }
 ```
 
-A short string entry uses shared defaults from `fileOptions()` / package configuration. A keyed entry overrides behavior for that one attribute.
+With `auto_upload=true`, an `UploadedFile` assigned directly to a configured attribute is stored automatically before the model is persisted:
+
+```php
+$customer = Customer::query()->create([
+    'name' => 'Acme Ltd',
+    'avatar_path' => $request->file('avatar'),
+    'contract_path' => $request->file('contract'),
+]);
+```
+
+The database receives the stored path, for example `customers/avatars/<uuid>.jpg`. A custom `filename` string or callable can also be configured per field.
+
+A short string entry still uses shared defaults from `fileOptions()` / package configuration, so existing models remain compatible. For new auto-upload/audit fields, declaring the directory explicitly on the model is recommended.
 
 When `delete_on_replace` is true, the old path is deleted only **after the database update succeeds**. With soft deletes, files are retained by default until force-delete because `delete_on_soft_delete` defaults to false.
+
+### Model-scoped storage audit
+
+Register only the models whose owned storage directories should be audited:
+
+```php
+// config/laravel-infrastructure.php
+'storage_audit' => [
+    'models' => [
+        App\Models\Customer::class,
+        App\Models\Invoice::class,
+    ],
+    'chunk_size' => 500,
+],
+```
+
+Dry-run audit:
+
+```bash
+php artisan infrastructure:storage-audit
+```
+
+Delete confirmed orphaned files:
+
+```bash
+php artisan infrastructure:storage-audit --delete
+```
+
+Audit a subset of registered models:
+
+```bash
+php artisan infrastructure:storage-audit --model=Customer
+```
+
+The audit has a deliberately strict safety boundary:
+
+- it only considers models explicitly listed in `storage_audit.models`;
+- it only scans directories explicitly declared by those models in `fileOptions()` or `fileAttributes()`;
+- it **never falls back to the global package upload directory for scanning**;
+- it aggregates references from every registered model that shares a directory before classifying files as orphaned;
+- it reads database references in chunks and includes soft-deleted rows;
+- if any database reference scan fails, deletion is aborted before storage is touched;
+- dry-run is the default and physical deletion requires `--delete`.
+
+Files in unrelated directories, global upload directories not explicitly owned by a model, and unmanaged storage paths are ignored.
 
 ### Recommended file + repository flow
 
