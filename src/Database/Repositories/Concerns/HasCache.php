@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
-use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Cache\CacheKey;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
-use DateInterval;
-use DateTimeInterface;
+use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Illuminate\Database\Eloquent\Model;
 
 trait HasCache
@@ -20,36 +18,53 @@ trait HasCache
     protected bool $cacheForever = false;
     protected array $extraCacheTags = [];
 
+    /**
+     * One-shot cache bypass. This is deliberately separate from $cacheEnabled:
+     * a repository may disable caching permanently through configuration, while
+     * withoutCache() must only affect the next cacheable repository operation.
+     */
+    protected bool $bypassCacheOnce = false;
+
     public function cacheTtl(int $ttl): static
     {
         $this->cacheTtl = $ttl;
+
         return $this;
     }
 
     public function rememberForever(): static
     {
         $this->cacheForever = true;
+
         return $this;
     }
 
     public function cacheTags(array $tags): static
     {
         $this->extraCacheTags = CacheTag::tags(...$tags);
+
         return $this;
     }
 
     public function withoutCache(): static
     {
-        $this->cacheEnabled = false;
+        $this->bypassCacheOnce = true;
+
         return $this;
     }
 
+    /**
+     * @deprecated Repository caching is enabled by default. Prefer get() for a
+     * cached read and withoutCache()->get() for a one-shot fresh read.
+     */
     public function withCache(?int $ttl = null): static
     {
         $this->cacheEnabled = true;
+
         if ($ttl !== null) {
             $this->cacheTtl = $ttl;
         }
+
         return $this;
     }
 
@@ -57,7 +72,7 @@ trait HasCache
 
     protected function cacheRemember(string $operation, callable $callback, array $params = []): mixed
     {
-        if (! $this->cacheEnabled) {
+        if ($this->consumeCacheBypass() || ! $this->cacheEnabled) {
             return $callback();
         }
 
@@ -121,6 +136,14 @@ trait HasCache
     protected function getCacheManager(): CacheManager
     {
         return $this->cache;
+    }
+
+    private function consumeCacheBypass(): bool
+    {
+        $bypass = $this->bypassCacheOnce;
+        $this->bypassCacheOnce = false;
+
+        return $bypass;
     }
 
     abstract public function getModel(): Model;
