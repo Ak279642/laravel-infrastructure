@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-07
+
 ### Changed
 - Removed global slug configuration; slug behavior is now model-local through `slugOptions()` / `slugFields()`.
 - Removed the global 300-second repository cache TTL; repositories now define defaults with `defaultCacheTtl()` and `CacheTtl`, with per-operation overrides still supported.
