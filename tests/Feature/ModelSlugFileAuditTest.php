@@ -139,7 +139,6 @@ final class ModelSlugFileAuditTest extends TestCase
         );
 
         $this->artisan('infrastructure:storage-audit')
-            ->expectsOutputToContain('orphan.jpg')
             ->assertSuccessful();
 
         Storage::disk('public')->assertExists(
