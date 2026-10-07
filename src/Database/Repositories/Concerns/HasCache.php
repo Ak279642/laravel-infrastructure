@@ -14,8 +14,11 @@ use Illuminate\Database\Eloquent\Model;
 trait HasCache
 {
     protected ?int $cacheTtl = CacheTtl::MINUTES_5;
+
     protected bool $cacheEnabled = true;
+
     protected bool $cacheForever = false;
+
     protected array $extraCacheTags = [];
 
     /**
