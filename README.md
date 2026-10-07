@@ -39,9 +39,15 @@ LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
 LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
 
+LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
+
 LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
 LARAVEL_INFRASTRUCTURE_LOG_CHANNEL=
 LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
+LARAVEL_INFRASTRUCTURE_LOG_CLIENT_EXCEPTIONS=false
+LARAVEL_INFRASTRUCTURE_LOG_SERVER_EXCEPTIONS=true
+LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER=X-Request-ID
+LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID=true
 ```
 
 ## Recommended application architecture
@@ -1593,6 +1599,8 @@ Repository owns data access
 
 ## API responses
 
+The response helpers use one stable JSON envelope and preserve the existing `MessageResponse` and `ResourceResponse` APIs.
+
 ### Message response
 
 ```php
@@ -1621,7 +1629,39 @@ return ResourceResponse::make(
 );
 ```
 
-Paginated Laravel resource collections receive a separate `pagination` object automatically.
+Response:
+
+```json
+{
+    "success": true,
+    "message": "Customer loaded.",
+    "data": {
+        "id": 1,
+        "name": "Example"
+    }
+}
+```
+
+Length-aware, simple and cursor-paginated Laravel resource collections keep `data` separate from a top-level `pagination` object. Length-aware pagination contains `total`, `per_page`, `current_page`, `last_page`, `from`, and `to`.
+
+### Error envelope
+
+Package exceptions and normalized Laravel JSON exceptions use:
+
+```json
+{
+    "success": false,
+    "message": "Validation failed.",
+    "errors": {
+        "email": [
+            "The email field is required."
+        ]
+    },
+    "error_code": "VALIDATION_ERROR"
+}
+```
+
+Optional `errors` and `data` fields are only emitted when populated. Debug exception details are emitted only when `APP_DEBUG=true`; production 5xx responses use a generic message and do not expose exception messages, files, traces, SQL details, tokens, or secrets.
 
 ## Exceptions
 
@@ -1652,9 +1692,56 @@ throw new BusinessLogicException(
 );
 ```
 
+For requests that explicitly expect JSON, the package service provider also normalizes common Laravel/Symfony exceptions without replacing the host application's exception handler:
+
+| Failure | HTTP status | Error code |
+| --- | ---: | --- |
+| Authentication | 401 | `UNAUTHORIZED` |
+| Authorization | 403 | `FORBIDDEN` |
+| Missing model / route | 404 | `NOT_FOUND` |
+| Method not allowed | 405 | `METHOD_NOT_ALLOWED` |
+| Conflict | 409 | `CONFLICT` |
+| Laravel validation | 422 | `VALIDATION_ERROR` |
+| Rate limiting | 429 | `TOO_MANY_REQUESTS` |
+| Service unavailable | 503 | `SERVICE_UNAVAILABLE` |
+| Unexpected server error | 500 | `INTERNAL_ERROR` |
+
+Automatic JSON exception normalization is enabled by default and can be disabled with:
+
+```dotenv
+LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=false
+```
+
+HTML/web requests continue through the application's normal Laravel exception rendering.
+
+## Correlation IDs
+
+Package API responses and normalized API errors include a correlation header. The default header is `X-Request-ID`.
+
+A safe incoming ID is reused when it is at most 128 characters and contains only letters, numbers, `.`, `_`, `:`, or `-`. Missing or unsafe IDs are replaced with a generated UUID.
+
+When you also want the correlation header added to arbitrary application responses, register the reusable middleware:
+
+```php
+use Ak279642\LaravelInfrastructure\Http\Middleware\RequestCorrelationId;
+
+Route::middleware(RequestCorrelationId::class)->group(function () {
+    // API routes...
+});
+```
+
+Configure the behavior with:
+
+```dotenv
+LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER=X-Request-ID
+LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID=true
+```
+
+The same ID is added to structured log context as `request.request_id`, allowing an API failure and its logs to be correlated.
+
 ## Logging
 
-Use `CustomLog` for application/domain-aware logging with sensitive-value sanitization.
+Use `CustomLog` for domain-aware structured logging.
 
 ```php
 use Ak279642\LaravelInfrastructure\Logging\CustomLog;
@@ -1664,13 +1751,13 @@ CustomLog::info(
     'Customer created.',
     [
         'customer_id' => $customer->id,
-        'email' => $customer->email,
+        'status' => $customer->status,
     ],
     LogDomain::APPLICATION,
 );
 ```
 
-Exceptions:
+Exception logging:
 
 ```php
 try {
@@ -1687,9 +1774,22 @@ try {
 }
 ```
 
-Sensitive keys such as passwords, tokens, API keys, secrets and authorization headers are redacted recursively.
+Sensitive keys are recursively redacted, including passwords, authorization/cookie values, tokens, API keys, secrets, client secrets, private keys, sessions, CSRF tokens, JWTs, and signatures. Common inline forms such as `Bearer <token>`, `password=...`, `token=...`, and `api_key=...` are also scrubbed.
 
-Logging can be disabled globally or per domain through the package configuration.
+Request logging records query **key names**, not query values or request bodies.
+
+Expected client-side API exceptions (4xx) are not logged by default to reduce noise. Unexpected 5xx API exceptions are logged once through the redacted structured logger, and duplicate raw framework logging is suppressed for normalized JSON requests.
+
+Configure logging with:
+
+```dotenv
+LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
+LARAVEL_INFRASTRUCTURE_LOG_CLIENT_EXCEPTIONS=false
+LARAVEL_INFRASTRUCTURE_LOG_SERVER_EXCEPTIONS=true
+LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
+```
+
+Enable exception traces only when appropriate for the deployment environment because traces can contain operational details.
 
 ## Package boundaries
 
