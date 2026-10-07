@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+env:
+  COMPOSER_NO_BLOCKING: 1
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -41,7 +44,7 @@ jobs:
 
       - name: Select framework version
         run: |
-          composer require --no-update \
+          composer require --dev --no-update \
             "laravel/framework:${{ matrix.laravel }}" \
             "orchestra/testbench:${{ matrix.testbench }}"
 
