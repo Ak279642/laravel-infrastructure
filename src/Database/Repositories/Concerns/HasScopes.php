@@ -5,9 +5,15 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @template TModel of Model
+ * @mixin \Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository<TModel>
+ */
 trait HasScopes
 {
+    /** @param Builder<TModel> $query @param list<string>|string $scopes @return Builder<TModel> */
     protected function applyScopes(
         Builder $query,
         array|string $scopes,
@@ -42,6 +48,7 @@ trait HasScopes
         return $clone;
     }
 
+    /** @param list<string>|string $scopes @return list<string> */
     protected function normalizeScopes(
         array|string $scopes,
     ): array {
@@ -60,6 +67,7 @@ trait HasScopes
         )));
     }
 
+    /** @param Builder<TModel> $query */
     protected function hasScope(
         Builder $query,
         string $scope,

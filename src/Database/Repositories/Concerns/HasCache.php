@@ -13,6 +13,10 @@ use DateInterval;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @template TModel of Model
+ * @mixin \Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository<TModel>
+ */
 trait HasCache
 {
     protected ?int $cacheTtl = null;
@@ -21,6 +25,7 @@ trait HasCache
 
     protected bool $cacheForever = false;
 
+    /** @var list<string> */
     protected array $extraCacheTags = [];
 
     public function cacheTtl(int $ttl): static
@@ -45,6 +50,7 @@ trait HasCache
         return $clone;
     }
 
+    /** @param list<string> $tags */
     public function cacheTags(array $tags): static
     {
         $clone = clone $this;
@@ -94,6 +100,7 @@ trait HasCache
 
     protected function initializeCache(): void {}
 
+    /** @param callable(): mixed $callback @param array<string, mixed> $params */
     protected function cacheRemember(
         string $operation,
         callable $callback,
@@ -136,6 +143,7 @@ trait HasCache
         );
     }
 
+    /** @param array<string, mixed> $params */
     protected function getCacheKey(
         string $operation,
         array $params = [],
@@ -148,6 +156,7 @@ trait HasCache
         );
     }
 
+    /** @param array<string, mixed> $params @return list<string> */
     protected function resolveCacheTags(array $params = []): array
     {
         $model = $this->getModel();
@@ -210,6 +219,7 @@ trait HasCache
             );
     }
 
+    /** @return TModel */
     abstract public function getModel(): Model;
 
     abstract protected function hasCustomQueryState(): bool;

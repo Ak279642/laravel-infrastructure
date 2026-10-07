@@ -31,11 +31,17 @@ use Illuminate\Support\LazyCollection;
  */
 abstract class BaseRepository implements RepositoryInterface
 {
+    /** @use HasBulkCache<TModel> */
     use HasBulkCache;
+    /** @use HasCache<TModel> */
     use HasCache;
+    /** @use HasFilters<TModel> */
     use HasFilters;
+    /** @use HasRelations<TModel> */
     use HasRelations;
+    /** @use HasScopes<TModel> */
     use HasScopes;
+    /** @use HasSorting<TModel> */
     use HasSorting;
 
     /** @var Builder<TModel> */

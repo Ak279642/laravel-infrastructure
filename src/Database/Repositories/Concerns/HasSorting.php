@@ -6,9 +6,15 @@ namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Ak279642\LaravelInfrastructure\Exceptions\SortNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @template TModel of Model
+ * @mixin \Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository<TModel>
+ */
 trait HasSorting
 {
+    /** @param Builder<TModel> $query @param array<array-key, string>|string $sort @return Builder<TModel> */
     protected function applySorting(
         Builder $query,
         string|array $sort,

@@ -6,7 +6,12 @@ namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Ak279642\LaravelInfrastructure\Exceptions\FilterNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @template TModel of Model
+ * @mixin \Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository<TModel>
+ */
 trait HasFilters
 {
     private const RESERVED_FILTER_KEYS = [
@@ -41,7 +46,7 @@ trait HasFilters
         'not_null',
     ];
 
-    protected function applyFilters(
+    /** @param Builder<TModel> $query @param array<string, mixed> $filters @return Builder<TModel> */\n    protected function applyFilters(
         Builder $query,
         array $filters,
     ): Builder {
@@ -113,7 +118,7 @@ trait HasFilters
         return $query;
     }
 
-    protected function applyNestedFilter(
+    /** @param Builder<TModel> $query @return Builder<TModel> */\n    protected function applyNestedFilter(
         Builder $query,
         string $key,
         mixed $value,
@@ -165,13 +170,13 @@ trait HasFilters
         );
     }
 
-    protected function applyOperatorFilter(
+    /** @param Builder<TModel> $query @return Builder<TModel> */\n    protected function applyOperatorFilter(
         Builder $query,
         string $key,
         string $operator,
         mixed $value,
     ): Builder {
-        $driver = $query->getConnection()->getDriverName();
+        $driver = $query->getModel()->getConnection()->getDriverName();
 
         return match ($operator) {
             '=', '!=', '<>', '>', '>=', '<', '<=' => $query->where(
@@ -246,7 +251,7 @@ trait HasFilters
         );
     }
 
-    protected function applySearch(
+    /** @param Builder<TModel> $query @param list<string>|null $searchColumns @return Builder<TModel> */\n    protected function applySearch(
         Builder $query,
         string $search,
         ?array $searchColumns = null,
@@ -298,7 +303,7 @@ trait HasFilters
             return $query;
         }
 
-        $driver = $query->getConnection()->getDriverName();
+        $driver = $query->getModel()->getConnection()->getDriverName();
         $like = $driver === 'pgsql' ? 'ILIKE' : 'LIKE';
 
         return $query->where(
@@ -339,7 +344,7 @@ trait HasFilters
         );
     }
 
-    protected function applyNestedSearch(
+    /** @param Builder<TModel> $query @return Builder<TModel> */\n    protected function applyNestedSearch(
         Builder $query,
         string $column,
         string $term,

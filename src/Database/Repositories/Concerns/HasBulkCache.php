@@ -5,13 +5,20 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @template TModel of Model
+ * @mixin \Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository<TModel>
+ */
 trait HasBulkCache
 {
+    /** @param array<string, mixed> $filters @return Builder<TModel> */
     abstract protected function buildQuery(array $filters = []): Builder;
 
     abstract public function clearCache(): void;
 
+    /** @param array<string, mixed> $data @param array<string, mixed> $filters */
     public function bulkUpdate(
         array $data,
         array $filters = [],
@@ -39,8 +46,7 @@ trait HasBulkCache
 
         return $affected;
     }
-
-    public function bulkDelete(
+\n    /** @param array<string, mixed> $filters */\n    public function bulkDelete(
         array $filters = [],
     ): int {
         $models = $this
@@ -61,8 +67,7 @@ trait HasBulkCache
 
         return $affected;
     }
-
-    public function bulkRestore(
+\n    /** @param array<string, mixed> $filters */\n    public function bulkRestore(
         array $filters = [],
     ): int {
         $models = $this
@@ -72,10 +77,7 @@ trait HasBulkCache
         $affected = 0;
 
         foreach ($models as $model) {
-            if (
-                method_exists($model, 'restore')
-                && $model->restore()
-            ) {
+            if ($model->restore()) {
                 $affected++;
             }
         }
@@ -86,8 +88,7 @@ trait HasBulkCache
 
         return $affected;
     }
-
-    public function bulkForceDelete(
+\n    /** @param array<string, mixed> $filters */\n    public function bulkForceDelete(
         array $filters = [],
     ): int {
         $models = $this
@@ -97,10 +98,7 @@ trait HasBulkCache
         $affected = 0;
 
         foreach ($models as $model) {
-            if (
-                method_exists($model, 'forceDelete')
-                && $model->forceDelete()
-            ) {
+            if ($model->forceDelete()) {
                 $affected++;
             }
         }

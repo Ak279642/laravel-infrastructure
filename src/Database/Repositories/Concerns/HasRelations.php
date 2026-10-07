@@ -6,11 +6,17 @@ namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Ak279642\LaravelInfrastructure\Exceptions\RelationNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Throwable;
 
+/**
+ * @template TModel of Model
+ * @mixin \Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository<TModel>
+ */
 trait HasRelations
 {
-    protected function normalizeRelations(
+    /** @param array<array-key, mixed>|string $relations @return array<array-key, mixed> */\n    protected function normalizeRelations(
         array|string $relations,
     ): array {
         if (is_string($relations)) {
@@ -25,7 +31,7 @@ trait HasRelations
         return $relations;
     }
 
-    protected function applyRelations(
+    /** @param Builder<TModel> $query @param array<array-key, mixed>|string $relations @return Builder<TModel> */\n    protected function applyRelations(
         Builder $query,
         array|string $relations,
     ): Builder {
@@ -40,7 +46,7 @@ trait HasRelations
         return $query;
     }
 
-    protected function applyRelationCounts(
+    /** @param Builder<TModel> $query @param array<array-key, mixed>|string $relations @return Builder<TModel> */\n    protected function applyRelationCounts(
         Builder $query,
         array|string $relations,
     ): Builder {
@@ -55,7 +61,7 @@ trait HasRelations
         return $query;
     }
 
-    protected function getAllowedRelations(array $relations): array
+    /** @param array<array-key, mixed> $relations @return array<array-key, mixed> */\n    protected function getAllowedRelations(array $relations): array
     {
         $result = [];
 
@@ -134,7 +140,7 @@ trait HasRelations
             try {
                 $relationObject = $model->{$segment}();
 
-                if (! method_exists($relationObject, 'getRelated')) {
+                if (! $relationObject instanceof Relation) {
                     return false;
                 }
 
@@ -147,7 +153,7 @@ trait HasRelations
         return true;
     }
 
-    public function with(array|string $relations): static
+    /** @param array<array-key, mixed>|string $relations */\n    public function with(array|string $relations): static
     {
         $relations = $this->getAllowedRelations(
             $this->normalizeRelations($relations),
@@ -162,7 +168,7 @@ trait HasRelations
         return $clone;
     }
 
-    public function withCount(array|string $relations): static
+    /** @param array<array-key, mixed>|string $relations */\n    public function withCount(array|string $relations): static
     {
         $relations = $this->getAllowedRelations(
             $this->normalizeRelations($relations),
@@ -177,7 +183,7 @@ trait HasRelations
         return $clone;
     }
 
-    public function withSum(
+    /** @param array<array-key, mixed>|string $relations */\n    public function withSum(
         array|string $relations,
         string $column,
     ): static {
@@ -203,7 +209,7 @@ trait HasRelations
         return $clone;
     }
 
-    public function withAvg(
+    /** @param array<array-key, mixed>|string $relations */\n    public function withAvg(
         array|string $relations,
         string $column,
     ): static {
