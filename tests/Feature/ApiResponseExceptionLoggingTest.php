@@ -202,8 +202,11 @@ final class ApiResponseExceptionLoggingTest extends TestCase
             ->assertJsonPath('error_code', 'TOO_MANY_REQUESTS');
     }
 
-    public function test_production_500_response_does_not_leak_exception_details(): void
+    public function test_production_500_response_and_log_do_not_leak_exception_details(): void
     {
+        $logger = new Batch4RecordingLogger();
+        $this->app->instance('log', $logger);
+
         $response = $this->getJson('/batch4/error');
 
         $response
@@ -212,9 +215,6 @@ final class ApiResponseExceptionLoggingTest extends TestCase
                 'success' => false,
                 'message' => 'Internal server error.',
                 'error_code' => 'INTERNAL_ERROR',
-            ])
-            ->assertJsonMissing([
-                'debug' => true,
             ]);
 
         self::assertArrayNotHasKey('debug', $response->json());
@@ -225,6 +225,33 @@ final class ApiResponseExceptionLoggingTest extends TestCase
         self::assertStringNotContainsString('supersecret', $json);
         self::assertStringNotContainsString('abcd1234', $json);
         self::assertNotNull($response->headers->get('X-Request-ID'));
+
+        self::assertCount(1, $logger->entries);
+        self::assertSame(
+            'Unhandled API exception.',
+            $logger->entries[0]['message'],
+        );
+
+        $logged = json_encode(
+            $logger->entries[0]['context'],
+            JSON_THROW_ON_ERROR,
+        );
+
+        self::assertStringNotContainsString('supersecret', $logged);
+        self::assertStringNotContainsString('abcd1234', $logged);
+        self::assertStringContainsString('********', $logged);
+    }
+
+    public function test_non_json_requests_keep_laravel_web_exception_rendering(): void
+    {
+        $response = $this->get('/batch4/not-found');
+
+        $response->assertStatus(404);
+
+        $content = $response->getContent();
+
+        self::assertIsString($content);
+        self::assertStringNotContainsString('"error_code":"NOT_FOUND"', $content);
     }
 
     public function test_custom_log_uses_same_request_id_and_redacts_sensitive_context(): void
