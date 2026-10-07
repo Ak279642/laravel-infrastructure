@@ -114,6 +114,72 @@ final class ValidationActionServiceHardeningTest extends TestCase
         );
     }
 
+    public function test_validation_reuses_context_model_and_loads_missing_relations(): void
+    {
+        Schema::table('batch3_products', function (Blueprint $table): void {
+            $table->unsignedBigInteger('record_id')->nullable();
+        });
+
+        $record = Batch3Record::query()->create([
+            'organization_id' => null,
+            'code' => 'REL',
+        ]);
+        $product = Batch3Product::query()->create([
+            'name' => 'Context Product',
+            'record_id' => $record->getKey(),
+        ]);
+
+        $context = $this->app->make(ValidationContext::class);
+        $context->remember($product);
+
+        $repository = $this->app->make(Batch3ProductRepository::class);
+
+        $resolved = $repository->findWhere(
+            $product->getKey(),
+            with: ['record'],
+        );
+
+        self::assertSame($product, $resolved);
+        self::assertTrue($resolved->relationLoaded('record'));
+        self::assertSame($record->getKey(), $resolved->record->getKey());
+    }
+
+    public function test_find_where_in_queries_only_missing_context_models(): void
+    {
+        $first = Batch3Product::query()->create(['name' => 'One']);
+        $second = Batch3Product::query()->create(['name' => 'Two']);
+        $third = Batch3Product::query()->create(['name' => 'Three']);
+
+        $context = $this->app->make(ValidationContext::class);
+        $context->remember(new \Illuminate\Database\Eloquent\Collection([
+            $first,
+            $third,
+        ]));
+
+        $repository = $this->app->make(Batch3ProductRepository::class);
+
+        $models = $repository->findWhereIn(
+            'id',
+            [$third->getKey(), $second->getKey(), $first->getKey()],
+        );
+
+        self::assertSame(
+            [$third->getKey(), $second->getKey(), $first->getKey()],
+            $models->modelKeys(),
+        );
+        self::assertSame(
+            $first,
+            $context->findModel(Batch3Product::class, $first->getKey()),
+        );
+        self::assertSame(
+            $second->getKey(),
+            $context->findModel(
+                Batch3Product::class,
+                $second->getKey(),
+            )?->getKey(),
+        );
+    }
+
     public function test_string_ignore_identifier_is_supported_by_unique_validation(): void
     {
         $record = Batch3Record::query()->create([
@@ -263,6 +329,7 @@ final class Batch3RecordRepository extends BaseRepository
 
 final class Batch3ProductRepository extends BaseRepository
 {
+    protected array $allowedRelations = ['record'];
     public function __construct(
         Batch3Product $model,
         CacheManager $cache,
@@ -295,6 +362,11 @@ final class Batch3Product extends Model
 {
     protected $table = 'batch3_products';
     protected $guarded = [];
+
+    public function record()
+    {
+        return $this->belongsTo(Batch3Record::class, 'record_id');
+    }
 }
 
 final class Batch3Item extends Model
