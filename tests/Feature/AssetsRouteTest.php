@@ -106,6 +106,106 @@ final class AssetsRouteTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_folder_rule_can_make_one_folder_unsigned_without_affecting_siblings(): void
+    {
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.folder_access.public',
+            [
+                '*' => [
+                    'signed' => true,
+                ],
+                'products/images' => [
+                    'signed' => false,
+                ],
+            ],
+        );
+
+        Storage::disk('public')->put(
+            'products/images/photo.txt',
+            'photo',
+        );
+        Storage::disk('public')->put(
+            'products/documents/manual.txt',
+            'manual',
+        );
+
+        $this->get(
+            route(
+                'laravel-infrastructure.assets.show',
+                [
+                    'disk' => 'public',
+                    'path' => 'products/images/photo.txt',
+                ],
+            ),
+        )->assertOk();
+
+        $this->get(
+            route(
+                'laravel-infrastructure.assets.show',
+                [
+                    'disk' => 'public',
+                    'path' => 'products/documents/manual.txt',
+                ],
+            ),
+        )->assertForbidden();
+    }
+
+    public function test_most_specific_folder_rule_enforces_its_own_gate_ability(): void
+    {
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.folder_access.public',
+            [
+                '*' => [
+                    'signed' => false,
+                ],
+                'products' => [
+                    'ability' => 'view-products',
+                ],
+                'products/admin' => [
+                    'ability' => 'view-admin-products',
+                ],
+            ],
+        );
+
+        Gate::define(
+            'view-products',
+            static fn (): bool => true,
+        );
+        Gate::define(
+            'view-admin-products',
+            static fn (): bool => false,
+        );
+
+        Storage::disk('public')->put(
+            'products/catalog.txt',
+            'catalog',
+        );
+        Storage::disk('public')->put(
+            'products/admin/report.txt',
+            'report',
+        );
+
+        $this->get(
+            route(
+                'laravel-infrastructure.assets.show',
+                [
+                    'disk' => 'public',
+                    'path' => 'products/catalog.txt',
+                ],
+            ),
+        )->assertOk();
+
+        $this->get(
+            route(
+                'laravel-infrastructure.assets.show',
+                [
+                    'disk' => 'public',
+                    'path' => 'products/admin/report.txt',
+                ],
+            ),
+        )->assertForbidden();
+    }
+
     public function test_asset_route_rejects_disk_not_in_allow_list(): void
     {
         Storage::disk('private')->put(

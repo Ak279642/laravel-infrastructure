@@ -143,12 +143,6 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                 $route->middleware($middleware);
             }
 
-            if ((bool) config(
-                'laravel-infrastructure.assets.signed',
-                true,
-            )) {
-                $route->middleware('signed');
-            }
         }
 
         if ($this->app->runningInConsole()) {

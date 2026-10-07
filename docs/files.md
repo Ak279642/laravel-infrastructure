@@ -39,83 +39,67 @@ This prevents failed inserts, failed updates, and rolled-back transactions from 
 
 ## Built-in asset route
 
-The package can serve stored files through `AssetsController`.
-
-Default route:
+The package serves files through:
 
 ```text
 GET /infrastructure/assets/{disk}/{path}
 laravel-infrastructure.assets.show
 ```
 
-Defaults:
+Asset access is configured per disk and per folder.
 
 ```php
 'assets' => [
-    'enabled' => true,
-    'prefix' => 'infrastructure/assets',
-    'signed' => true,
-    'allowed_disks' => ['public'],
-],
-```
-
-Generate a temporary signed URL:
-
-```php
-$url = URL::temporarySignedRoute(
-    'laravel-infrastructure.assets.show',
-    now()->addMinutes(15),
-    [
-        'disk' => 'public',
-        'path' => $model->file_path,
-    ],
-);
-```
-
-Private disks are never enabled implicitly. Add them to `allowed_disks` explicitly and keep signed URLs enabled.
-
-
-## Asset route authorization
-
-The built-in asset route supports three independent protections:
-
-1. signed URLs;
-2. route middleware such as `auth:sanctum`;
-3. optional Laravel Gate abilities per disk.
-
-Example:
-
-```php
-'assets' => [
-    'enabled' => true,
-    'prefix' => 'infrastructure/assets',
-    'signed' => true,
-
     'allowed_disks' => [
         'public',
         'private',
     ],
 
-    'middleware' => [
-        'auth:sanctum',
-    ],
+    'folder_access' => [
+        'public' => [
+            '*' => [
+                'signed' => true,
+            ],
 
-    'disk_abilities' => [
-        'private' => 'view-private-assets',
+            'downloads' => [
+                'signed' => false,
+            ],
+        ],
+
+        'private' => [
+            '*' => [
+                'enabled' => false,
+            ],
+
+            'products/invoices' => [
+                'enabled' => true,
+                'signed' => true,
+                'guard' => 'admin',
+                'roles' => ['admin', 'accounts'],
+                'permissions' => ['invoices.view'],
+            ],
+
+            'hr/contracts' => [
+                'enabled' => true,
+                'guard' => 'web',
+                'roles' => ['hr', 'admin'],
+            ],
+        ],
     ],
 ],
 ```
 
-Application authorization stays framework-native:
+Rules merge from `*` through matching parent folders to the most-specific folder.
 
-```php
-Gate::define(
-    'view-private-assets',
-    function ($user, string $disk, string $path): bool {
-        return $user->hasRole('admin')
-            || $user->can('documents.view');
-    },
-);
-```
+Supported folder options:
 
-The package does not require a particular RBAC library. The Gate may use Laravel policies, Spatie Permission, or custom role/permission logic.
+- `enabled`: deny the folder with 404 when false.
+- `signed`: require or skip signed URLs for that folder.
+- `guard`: authenticate through a specific Laravel guard.
+- `roles`: any listed role may pass.
+- `permissions`: all listed permissions must pass through Laravel Gate.
+- `ability`: optional custom Gate ability receiving `($disk, $path)`.
+
+Role checks use `hasAnyRole()` / `hasRole()` when available, so Spatie Permission works without becoming a package dependency. A simple `role` attribute is also supported.
+
+Generate URLs with `URL::temporarySignedRoute()` using route name `laravel-infrastructure.assets.show`.

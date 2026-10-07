@@ -60,9 +60,27 @@ return [
         // Route middleware, e.g. ['auth:sanctum'].
         'middleware' => [],
 
-        // Optional Laravel Gate ability per disk.
-        // Example: 'private' => 'view-private-assets'.
+        // Legacy disk-wide Gate ability. Folder rules below are preferred.
         'disk_abilities' => [],
+
+        // Disk + folder access rules.
+        // Rules inherit from "*" -> parent folder -> most specific folder.
+        //
+        // roles: any configured role may pass.
+        // permissions: every configured permission must pass.
+        // ability: optional Laravel Gate ability receiving ($disk, $path).
+        'folder_access' => [
+            'public' => [
+                '*' => [
+                    'enabled' => true,
+                    'signed' => true,
+                    'guard' => null,
+                    'roles' => [],
+                    'permissions' => [],
+                    'ability' => null,
+                ],
+            ],
+        ],
     ],
 
     'storage_audit' => [

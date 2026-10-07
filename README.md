@@ -1063,167 +1063,201 @@ route name:
 laravel-infrastructure.assets.show
 ```
 
-### Public file example
+Access control is **disk + folder based**.
 
-Generate a signed URL from a Resource:
-
-```php
-use Illuminate\Support\Facades\URL;
-
-final class ProductResource extends JsonResource
-{
-    public function toArray($request): array
-    {
-        return [
-            'id' => $this->id,
-            'name' => $this->name,
-
-            'image_url' => $this->image_path
-                ? URL::temporarySignedRoute(
-                    'laravel-infrastructure.assets.show',
-                    now()->addMinutes(15),
-                    [
-                        'disk' => 'public',
-                        'path' => $this->image_path,
-                    ],
-                )
-                : null,
-        ];
-    }
-}
-```
-
-### Asset route configuration
+Example:
 
 ```php
 'assets' => [
     'enabled' => true,
-    // default: true
-
     'prefix' => 'infrastructure/assets',
-    // default: "infrastructure/assets"
 
+    // First boundary: only these disks are reachable.
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+
+    // Fallback when a folder rule does not define "signed".
     'signed' => true,
-    // default: true
 
-    'allowed_disks' => [
-        'public',
-    ],
-    // default: ['public']
+    'folder_access' => [
+        'public' => [
+            // Default for every folder on public disk.
+            '*' => [
+                'enabled' => true,
+                'signed' => true,
+                'guard' => null,
+                'roles' => [],
+                'permissions' => [],
+                'ability' => null,
+            ],
 
-    'middleware' => [],
-    // default: []
-    // example: ['auth:sanctum']
+            // public/products/images/*
+            // Anyone with a signed link may view.
+            'products/images' => [
+                'signed' => true,
+            ],
 
-    'disk_abilities' => [],
-    // default: []
-    // example:
-    // 'private' => 'view-private-assets'
-],
-```
-
-### Protect every asset route with authentication
-
-```php
-'assets' => [
-    'allowed_disks' => [
-        'public',
-        'private',
-    ],
-
-    'middleware' => [
-        'auth:sanctum',
-    ],
-],
-```
-
-Now even a valid signed URL requires an authenticated user.
-
-### Protect a private disk by role / permission
-
-The package does not depend on any RBAC package. Use a normal Laravel Gate so Spatie Permission, your own roles table, policies, or any custom authorization system can decide access.
-
-Config:
-
-```php
-'assets' => [
-    'allowed_disks' => [
-        'public',
-        'private',
-    ],
-
-    'middleware' => [
-        'auth:sanctum',
-    ],
-
-    'disk_abilities' => [
-        'private' => 'view-private-assets',
-    ],
-],
-```
-
-Define the Gate in your application's `AppServiceProvider`:
-
-```php
-use Illuminate\Support\Facades\Gate;
-
-public function boot(): void
-{
-    Gate::define(
-        'view-private-assets',
-        function ($user, string $disk, string $path): bool {
-            return $user->hasRole('admin')
-                || $user->can('documents.view');
-        },
-    );
-}
-```
-
-With Spatie Permission the same Gate can simply use its role/permission helpers; the package itself stays independent of Spatie.
-
-### Real private-document use case
-
-Product stores invoice/document on the private disk:
-
-```php
-protected function fileAttributes(): array
-{
-    return [
-        'invoice_path' => [
-            'disk' => 'private',
-            'directory' => 'products/invoices',
+            // public/downloads/*
+            // Public URL, no login and no signature.
+            'downloads' => [
+                'signed' => false,
+            ],
         ],
-    ];
-}
+
+        'private' => [
+            // Deny everything on private disk unless a folder overrides it.
+            '*' => [
+                'enabled' => false,
+            ],
+
+            // private/products/invoices/*
+            // Only users from the "admin" guard with admin/account roles.
+            'products/invoices' => [
+                'enabled' => true,
+                'signed' => true,
+                'guard' => 'admin',
+                'roles' => [
+                    'admin',
+                    'accounts',
+                ],
+                'permissions' => [
+                    'invoices.view',
+                ],
+            ],
+
+            // private/hr/contracts/*
+            // Different folder, different guard/roles.
+            'hr/contracts' => [
+                'enabled' => true,
+                'signed' => true,
+                'guard' => 'web',
+                'roles' => [
+                    'hr',
+                    'admin',
+                ],
+            ],
+        ],
+    ],
+],
 ```
 
-Resource returns a short-lived signed link:
+Rules inherit from least specific to most specific:
+
+```text
+private/*
+    ↓
+private/products
+    ↓
+private/products/invoices
+```
+
+So a folder can override only what it needs.
+
+### Folder rule options
 
 ```php
-'invoice_url' => URL::temporarySignedRoute(
+[
+    'enabled' => true,       // false = return 404 for this folder
+    'signed' => true,        // require temporary/permanent signed URL
+    'guard' => 'admin',      // Laravel auth guard; null = current request user
+    'roles' => ['admin'],    // ANY listed role may pass
+    'permissions' => [       // ALL listed permissions must pass
+        'invoices.view',
+    ],
+    'ability' => null,       // optional Laravel Gate ability
+]
+```
+
+### Role support
+
+If your user model provides `hasAnyRole()` or `hasRole()` (for example Spatie Permission), the package uses it automatically.
+
+A simple `role` model attribute is also supported.
+
+### Permission / policy support
+
+Permissions are checked through Laravel Gate, so this works with normal Gates/Policies and permission packages exposing abilities through `can()`.
+
+For custom authorization:
+
+```php
+'products/contracts' => [
+    'guard' => 'admin',
+    'ability' => 'view-product-contracts',
+],
+```
+
+```php
+Gate::define(
+    'view-product-contracts',
+    function ($user, string $disk, string $path): bool {
+        return $user->is_super_admin;
+    },
+);
+```
+
+### Generate the file URL
+
+```php
+use Illuminate\Support\Facades\URL;
+
+$url = URL::temporarySignedRoute(
     'laravel-infrastructure.assets.show',
-    now()->addMinutes(5),
+    now()->addMinutes(15),
     [
         'disk' => 'private',
-        'path' => $this->invoice_path,
+        'path' => $product->invoice_path,
     ],
-),
+);
+```
+
+Example Resource:
+
+```php
+return [
+    'id' => $this->id,
+    'name' => $this->name,
+
+    'invoice_url' => $this->invoice_path
+        ? URL::temporarySignedRoute(
+            'laravel-infrastructure.assets.show',
+            now()->addMinutes(5),
+            [
+                'disk' => 'private',
+                'path' => $this->invoice_path,
+            ],
+        )
+        : null,
+];
 ```
 
 Request flow:
 
 ```text
-user opens signed URL
-    -> auth:sanctum checks login
-    -> signature checks URL expiry/tampering
-    -> allowed_disks checks "private"
-    -> Gate "view-private-assets" checks role/permission
-    -> safe path validation
-    -> file existence check
-    -> AssetsController streams file
+disk allow-list
+    ↓
+most-specific folder rule
+    ↓
+enabled?
+    ↓
+signed URL?
+    ↓
+configured guard authenticated?
+    ↓
+role check
+    ↓
+permission check
+    ↓
+optional Gate ability
+    ↓
+safe path + file exists
+    ↓
+AssetsController streams file
 ```
 
-Disable the built-in route completely when the host application wants its own controller:
+Disable the built-in route:
 
 ```php
 'assets' => [

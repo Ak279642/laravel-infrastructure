@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Added per-model repository cache enable/disable through model `cacheOptions()`.
 - Added signed `AssetsController` file-serving route with configurable prefix and disk allow-list.
-- Added configurable asset-route middleware and per-disk Laravel Gate authorization for authentication/role/permission protection.
+- Added hierarchical disk + folder asset access rules with per-folder signed-link, guard, role, permission, and Gate ability controls.
 - Added `infrastructure:database-backup` for MySQL/MariaDB and PostgreSQL logical backups with optional gzip compression, schema-only exclusions, Laravel filesystem storage, and retention pruning.
 - Added opt-in `SecurityHeaders` and `RejectSensitivePaths` middleware with package middleware aliases.
 
