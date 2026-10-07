@@ -7,6 +7,10 @@ on:
 env:
   COMPOSER_NO_BLOCKING: 1
 
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
