@@ -112,6 +112,24 @@ final class ModelInfrastructureTest extends TestCase
             );
     }
 
+    public function test_file_storage_rejects_traversal_for_existing_file_operations(): void
+    {
+        $files = $this->app->make(FileStorage::class);
+
+        foreach ([
+            static fn () => $files->exists('../outside.txt'),
+            static fn () => $files->delete('../outside.txt'),
+            static fn () => $files->url('../outside.txt'),
+        ] as $operation) {
+            try {
+                $operation();
+                self::fail('Expected unsafe storage path to be rejected.');
+            } catch (\RuntimeException) {
+                self::assertTrue(true);
+            }
+        }
+    }
+
     public function test_file_storage_rejects_malformed_extension(): void
     {
         $this->expectException(\RuntimeException::class);
