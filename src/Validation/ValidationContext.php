@@ -27,7 +27,10 @@ class ValidationContext
     public function put(string $key, Model|Collection $value): static
     {
         $this->resolved[$key] = $value;
-        $this->indexValue($value);
+
+        // Rebuild rather than incrementally indexing so replacing an alias
+        // cannot leave the previous model available to repository reuse.
+        $this->rebuildModelIndex();
 
         return $this;
     }
