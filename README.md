@@ -403,48 +403,99 @@ null not_null
 
 ---
 
-# 5. Main repository methods
+# 5. Repository usage
 
-### Reads
+### Read / aggregate
 
 ```php
-$repo->all();
+$filters = [
+    'status' => 'published',
 
-$repo->get($filters);
-$repo->first($filters);
-$repo->firstOrFail($filters);
+    'price' => [
+        'operator' => 'between',
+        'value' => [100, 5000],
+    ],
 
-$repo->find($id);
-$repo->find($id, ['category']);
-$repo->findOrFail($id, ['category']);
+    'category.slug' => 'electronics',
 
-$repo->exists($filters);
-$repo->doesntExist($filters);
+    'search' => 'iphone',
 
-$repo->count($filters);
-$repo->sum('price', $filters);
-$repo->avg('price', $filters);
-$repo->min('price', $filters);
-$repo->max('price', $filters);
+    'sort' => [
+        '-created_at',
+    ],
 
-$repo->pluck('name', 'id', $filters);
-$repo->groupCount('status', $filters);
+    'with' => [
+        'category',
+    ],
+];
+
+$products = $repo->get($filters);
+
+$product = $repo->findOrFail(
+    $id,
+    ['category', 'orders'],
+);
+
+$first = $repo->first($filters);
+
+$exists = $repo->exists($filters);
+
+$total = $repo->count($filters);
+$priceTotal = $repo->sum('price', $filters);
+$averagePrice = $repo->avg('price', $filters);
+$lowestPrice = $repo->min('price', $filters);
+$highestPrice = $repo->max('price', $filters);
+
+$names = $repo->pluck(
+    'name',
+    'id',
+    $filters,
+);
+
+$byStatus = $repo->groupCount(
+    'status',
+    $filters,
+);
 ```
 
-### Pagination / large datasets
+### Pagination with filters
 
 ```php
-$repo->paginate(
-    filters: $filters,
+$paginator = $products->paginate(
+    filters: [
+        'status' => 'published',
+
+        'category.slug' => 'electronics',
+
+        'price' => [
+            'operator' => 'between',
+            'value' => [100, 5000],
+        ],
+
+        'search' => 'iphone',
+
+        'with' => [
+            'category',
+        ],
+
+        'sort' => [
+            '-created_at',
+        ],
+    ],
     perPage: 20,
 );
 
-$repo->simplePaginate(perPage: 20);
+return ResourceResponse::make(
+    ProductResource::collection($paginator),
+    'Products loaded.',
+);
+```
 
-$repo->cursorPaginate(perPage: 20);
+### Large dataset processing
 
-// Real case: export every product in batches of 500.
-// $products is the Collection fetched by the repository for this chunk.
+```php
+// Export products in batches.
+// $products is the Collection fetched by the repository for each chunk.
 $repo->chunk(
     500,
     function ($products) use ($csvExporter): void {
@@ -458,12 +509,10 @@ $repo->chunk(
     },
 );
 
-// Real case: process a large table with low memory usage.
 foreach ($repo->lazy(500) as $product) {
     $searchIndexer->index($product);
 }
 
-// Real case: stream rows one at a time.
 foreach ($repo->cursor() as $product) {
     $feedWriter->write($product);
 }
@@ -487,199 +536,115 @@ $product = $repo->updateOrCreate(
 );
 
 $repo->delete($id);
-$repo->forceDelete($id);
 $repo->restore($id);
+$repo->forceDelete($id);
 ```
 
 ### Bulk operations
 
 ```php
 $repo->bulkUpdate(
-    // DATA: values to update
+    // DATA to update
     ['status' => 'archived'],
 
-    // CONDITION: rows matching this filter are updated
+    // CONDITION
     ['status' => 'inactive'],
 );
 
 $repo->bulkDelete([
-    // CONDITION: soft-delete/archive matching rows
+    // CONDITION
     'status' => 'archived',
 ]);
 
 $repo->bulkRestore([
-    // CONDITION: restore matching soft-deleted rows
+    // CONDITION
     'status' => 'archived',
 ]);
 
 $repo->bulkForceDelete([
-    // CONDITION: permanently delete matching rows
+    // CONDITION
     'status' => 'archived',
 ]);
 ```
 
-### Relation helpers
+### Relations / aggregates
 
 ```php
-$repo
+$products = $repo
     ->with(['category', 'orders'])
     ->withCount('orders')
     ->withSum('orders', 'total')
-    ->withAvg('orders', 'total');
-
-$repo->load($product, ['category']);
-
-$repo->loadMissing(
-    $product,
-    ['category', 'orders'],
-);
+    ->withAvg('orders', 'total')
+    ->get([
+        'status' => 'published',
+    ]);
 ```
 
-### Sorting + scope real use cases
+### Sort + scope real use case
 
 ```php
-// Published products, newest first.
-$newestPublished = $products
+$featured = $products
     ->scope('published')
     ->orderByDesc('created_at')
-    ->get();
+    ->get([
+        'category_id' => $categoryId,
+    ]);
 
-// Published products alphabetically.
 $alphabetical = $products
     ->scope('published')
     ->orderBy('name')
     ->get();
 
-// Latest product.
-$latestProduct = $products
+$latest = $products
     ->latest('created_at')
     ->first();
 
-// Oldest product.
-$oldestProduct = $products
+$oldest = $products
     ->oldest('created_at')
     ->first();
 ```
 
-`scope('published')` calls the model's allowed `scopePublished()`. Sorting helpers only work with columns listed in `$allowedSorts`.
+`scope('published')` calls the allow-listed model `scopePublished()`. Sort helpers only accept allow-listed sort columns.
 
----
+# 6. Transactions
 
-# 6. Transactions directly in a controller
-
-Inject `TransactionManager` when several repository writes must succeed or fail as one unit.
-
-### Why `run()`?
-
-`run()` is only the package wrapper around Laravel's normal database transaction.
-
-You can always use Laravel directly:
+Use Laravel directly when you want a transaction in a Controller:
 
 ```php
 use Illuminate\Support\Facades\DB;
 
 $order = DB::transaction(function () use ($data) {
-    // repository writes...
+    $product = $this->products->findOrFail(
+        $data['product_id'],
+    );
+
+    $order = $this->orders->create([
+        'product_id' => $product->id,
+        'quantity' => $data['quantity'],
+    ]);
+
+    $this->products->update(
+        $product,
+        [
+            'stock' => $product->stock
+                - $data['quantity'],
+        ],
+    );
+
+    return $order;
 });
 ```
 
-The package provides `$transactions->run(...)` so the same transaction behavior can be injected into Controllers/Actions and deadlock retry attempts can be configured consistently:
+If any write throws, Laravel rolls back the whole callback.
+
+The package `TransactionManager::run()` is optional and mainly useful when you want an injectable transaction abstraction or retry attempts:
 
 ```php
-$order = $this->transactions->run(
-    function () use ($data) {
-        // All writes below either COMMIT together
-        // or ROLLBACK together.
-
-        $product = $this->products->findOrFail(
-            $data['product_id'],
-        );
-
-        if ($product->stock < $data['quantity']) {
-            throw new BusinessLogicException(
-                'Insufficient product stock.',
-            );
-        }
-
-        $order = $this->orders->create([
-            'product_id' => $product->id,
-            'quantity' => $data['quantity'],
-            'total' => $product->price * $data['quantity'],
-        ]);
-
-        $this->products->update(
-            $product,
-            [
-                'stock' => $product->stock
-                    - $data['quantity'],
-            ],
-        );
-
-        return $order;
-    },
+$order = $transactions->run(
+    fn () => $service->createOrder($data),
     attempts: 3,
 );
 ```
-
-Use `run()` only when multiple database changes belong to one operation. For normal reads or a standalone single write, call the repository directly.
-
-```php
-use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
-
-final class OrderController
-{
-    public function __construct(
-        private TransactionManager $transactions,
-        private OrderRepository $orders,
-        private ProductRepository $products,
-    ) {}
-
-    public function store(StoreOrderRequest $request)
-    {
-        $data = $request->validated();
-
-        $order = $this->transactions->run(function () use ($data) {
-            $product = $this->products->findOrFail(
-                $data['product_id'],
-            );
-
-            $order = $this->orders->create([
-                'product_id' => $product->id,
-                'quantity' => $data['quantity'],
-            ]);
-
-            $this->products->update(
-                $product,
-                [
-                    'stock' => $product->stock
-                        - $data['quantity'],
-                ],
-            );
-
-            return $order;
-        });
-
-        return ResourceResponse::make(
-            new OrderResource($order),
-            'Order created.',
-            201,
-        );
-    }
-}
-```
-
-Retry deadlocks when needed:
-
-```php
-$result = $transactions->run(
-    callback: fn () => $service->process(),
-    attempts: 3,
-);
-```
-
-Use this direct controller style when the operation is small.
-
----
 
 # 7. Use BaseAction for larger transaction flows
 
@@ -707,17 +672,6 @@ final class CreateOrderAction extends BaseAction
 }
 ```
 
-The Action returns the domain model/result, not an HTTP Resource:
-
-```php
-public function execute(array $data): Order
-{
-    return $this->transactional(
-        fn () => $this->service->create($data),
-    );
-}
-```
-
 The Controller converts that model to the API response:
 
 ```php
@@ -735,14 +689,6 @@ public function store(
         201,
     );
 }
-```
-
-Use:
-
-```text
-simple CRUD                  -> Controller + Repository
-small multi-write operation  -> Controller + TransactionManager + Repositories
-larger business operation    -> Controller + Action + Service + Repositories
 ```
 
 ---
@@ -835,28 +781,9 @@ return ResourceResponse::make(
 );
 ```
 
-Because the custom method uses the repository's protected `cacheRemember()`, it gets the same configured cache store, TTL, locking, model tags, and invalidation behavior as built-in repository reads.
+`cacheRemember()` gives custom methods the same repository cache TTL, locks, tags, and invalidation behavior.
 
-Real flow:
-
-```text
-first featured(12)
-    -> DB query
-    -> cache result
-
-next featured(12)
-    -> same cache key
-    -> return cached collection
-
-Product create/update/delete
-    -> model cache tags invalidated
-    -> next featured(12) queries DB again
-
-Product cacheOptions enabled=false
-    -> cacheRemember automatically bypasses cache for that model
-```
-
-If a custom method intentionally requires a fresh query, either do not wrap that method in `cacheRemember()` or expose a built-in operation through:
+Use `withoutCache()` when that read must always be fresh:
 
 ```php
 $fresh = $products
@@ -1065,16 +992,6 @@ $products = $repository
 $repository->clearCache();
 ```
 
-Cache behavior also includes:
-
-```text
-automatic write invalidation
-lock-based stampede protection
-tag-aware invalidation
-safe fallback on non-taggable stores
-no caching of reads inside open DB transactions
-```
-
 ---
 
 # 12. Slugs
@@ -1132,8 +1049,6 @@ $user->avatar_path = $request->file('avatar');
 
 $user->save();
 ```
-
-The package handles storage path assignment, replacement cleanup, failed-save cleanup, transaction rollback cleanup, delete cleanup, and force-delete cleanup.
 
 ---
 
