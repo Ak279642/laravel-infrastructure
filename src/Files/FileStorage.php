@@ -22,9 +22,11 @@ final class FileStorage
         ?string $filename = null,
     ): string {
         $disk = $disk ?: (string) config('laravel-infrastructure.files.disk', 'public');
-        $directory = trim(
-            $directory ?? (string) config('laravel-infrastructure.files.directory', 'uploads'),
-            '/',
+        $directory = $this->normalizeDirectory(
+            $directory ?? (string) config(
+                'laravel-infrastructure.files.directory',
+                'uploads',
+            ),
         );
 
         $filename = $this->normalizeFilename($file, $filename);
@@ -83,6 +85,38 @@ final class FileStorage
         return $filesystem->url($path);
     }
 
+    private function normalizeDirectory(string $directory): string
+    {
+        if (str_contains($directory, "\0")) {
+            throw new RuntimeException('Storage directory contains a null byte.');
+        }
+
+        $directory = str_replace('\\', '/', trim($directory));
+
+        if (
+            $directory === ''
+            || str_starts_with($directory, '/')
+            || preg_match('/^[A-Za-z]:\//', $directory) === 1
+        ) {
+            throw new RuntimeException('Storage directory must be a relative path.');
+        }
+
+        $segments = explode('/', trim($directory, '/'));
+
+        foreach ($segments as $segment) {
+            if (
+                $segment === ''
+                || $segment === '.'
+                || $segment === '..'
+                || preg_match('/[\x00-\x1F\x7F]/', $segment) === 1
+            ) {
+                throw new RuntimeException('Storage directory contains an unsafe path segment.');
+            }
+        }
+
+        return implode('/', $segments);
+    }
+
     private function normalizeFilename(
         UploadedFile $file,
         ?string $filename,
@@ -90,7 +124,18 @@ final class FileStorage
         $extension = strtolower($file->getClientOriginalExtension());
 
         if (is_string($filename) && trim($filename) !== '') {
+            if (
+                str_contains($filename, "\0")
+                || preg_match('/[\x00-\x1F\x7F]/', $filename) === 1
+            ) {
+                throw new RuntimeException('Filename contains unsafe characters.');
+            }
+
             $filename = basename(str_replace('\\', '/', trim($filename)));
+
+            if ($filename === '' || $filename === '.' || $filename === '..') {
+                throw new RuntimeException('Filename is invalid.');
+            }
 
             if ($extension !== '' && pathinfo($filename, PATHINFO_EXTENSION) === '') {
                 $filename .= '.'.$extension;
