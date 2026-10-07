@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Cache;
 
+use Ak279642\\LaravelInfrastructure\\Cache\\Events\\CacheHit;
+use Ak279642\\LaravelInfrastructure\\Cache\\Events\\CacheInvalidated;
+use Ak279642\\LaravelInfrastructure\\Cache\\Events\\CacheMiss;
 use DateInterval;
 use DateTimeInterface;
 use Illuminate\Cache\Repository;
@@ -24,6 +27,7 @@ final class CacheManager
     public function __construct(
         private readonly Factory $cache,
         private readonly ?string $storeName = null,
+        private readonly ?Dispatcher $events = null,
     ) {
         $this->store = $this->resolveStore();
         $this->tagsSupported = $this->resolveTagsSupport();
@@ -169,6 +173,7 @@ final class CacheManager
 
         if ($store->has($key)) {
             $cached = $store->get($key);
+            $this->events?->dispatch(new CacheHit($key, CacheTag::tags(...$tags)));
             // Log::info('Cache HIT', [
             //     'key' => $key,
             //     'tags' => $tags,
@@ -183,6 +188,8 @@ final class CacheManager
         //     'tags' => $tags,
         //     'mode' => 'standard',
         // ]);
+
+        $this->events?->dispatch(new CacheMiss($key, CacheTag::tags(...$tags)));
 
         $value = $callback();
 
@@ -393,6 +400,7 @@ final class CacheManager
 
         try {
             $result = $this->store($normalizedTags)->flush();
+            $this->events?->dispatch(new CacheInvalidated($normalizedTags, $result));
 
             // Log::info('Cache TAG FLUSH', [
             //     'tags' => $normalizedTags,
@@ -401,6 +409,8 @@ final class CacheManager
 
             return $result;
         } catch (Throwable $e) {
+            $this->events?->dispatch(new CacheInvalidated($normalizedTags, false));
+
             // Log::error('Cache TAG FLUSH failed', [
             //     'tags' => $normalizedTags,
             //     'error' => $e->getMessage(),
