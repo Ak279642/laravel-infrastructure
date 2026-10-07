@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Console\Commands\StorageAuditCommand;
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
 use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Exceptions\ApiExceptionRenderer;
@@ -62,6 +63,12 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/laravel-infrastructure.php' => config_path('laravel-infrastructure.php'),
         ], 'laravel-infrastructure-config');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                StorageAuditCommand::class,
+            ]);
+        }
 
         if (! (bool) config(
             'laravel-infrastructure.responses.exception_renderer_enabled',
