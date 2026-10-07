@@ -7,6 +7,21 @@ return [
         // Null uses Laravel's default cache store.
         'store' => env('LARAVEL_INFRASTRUCTURE_CACHE_STORE'),
         'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
+
+        // A package namespace prevents collisions with application-owned keys.
+        'key_prefix' => env('LARAVEL_INFRASTRUCTURE_CACHE_PREFIX', 'laravel-infrastructure'),
+
+        // Stampede protection is used when the selected store supports locks.
+        'lock' => [
+            'enabled' => env('LARAVEL_INFRASTRUCTURE_CACHE_LOCKS', true),
+            'seconds' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS', 10),
+            'wait_seconds' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS', 3),
+        ],
+
+        // Dispatch CacheHit / CacheMiss / CacheBypassed / CacheInvalidated.
+        'events' => [
+            'enabled' => env('LARAVEL_INFRASTRUCTURE_CACHE_EVENTS', false),
+        ],
     ],
 
     'slug' => [

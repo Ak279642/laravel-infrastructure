@@ -14,6 +14,7 @@ use Ak279642\LaravelInfrastructure\Slugs\SlugGenerator;
 use Ak279642\LaravelInfrastructure\Transactions\LaravelTransactionManager;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Support\ServiceProvider;
 
@@ -27,6 +28,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             return new CacheManager(
                 $app->make(CacheFactory::class),
                 config('laravel-infrastructure.cache.store'),
+                $app->make(Dispatcher::class),
             );
         });
 
@@ -47,6 +49,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             $app->make(SchemaRegistry::class),
         ));
 
+        // Scoped state is reset by Laravel between HTTP / Octane / queue lifecycles.
         $this->app->scoped(ValidationContext::class, fn (): ValidationContext => new ValidationContext());
 
         $this->app->bind(TransactionManager::class, LaravelTransactionManager::class);
