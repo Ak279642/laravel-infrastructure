@@ -88,8 +88,6 @@ final class CorrelationId
             return null;
         }
 
-        $request = request();
-
-        return $request instanceof Request ? $request : null;
+        return request();
     }
 }
