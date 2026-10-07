@@ -8,10 +8,13 @@ use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
 use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
+use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
+use Ak279642\LaravelInfrastructure\Slugs\SlugGenerator;
 use Ak279642\LaravelInfrastructure\Transactions\LaravelTransactionManager;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Support\ServiceProvider;
 
 final class LaravelInfrastructureServiceProvider extends ServiceProvider
@@ -36,6 +39,14 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         ));
 
         $this->app->singleton(SchemaRegistry::class);
+        $this->app->singleton(FileStorage::class, fn ($app): FileStorage => new FileStorage(
+            $app->make(FilesystemFactory::class),
+        ));
+        $this->app->singleton(SlugGenerator::class, fn ($app): SlugGenerator => new SlugGenerator(
+            $app->make(CacheManager::class),
+            $app->make(SchemaRegistry::class),
+        ));
+
         $this->app->scoped(ValidationContext::class, fn (): ValidationContext => new ValidationContext());
 
         $this->app->bind(TransactionManager::class, LaravelTransactionManager::class);
