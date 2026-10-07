@@ -7,7 +7,9 @@ namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use DateTimeInterface;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\URL;
 use Throwable;
 
 trait InteractsWithFiles
@@ -118,6 +120,68 @@ trait InteractsWithFiles
     protected function fileAttributes(): array
     {
         return [];
+    }
+
+    public function fileAssetUrl(
+        string $column,
+        ?DateTimeInterface $expiration = null,
+    ): ?string {
+        $options = $this->configuredFileAttributes()[$column] ?? null;
+        $path = $this->getAttribute($column);
+
+        if (
+            ! is_array($options)
+            || ! is_string($path)
+            || trim($path) === ''
+            || ! $this->exists
+            || $this->getKey() === null
+        ) {
+            return null;
+        }
+
+        $disk = (string) (
+            $options['disk']
+            ?? config('laravel-infrastructure.files.disk', 'public')
+        );
+        $access = is_array($options['access'] ?? null)
+            ? $options['access']
+            : [];
+        $signed = array_key_exists('signed', $access)
+            ? (bool) $access['signed']
+            : (bool) config(
+                'laravel-infrastructure.assets.signed',
+                true,
+            );
+
+        $parameters = [
+            'disk' => $disk,
+            'path' => $path,
+            'model' => static::class,
+            'key' => (string) $this->getKey(),
+            'field' => $column,
+        ];
+
+        if (! $signed) {
+            return route(
+                'laravel-infrastructure.assets.show',
+                $parameters,
+            );
+        }
+
+        return URL::temporarySignedRoute(
+            'laravel-infrastructure.assets.show',
+            $expiration
+                ?? now()->addMinutes(
+                    max(
+                        1,
+                        (int) config(
+                            'laravel-infrastructure.assets.url_ttl_minutes',
+                            15,
+                        ),
+                    ),
+                ),
+            $parameters,
+        );
     }
 
     /**

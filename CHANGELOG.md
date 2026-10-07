@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added model file-field access rules (`guard`, roles, permissions, Gate ability, signed visibility) plus `fileAssetUrl()` for model-aware asset URLs.
 - Added per-model repository cache enable/disable through model `cacheOptions()`.
 - Added signed `AssetsController` file-serving route with configurable prefix and disk allow-list.
 - Added hierarchical disk + folder asset access rules with per-folder signed-link, guard, role, permission, and Gate ability controls.

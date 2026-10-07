@@ -54,6 +54,13 @@ return [
             'LARAVEL_INFRASTRUCTURE_ASSETS_SIGNED',
             true,
         ),
+        'url_ttl_minutes' => max(
+            1,
+            (int) env(
+                'LARAVEL_INFRASTRUCTURE_ASSETS_URL_TTL',
+                15,
+            ),
+        ),
         // Private disks must be explicitly added by the host application.
         'allowed_disks' => ['public'],
 
