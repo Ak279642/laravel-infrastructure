@@ -40,6 +40,9 @@ abstract class BaseRepository implements RepositoryInterface
     protected array $allowedRelations = [];
     protected array $defaultRelations = [];
     protected array $defaultOrder = [];
+    protected bool $strictFilters = false;
+    protected bool $strictSorts = false;
+    protected bool $strictRelations = false;
 
     public function __construct(
         protected Model $model,
