@@ -51,6 +51,16 @@ trait InteractsWithFiles
     }
 
     /**
+     * Override shared file behavior on an application base model.
+     *
+     * @return array<string, mixed>
+     */
+    protected function fileOptions(): array
+    {
+        return [];
+    }
+
+    /**
      * Configure file-path attributes on the model.
      *
      * Examples:
@@ -71,7 +81,10 @@ trait InteractsWithFiles
      */
     public function configuredFileAttributes(): array
     {
-        $defaults = (array) config('laravel-infrastructure.files', []);
+        $defaults = array_replace(
+            (array) config('laravel-infrastructure.files', []),
+            $this->fileOptions(),
+        );
         $configured = [];
 
         foreach ($this->fileAttributes() as $key => $value) {
