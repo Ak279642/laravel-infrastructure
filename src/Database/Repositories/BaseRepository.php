@@ -145,8 +145,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             $model->refresh();
         }
         if ($with !== []) {
-            $model->load($with);
+            $this->load($model, $with);
         }
+
+        ($this->validationContext ?? app(ValidationContext::class))
+            ->remember($model);
 
         return $model;
     }
@@ -162,8 +165,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             $model->refresh();
         }
         if ($with !== []) {
-            $model->load($with);
+            $this->load($model, $with);
         }
+
+        ($this->validationContext ?? app(ValidationContext::class))
+            ->remember($model);
 
         return $model;
     }
@@ -179,9 +185,13 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     {
         $model = $id instanceof Model ? $id : $this->findOrFail($id);
         $deleted = (bool) $model->delete();
+
         if ($deleted) {
             $this->clearCache();
+            ($this->validationContext ?? app(ValidationContext::class))
+                ->forgetModel($model);
         }
+
         return $deleted;
     }
 
@@ -189,9 +199,13 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     {
         $model = $id instanceof Model ? $id : $this->query()->withTrashed()->findOrFail($id);
         $deleted = method_exists($model, 'forceDelete') ? (bool) $model->forceDelete() : (bool) $model->delete();
+
         if ($deleted) {
             $this->clearCache();
+            ($this->validationContext ?? app(ValidationContext::class))
+                ->forgetModel($model);
         }
+
         return $deleted;
     }
 
@@ -201,10 +215,15 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         if (! method_exists($model, 'restore')) {
             return false;
         }
+
         $restored = (bool) $model->restore();
+
         if ($restored) {
             $this->clearCache();
+            ($this->validationContext ?? app(ValidationContext::class))
+                ->remember($model);
         }
+
         return $restored;
     }
 
