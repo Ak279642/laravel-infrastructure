@@ -138,6 +138,38 @@ final class RepositoryQuerySecurityTest extends TestCase
         self::assertSame(1, $counted->account_count);
     }
 
+    public function test_repository_column_helpers_reject_identifier_injection(): void
+    {
+        $repository = $this->repository();
+
+        foreach ([
+            static fn () => $repository->sum('age) OR 1=1 --'),
+            static fn () => $repository->pluck('name, secret'),
+            static fn () => $repository->groupCount('status DESC'),
+            static fn () => $repository->get(columns: ['name', 'secret AS leaked']),
+            static fn () => $repository->findWhereIn('id) OR 1=1 --', [1]),
+        ] as $operation) {
+            try {
+                $operation();
+                self::fail('Expected invalid repository column to be rejected.');
+            } catch (\InvalidArgumentException) {
+                self::assertTrue(true);
+            }
+        }
+    }
+
+    public function test_repository_column_helpers_accept_real_model_columns(): void
+    {
+        $repository = $this->repository();
+
+        self::assertSame(47, $repository->sum('age'));
+        self::assertSame(['Alice', 'Bob'], $repository->pluck('name')->all());
+        self::assertSame(
+            ['active' => 1, 'inactive' => 1],
+            $repository->groupCount('status')->all(),
+        );
+    }
+
     public function test_search_columns_cannot_bypass_searchable_allow_list(): void
     {
         $repository = $this->repository();
