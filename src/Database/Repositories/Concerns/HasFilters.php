@@ -116,6 +116,10 @@ trait HasFilters
 
     protected function isFilterAllowed(string $key): bool
     {
+        if (str_contains($key, '.')) {
+            return false;
+        }
+
         return $this->allowedFilters === []
             || in_array($key, $this->allowedFilters, true);
     }
