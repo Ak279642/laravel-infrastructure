@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 
 trait HasCache
 {
-    protected ?int $cacheTtl = CacheTtl::MINUTES_5;
+    protected ?int $cacheTtl = null;
     protected bool $cacheEnabled = true;
     protected bool $cacheForever = false;
     protected array $extraCacheTags = [];
@@ -71,7 +71,20 @@ trait HasCache
         return $this;
     }
 
-    protected function initializeCache(): void {}
+    protected function initializeCache(): void
+    {
+        if ($this->cacheTtl !== null) {
+            return;
+        }
+
+        $this->cacheTtl = max(
+            1,
+            (int) config(
+                'laravel-infrastructure.cache.default_ttl',
+                CacheTtl::MINUTES_5,
+            ),
+        );
+    }
 
     protected function cacheRemember(string $operation, callable $callback, array $params = []): mixed
     {
