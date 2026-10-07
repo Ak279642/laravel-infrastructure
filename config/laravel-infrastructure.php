@@ -9,6 +9,26 @@ return [
         'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
     ],
 
+    'slug' => [
+        // Disabled globally by default. Enable per model with slugOptions().
+        'enabled' => false,
+        'source' => 'name',
+        'column' => 'slug',
+        'unique' => true,
+        'regenerate_on_update' => false,
+        'separator' => '-',
+        // List of model attributes that scope uniqueness, e.g. ['organization_id'].
+        'scope' => [],
+    ],
+
+    'files' => [
+        'disk' => env('LARAVEL_INFRASTRUCTURE_FILE_DISK', 'public'),
+        'directory' => env('LARAVEL_INFRASTRUCTURE_FILE_DIRECTORY', 'uploads'),
+        'delete_on_replace' => true,
+        'delete_on_delete' => true,
+        'delete_on_soft_delete' => false,
+    ],
+
     'logging' => [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED', true),
         'channel' => env('LARAVEL_INFRASTRUCTURE_LOG_CHANNEL'),
