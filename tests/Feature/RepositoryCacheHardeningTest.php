@@ -309,6 +309,42 @@ final class RepositoryCacheHardeningTest extends TestCase
         self::assertCount(2, $repository->get(['status' => 'inactive']));
     }
 
+    public function test_bulk_restore_and_force_delete_include_soft_deleted_rows(): void
+    {
+        $repository = $this->repository();
+
+        $repository->create([
+            'account_id' => 1,
+            'name' => 'One',
+            'status' => 'active',
+        ]);
+        $repository->create([
+            'account_id' => 1,
+            'name' => 'Two',
+            'status' => 'active',
+        ]);
+
+        self::assertSame(
+            2,
+            $repository->bulkDelete(['status' => 'active']),
+        );
+        self::assertSame(2, CacheHardeningUser::withTrashed()->count());
+
+        self::assertSame(
+            2,
+            $repository->bulkRestore(['status' => 'active']),
+        );
+        self::assertSame(2, CacheHardeningUser::query()->count());
+
+        $repository->bulkDelete(['status' => 'active']);
+
+        self::assertSame(
+            2,
+            $repository->bulkForceDelete(['status' => 'active']),
+        );
+        self::assertSame(0, CacheHardeningUser::withTrashed()->count());
+    }
+
     public function test_cache_refresh_and_forever_paths_remain_available(): void
     {
         $cache = $this->app->make(CacheManager::class);
