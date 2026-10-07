@@ -49,7 +49,6 @@ final class FileStorage
         }
 
         $path = $this->normalizeStoredPath($path);
-        $path = $this->normalizeStoredPath($path);
         $disk = $disk ?: (string) config('laravel-infrastructure.files.disk', 'public');
         $filesystem = $this->files->disk($disk);
 
@@ -78,6 +77,7 @@ final class FileStorage
             return null;
         }
 
+        $path = $this->normalizeStoredPath($path);
         $disk = $disk ?: (string) config('laravel-infrastructure.files.disk', 'public');
         $filesystem = $this->files->disk($disk);
 
