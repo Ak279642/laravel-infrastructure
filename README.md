@@ -37,6 +37,7 @@ Useful environment variables include:
 ```dotenv
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
 LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
+LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
 
 LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
 LARAVEL_INFRASTRUCTURE_LOG_CHANNEL=
@@ -1493,6 +1494,69 @@ $all = $context->all();
 Calling `get()` for a missing key throws an `InvalidArgumentException`.
 
 Use `getOrNull()` for optional values.
+
+## Reusable Services and Actions
+
+The package provides optional base classes for keeping application layers consistent without moving business logic into repositories.
+
+`BaseService` accepts a primary `RepositoryInterface` and provides protected create, update, find, delete and existence helpers plus customization hooks. A service remains responsible for the complete business operation and may inject additional repositories as normal.
+
+```php
+use Ak279642\LaravelInfrastructure\Services\BaseService;
+
+final class CreateCustomerService extends BaseService
+{
+    public function __construct(CustomerRepository $customers)
+    {
+        parent::__construct($customers);
+    }
+
+    public function create(array $data): Customer
+    {
+        return $this->createRecord($data);
+    }
+
+    protected function beforeCreate(array $data): array
+    {
+        $data['email'] = strtolower(trim($data['email']));
+
+        return $data;
+    }
+}
+```
+
+`BaseAction` provides the transaction boundary. It intentionally does not force an `execute()` signature, so application actions keep strongly typed entry points.
+
+```php
+use Ak279642\LaravelInfrastructure\Actions\BaseAction;
+
+final class CreateCustomerAction extends BaseAction
+{
+    public function __construct(
+        TransactionManager $transactions,
+        private CreateCustomerService $service,
+    ) {
+        parent::__construct($transactions);
+    }
+
+    public function execute(array $data): Customer
+    {
+        return $this->transactional(
+            fn () => $this->service->create($data),
+        );
+    }
+}
+```
+
+The default retry count is configured by `LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS` and may be overridden per action with `transactionAttempts()` or per call with the second `transactional()` argument.
+
+Repositories and services should not open competing transaction boundaries for the same use case.
+
+### Repository-validation contract
+
+Repositories used by `RepositoryValidationService` must implement `RepositoryValidationRepository`. `BaseRepository` implements this contract automatically, so normal package repositories require no extra work.
+
+Successful validation stores resolved models and collections in the scoped `ValidationContext`, allowing later services and repositories to reuse the same loaded instances. Failed validation clears partially resolved context so invalid request state cannot leak into later business logic.
 
 ## Transaction boundaries
 
