@@ -84,9 +84,9 @@ trait HasCache
             return $callback();
         }
 
-        $params = $this->normalizeRepositoryCacheParams($params);
-        $key = $this->getCacheKey($operation, $params);
         $tags = $this->resolveCacheTags($params);
+        $keyParams = $this->normalizeRepositoryCacheParams($params);
+        $key = $this->getCacheKey($operation, $keyParams);
 
         // Repository invalidation is tag based. On non-taggable stores we prefer
         // correctness over serving cache entries that cannot be invalidated safely.
