@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Collection as BaseCollection;
 use Illuminate\Support\LazyCollection;
@@ -214,7 +215,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             : $this->query()
                 ->withoutGlobalScope(SoftDeletingScope::class)
                 ->findOrFail($id);
-        $deleted = is_callable([$model, 'forceDelete'])
+        $deleted = in_array(
+            SoftDeletes::class,
+            class_uses_recursive($model::class),
+            true,
+        )
             ? (bool) call_user_func([$model, 'forceDelete'])
             : (bool) $model->delete();
 
@@ -230,7 +235,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     public function restore(int|string|Model $id): bool
     {
         $model = $id instanceof Model ? $id : $this->query()->withTrashed()->findOrFail($id);
-        if (! is_callable([$model, 'restore'])) {
+        if (! in_array(
+            SoftDeletes::class,
+            class_uses_recursive($model::class),
+            true,
+        )) {
             return false;
         }
 
