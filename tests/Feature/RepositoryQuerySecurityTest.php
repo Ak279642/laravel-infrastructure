@@ -99,6 +99,31 @@ final class RepositoryQuerySecurityTest extends TestCase
         );
     }
 
+    public function test_relation_filter_requires_explicit_allow_list_and_real_related_column(): void
+    {
+        $repository = $this->repository();
+
+        self::assertSame(
+            ['Alice', 'Bob'],
+            $repository->get(['account.name' => 'Acme'])->pluck('name')->all(),
+        );
+
+        self::assertCount(
+            2,
+            $repository->get(['anything.something' => 'value']),
+        );
+
+        self::assertCount(
+            2,
+            $repository->get(['account.missing_column' => 'value']),
+        );
+
+        self::assertCount(
+            2,
+            $repository->get(['account.name) OR 1=1 --' => 'Acme']),
+        );
+    }
+
     public function test_relation_and_relation_count_allow_lists_are_enforced(): void
     {
         $repository = $this->repository();
@@ -146,12 +171,25 @@ final class RepositoryQuerySecurityTest extends TestCase
         $this->strictRepository()->get(['with' => ['notARealRelation']]);
     }
 
-    public function test_pagination_and_scopes_keep_existing_behavior(): void
+    public function test_pagination_and_explicitly_allowed_scopes_work(): void
     {
         $repository = $this->repository();
 
         self::assertSame(1, $repository->paginate(['status' => 'active'], 1)->total());
         self::assertSame(['Alice'], $repository->get(['scopes' => ['adult']])->pluck('name')->all());
+    }
+
+    public function test_unapproved_model_scope_cannot_be_invoked_from_filters(): void
+    {
+        $repository = (new QuerySecurityNoScopeRepository(
+            new QuerySecurityUser(),
+            $this->app->make(CacheManager::class),
+        ))->withoutCache();
+
+        self::assertSame(
+            ['Alice', 'Bob'],
+            $repository->get(['scopes' => ['adult']])->pluck('name')->all(),
+        );
     }
 
     private function repository(): QuerySecurityRepository
@@ -174,9 +212,16 @@ final class RepositoryQuerySecurityTest extends TestCase
 class QuerySecurityRepository extends BaseRepository
 {
     protected array $searchable = ['name', 'email'];
-    protected array $allowedFilters = ['status', 'age', 'account.name'];
+    protected array $allowedFilters = ['status', 'age'];
+    protected array $allowedRelationFilters = ['account.name'];
     protected array $allowedSorts = ['name', 'created_at'];
     protected array $allowedRelations = ['account'];
+    protected array $allowedScopes = ['adult'];
+}
+
+final class QuerySecurityNoScopeRepository extends BaseRepository
+{
+    protected array $allowedFilters = ['status'];
 }
 
 final class StrictQuerySecurityRepository extends QuerySecurityRepository
