@@ -79,6 +79,39 @@ final class ModelInfrastructureTest extends TestCase
         Storage::disk('public')->assertMissing('documents/new.txt');
     }
 
+    public function test_file_storage_rejects_directory_traversal(): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        $this->app
+            ->make(FileStorage::class)
+            ->store(
+                UploadedFile::fake()->create(
+                    'contract.pdf',
+                    10,
+                    'application/pdf',
+                ),
+                directory: '../outside',
+            );
+    }
+
+    public function test_file_storage_rejects_unsafe_custom_filename(): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        $this->app
+            ->make(FileStorage::class)
+            ->store(
+                UploadedFile::fake()->create(
+                    'contract.pdf',
+                    10,
+                    'application/pdf',
+                ),
+                directory: 'contracts',
+                filename: "bad\0name.pdf",
+            );
+    }
+
     public function test_file_storage_stores_uploaded_files_with_safe_generated_names(): void
     {
         $path = $this->app
