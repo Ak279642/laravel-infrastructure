@@ -234,7 +234,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function restore(int|string|Model $id): bool
     {
-        $model = $id instanceof Model ? $id : $this->query()->withTrashed()->findOrFail($id);
+        $model = $id instanceof Model
+            ? $id
+            : $this->query()
+                ->withoutGlobalScope(SoftDeletingScope::class)
+                ->findOrFail($id);
         if (! in_array(
             SoftDeletes::class,
             class_uses_recursive($model::class),
