@@ -30,7 +30,7 @@ final class DomainLoggerFactory
             retentionDays: max(
                 1,
                 (int) ($config['days'] ?? config(
-                    'logging.custom.retention_days',
+                    'laravel-infrastructure.logging.retention_days',
                     14,
                 )),
             ),
