@@ -6,4 +6,3 @@ parameters:
         - src
     level: 5
     tmpDir: .phpstan-cache
-    checkGenericClassInNonGenericObjectType: false
