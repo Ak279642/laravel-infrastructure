@@ -37,10 +37,17 @@ Useful environment variables include:
 ```dotenv
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
 LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
+LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
+
+LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
 
 LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
 LARAVEL_INFRASTRUCTURE_LOG_CHANNEL=
 LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
+LARAVEL_INFRASTRUCTURE_LOG_CLIENT_EXCEPTIONS=false
+LARAVEL_INFRASTRUCTURE_LOG_SERVER_EXCEPTIONS=true
+LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER=X-Request-ID
+LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID=true
 ```
 
 ## Recommended application architecture
@@ -684,13 +691,13 @@ Unknown scopes are ignored.
 
 Repository caching is enabled by default.
 
-Default repository TTL:
+Default repository TTL is read from `laravel-infrastructure.cache.default_ttl`, which defaults to **300 seconds (5 minutes)** and is configurable with:
 
-```text
-5 minutes
+```dotenv
+LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 ```
 
-You can change cache behavior per repository call chain.
+A repository may still override the default with its protected `$cacheTtl` property, and you can change cache behavior per call chain.
 
 ### Change the TTL
 
@@ -1091,6 +1098,34 @@ LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
 
 Correctness is preferred over stale cache.
 
+## Direct database writes and manual invalidation
+
+Repository cache invalidation is driven by repository writes and Eloquent model lifecycle events.
+
+A direct database/query-builder write does **not** dispatch Eloquent model events:
+
+```php
+DB::table('customers')->where('id', $id)->update([
+    'status' => 'inactive',
+]);
+```
+
+If cached repository reads may be affected, invalidate them explicitly afterward:
+
+```php
+$customerRepository->clearCache();
+```
+
+For a one-operation fresh read, use the returned repository chain:
+
+```php
+$customers = $customerRepository
+    ->withoutCache()
+    ->get();
+```
+
+`withoutCache()` does not disable caching on the original repository instance and its bypass is consumed by that read operation. This prevents request-specific cache state from leaking through long-running workers or shared repository instances.
+
 ## Bulk repository operations
 
 The package provides model-aware bulk methods:
@@ -1466,6 +1501,69 @@ Calling `get()` for a missing key throws an `InvalidArgumentException`.
 
 Use `getOrNull()` for optional values.
 
+## Reusable Services and Actions
+
+The package provides optional base classes for keeping application layers consistent without moving business logic into repositories.
+
+`BaseService` accepts a primary `RepositoryInterface` and provides protected create, update, find, delete and existence helpers plus customization hooks. A service remains responsible for the complete business operation and may inject additional repositories as normal.
+
+```php
+use Ak279642\LaravelInfrastructure\Services\BaseService;
+
+final class CreateCustomerService extends BaseService
+{
+    public function __construct(CustomerRepository $customers)
+    {
+        parent::__construct($customers);
+    }
+
+    public function create(array $data): Customer
+    {
+        return $this->createRecord($data);
+    }
+
+    protected function beforeCreate(array $data): array
+    {
+        $data['email'] = strtolower(trim($data['email']));
+
+        return $data;
+    }
+}
+```
+
+`BaseAction` provides the transaction boundary. It intentionally does not force an `execute()` signature, so application actions keep strongly typed entry points.
+
+```php
+use Ak279642\LaravelInfrastructure\Actions\BaseAction;
+
+final class CreateCustomerAction extends BaseAction
+{
+    public function __construct(
+        TransactionManager $transactions,
+        private CreateCustomerService $service,
+    ) {
+        parent::__construct($transactions);
+    }
+
+    public function execute(array $data): Customer
+    {
+        return $this->transactional(
+            fn () => $this->service->create($data),
+        );
+    }
+}
+```
+
+The default retry count is configured by `LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS` and may be overridden per action with `transactionAttempts()` or per call with the second `transactional()` argument.
+
+Repositories and services should not open competing transaction boundaries for the same use case.
+
+### Repository-validation contract
+
+Repositories used by `RepositoryValidationService` must implement `RepositoryValidationRepository`. `BaseRepository` implements this contract automatically, so normal package repositories require no extra work.
+
+Successful validation stores resolved models and collections in the scoped `ValidationContext`, allowing later services and repositories to reuse the same loaded instances. Failed validation clears partially resolved context so invalid request state cannot leak into later business logic.
+
 ## Transaction boundaries
 
 The package exposes `TransactionManager`.
@@ -1501,6 +1599,8 @@ Repository owns data access
 
 ## API responses
 
+The response helpers use one stable JSON envelope and preserve the existing `MessageResponse` and `ResourceResponse` APIs.
+
 ### Message response
 
 ```php
@@ -1529,7 +1629,39 @@ return ResourceResponse::make(
 );
 ```
 
-Paginated Laravel resource collections receive a separate `pagination` object automatically.
+Response:
+
+```json
+{
+    "success": true,
+    "message": "Customer loaded.",
+    "data": {
+        "id": 1,
+        "name": "Example"
+    }
+}
+```
+
+Length-aware, simple and cursor-paginated Laravel resource collections keep `data` separate from a top-level `pagination` object. Length-aware pagination contains `total`, `per_page`, `current_page`, `last_page`, `from`, and `to`.
+
+### Error envelope
+
+Package exceptions and normalized Laravel JSON exceptions use:
+
+```json
+{
+    "success": false,
+    "message": "Validation failed.",
+    "errors": {
+        "email": [
+            "The email field is required."
+        ]
+    },
+    "error_code": "VALIDATION_ERROR"
+}
+```
+
+Optional `errors` and `data` fields are only emitted when populated. Debug exception details are emitted only when `APP_DEBUG=true`; production 5xx responses use a generic message and do not expose exception messages, files, traces, SQL details, tokens, or secrets.
 
 ## Exceptions
 
@@ -1560,9 +1692,56 @@ throw new BusinessLogicException(
 );
 ```
 
+For requests that explicitly expect JSON, the package service provider also normalizes common Laravel/Symfony exceptions without replacing the host application's exception handler:
+
+| Failure | HTTP status | Error code |
+| --- | ---: | --- |
+| Authentication | 401 | `UNAUTHORIZED` |
+| Authorization | 403 | `FORBIDDEN` |
+| Missing model / route | 404 | `NOT_FOUND` |
+| Method not allowed | 405 | `METHOD_NOT_ALLOWED` |
+| Conflict | 409 | `CONFLICT` |
+| Laravel validation | 422 | `VALIDATION_ERROR` |
+| Rate limiting | 429 | `TOO_MANY_REQUESTS` |
+| Service unavailable | 503 | `SERVICE_UNAVAILABLE` |
+| Unexpected server error | 500 | `INTERNAL_ERROR` |
+
+Automatic JSON exception normalization is enabled by default and can be disabled with:
+
+```dotenv
+LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=false
+```
+
+HTML/web requests continue through the application's normal Laravel exception rendering.
+
+## Correlation IDs
+
+Package API responses and normalized API errors include a correlation header. The default header is `X-Request-ID`.
+
+A safe incoming ID is reused when it is at most 128 characters and contains only letters, numbers, `.`, `_`, `:`, or `-`. Missing or unsafe IDs are replaced with a generated UUID.
+
+When you also want the correlation header added to arbitrary application responses, register the reusable middleware:
+
+```php
+use Ak279642\LaravelInfrastructure\Http\Middleware\RequestCorrelationId;
+
+Route::middleware(RequestCorrelationId::class)->group(function () {
+    // API routes...
+});
+```
+
+Configure the behavior with:
+
+```dotenv
+LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER=X-Request-ID
+LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID=true
+```
+
+The same ID is added to structured log context as `request.request_id`, allowing an API failure and its logs to be correlated.
+
 ## Logging
 
-Use `CustomLog` for application/domain-aware logging with sensitive-value sanitization.
+Use `CustomLog` for domain-aware structured logging.
 
 ```php
 use Ak279642\LaravelInfrastructure\Logging\CustomLog;
@@ -1572,13 +1751,13 @@ CustomLog::info(
     'Customer created.',
     [
         'customer_id' => $customer->id,
-        'email' => $customer->email,
+        'status' => $customer->status,
     ],
     LogDomain::APPLICATION,
 );
 ```
 
-Exceptions:
+Exception logging:
 
 ```php
 try {
@@ -1595,9 +1774,46 @@ try {
 }
 ```
 
-Sensitive keys such as passwords, tokens, API keys, secrets and authorization headers are redacted recursively.
+Sensitive keys are recursively redacted, including passwords, authorization/cookie values, tokens, API keys, secrets, client secrets, private keys, sessions, CSRF tokens, JWTs, and signatures. Common inline forms such as `Bearer <token>`, `password=...`, `token=...`, and `api_key=...` are also scrubbed.
 
-Logging can be disabled globally or per domain through the package configuration.
+Request logging records query **key names**, not query values or request bodies.
+
+Expected client-side API exceptions (4xx) are not logged by default to reduce noise. Unexpected 5xx API exceptions are logged once through the redacted structured logger, and duplicate raw framework logging is suppressed for normalized JSON requests.
+
+Configure logging with:
+
+```dotenv
+LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
+LARAVEL_INFRASTRUCTURE_LOG_CLIENT_EXCEPTIONS=false
+LARAVEL_INFRASTRUCTURE_LOG_SERVER_EXCEPTIONS=true
+LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
+```
+
+Enable exception traces only when appropriate for the deployment environment because traces can contain operational details.
+
+## Service provider and long-running workers
+
+Laravel package discovery registers `LaravelInfrastructureServiceProvider` automatically.
+
+The provider intentionally uses these lifetimes:
+
+| Service | Lifetime | Reason |
+| --- | --- | --- |
+| `CacheManager` | singleton | cache store/configuration service with no request-specific state |
+| `CacheInvalidator` | singleton | stateless cache invalidation coordinator |
+| `CacheObserver` | singleton | stateless Eloquent observer |
+| `SchemaRegistry` | singleton | process-level schema metadata cache, isolated by connection + physical database identity |
+| `FileStorage` | singleton | stateless filesystem adapter |
+| `SlugGenerator` | singleton | stateless generator backed by cache/schema services |
+| `ApiExceptionRenderer` | singleton | stateless JSON exception mapper |
+| `ValidationContext` | scoped | request/job-specific resolved validation models must never leak between operations |
+| `TransactionManager` | transient binding | lightweight wrapper around Laravel's database manager |
+
+This makes the package safe for long-running workers such as Laravel Octane and queue workers as long as application repositories/services are not manually registered as unsafe global singletons.
+
+The schema registry includes driver, host, port, database, schema/search path, and table prefix in its in-memory identity. Reusing the same Laravel connection name for another tenant/database therefore does not reuse stale schema metadata.
+
+`ValidationContext` is a Laravel scoped binding, so Octane/request/job scope resets discard previously resolved models.
 
 ## Package boundaries
 
@@ -1631,7 +1847,13 @@ Validate the Composer package:
 composer validate --strict
 ```
 
-The GitHub Actions compatibility matrix tests supported PHP/Laravel combinations and includes an architecture test that prevents accidental application `App\` dependencies.
+The GitHub Actions compatibility matrix runs the complete test suite across PHP 8.2-8.4 and Laravel 10-13. It also includes an architecture suite that scans runtime package source/config for accidental host-application `App\` dependencies.
+
+Run only the architecture guard with:
+
+```bash
+composer test:architecture
+```
 
 ## License
 

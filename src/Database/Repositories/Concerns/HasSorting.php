@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Exceptions\SortNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
 
 trait HasSorting
 {
-    /**
-     * Apply sorting to the query.
-     */
     protected function applySorting(Builder $query, string|array $sort): Builder
     {
         if (is_string($sort)) {
@@ -18,7 +16,6 @@ trait HasSorting
         }
 
         foreach ($sort as $key => $value) {
-            // Associative format: ['created_at' => 'desc']
             if (is_string($key) && is_string($value)) {
                 $column = $key;
                 $direction = strtolower($value);
@@ -27,9 +24,12 @@ trait HasSorting
                     $direction = 'asc';
                 }
             } else {
-                // Existing format: ['created_at', '-id']
                 $column = $value;
                 $direction = 'asc';
+
+                if (! is_string($column)) {
+                    continue;
+                }
 
                 if (str_starts_with($column, '-')) {
                     $direction = 'desc';
@@ -38,6 +38,8 @@ trait HasSorting
             }
 
             if (! $this->isSortAllowed($column)) {
+                $this->handleDisallowedSort($column);
+
                 continue;
             }
 
@@ -47,21 +49,16 @@ trait HasSorting
         return $query;
     }
 
-    /**
-     * Determine whether the column is allowed for sorting.
-     */
     protected function isSortAllowed(string $column): bool
     {
-        return $this->allowedSorts === []
-            || in_array($column, $this->allowedSorts, true);
+        return in_array($column, $this->allowedSorts, true);
     }
 
-    /**
-     * Apply order by.
-     */
     public function orderBy(string $column, string $direction = 'asc'): static
     {
         if (! $this->isSortAllowed($column)) {
+            $this->handleDisallowedSort($column);
+
             return $this;
         }
 
@@ -76,39 +73,53 @@ trait HasSorting
         return $this;
     }
 
-    /**
-     * Apply descending order.
-     */
     public function orderByDesc(string $column): static
     {
-        if ($this->isSortAllowed($column)) {
-            $this->query->orderByDesc($column);
+        if (! $this->isSortAllowed($column)) {
+            $this->handleDisallowedSort($column);
+
+            return $this;
         }
+
+        $this->query->orderByDesc($column);
 
         return $this;
     }
 
-    /**
-     * Order by latest.
-     */
     public function latest(string $column = 'created_at'): static
     {
-        if ($this->isSortAllowed($column)) {
-            $this->query->latest($column);
+        if (! $this->isSortAllowed($column)) {
+            $this->handleDisallowedSort($column);
+
+            return $this;
         }
+
+        $this->query->latest($column);
 
         return $this;
     }
 
-    /**
-     * Order by oldest.
-     */
     public function oldest(string $column = 'created_at'): static
     {
-        if ($this->isSortAllowed($column)) {
-            $this->query->oldest($column);
+        if (! $this->isSortAllowed($column)) {
+            $this->handleDisallowedSort($column);
+
+            return $this;
         }
 
+        $this->query->oldest($column);
+
         return $this;
+    }
+
+    protected function handleDisallowedSort(string $column): void
+    {
+        if ($this->strictFilters) {
+            throw SortNotAllowedException::forRepository(
+                $column,
+                static::class,
+                $this->allowedSorts,
+            );
+        }
     }
 }

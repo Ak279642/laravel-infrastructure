@@ -57,33 +57,33 @@ trait InteractsWithCache
             $tags = CacheTag::merge($tags, $result->getCacheTags());
         }
 
+        if ($result instanceof Collection) {
+            foreach ($result as $item) {
+                if ($item instanceof CacheableModel) {
+                    $tags = CacheTag::merge($tags, $item->getCacheTags());
+                }
+            }
+        }
+
         foreach ($relations as $relation) {
             if (! is_string($relation) || $relation === '') {
                 continue;
             }
 
             $relation = trim(explode(':', $relation, 2)[0]);
+
+            if ($relation === '') {
+                continue;
+            }
+
+            $tags = CacheTag::merge(
+                $tags,
+                $this->getNestedRelationDependencyTags($relation),
+            );
+
             $root = explode('.', $relation)[0] ?? '';
 
-            if ($root === '' || ! method_exists($this, $root)) {
-                continue;
-            }
-
-            try {
-                $relationObject = $this->{$root}();
-            } catch (Throwable) {
-                continue;
-            }
-
-            if ($relationObject instanceof Relation) {
-                $related = $relationObject->getRelated();
-
-                if ($related instanceof CacheableModel) {
-                    $tags[] = $related::cacheTag();
-                }
-            }
-
-            if ($this->relationLoaded($root)) {
+            if ($root !== '' && $this->relationLoaded($root)) {
                 $loaded = $this->getRelation($root);
                 $items = $loaded instanceof Collection
                     ? $loaded
@@ -98,6 +98,38 @@ trait InteractsWithCache
                     }
                 }
             }
+        }
+
+        return CacheTag::tags(...$tags);
+    }
+
+    private function getNestedRelationDependencyTags(string $relation): array
+    {
+        $tags = [];
+        $model = $this;
+
+        foreach (explode('.', $relation) as $segment) {
+            if ($segment === '' || ! method_exists($model, $segment)) {
+                break;
+            }
+
+            try {
+                $relationObject = $model->{$segment}();
+            } catch (Throwable) {
+                break;
+            }
+
+            if (! $relationObject instanceof Relation) {
+                break;
+            }
+
+            $related = $relationObject->getRelated();
+
+            if ($related instanceof CacheableModel) {
+                $tags[] = $related::cacheTag();
+            }
+
+            $model = $related;
         }
 
         return CacheTag::tags(...$tags);

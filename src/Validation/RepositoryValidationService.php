@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Validation;
 
+use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryValidationRepository;
+use Ak279642\LaravelInfrastructure\Exceptions\RepositoryValidationConfigurationException;
 use Ak279642\LaravelInfrastructure\Exceptions\ValidationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
+use Throwable;
 
 final class RepositoryValidationService
 {
@@ -30,10 +34,7 @@ final class RepositoryValidationService
     }
 
     /**
-     * Validate repository-backed rules without throwing.
-     *
-     * This is used by RepositoryFormRequest so repository errors become normal
-     * Laravel FormRequest validation errors.
+     * Validate repository-backed rules without throwing validation failures.
      *
      * @param  list<RepositoryValidationRule>  $rules
      * @return array<string, list<string>>
@@ -43,14 +44,45 @@ final class RepositoryValidationService
         array $input,
         bool $resetContext = true,
     ): array {
+        $previousContext = $resetContext
+            ? []
+            : $this->context->all();
+
         if ($resetContext) {
             $this->context->clear();
         }
 
+        try {
+            $errors = $this->collectErrors($rules, $input);
+        } catch (Throwable $exception) {
+            // Never leave partially resolved models available after a failed
+            // validation/configuration/database operation.
+            $this->restoreContext($previousContext);
+
+            throw $exception;
+        }
+
+        if ($errors !== []) {
+            $this->restoreContext($previousContext);
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param  list<RepositoryValidationRule>  $rules
+     * @return array<string, list<string>>
+     */
+    private function collectErrors(array $rules, array $input): array
+    {
         $errors = [];
 
         foreach ($rules as $rule) {
-            $repository = app($rule->repository);
+            if (! $rule instanceof RepositoryValidationRule) {
+                throw RepositoryValidationConfigurationException::invalidRule($rule);
+            }
+
+            $repository = $this->resolveRepository($rule->repository);
 
             if ($rule->unique !== []) {
                 $fields = collect($rule->unique)
@@ -142,11 +174,9 @@ final class RepositoryValidationService
 
                 $configuredValues = $rule->existsIn['values'] ?? $inputField;
 
-                if (is_string($configuredValues)) {
-                    $values = data_get($input, $configuredValues, []);
-                } else {
-                    $values = $configuredValues;
-                }
+                $values = is_string($configuredValues)
+                    ? data_get($input, $configuredValues, [])
+                    : $configuredValues;
 
                 $values = array_values(array_unique((array) $values));
 
@@ -191,8 +221,22 @@ final class RepositoryValidationService
         return $errors;
     }
 
+    private function resolveRepository(
+        string $repository,
+    ): RepositoryValidationRepository {
+        $resolved = app($repository);
+
+        if (! $resolved instanceof RepositoryValidationRepository) {
+            throw RepositoryValidationConfigurationException::invalidRepository(
+                $repository,
+            );
+        }
+
+        return $resolved;
+    }
+
     private function resolveModel(
-        mixed $repository,
+        RepositoryValidationRepository $repository,
         RepositoryValidationRule $rule,
         string $field,
         Model $model,
@@ -212,7 +256,7 @@ final class RepositoryValidationService
     }
 
     private function resolveCollection(
-        mixed $repository,
+        RepositoryValidationRepository $repository,
         RepositoryValidationRule $rule,
         string $field,
         Collection $models,
@@ -247,11 +291,23 @@ final class RepositoryValidationService
         ));
     }
 
+    /**
+     * @param  array<string, Model|Collection>  $values
+     */
+    private function restoreContext(array $values): void
+    {
+        $this->context->clear();
+
+        foreach ($values as $key => $value) {
+            $this->context->put($key, $value);
+        }
+    }
+
     private function resolveWhere(array $where, array $input): array
     {
         return collect($where)
             ->mapWithKeys(function ($value, $field) use ($input): array {
-                if (is_string($value) && data_get($input, $value) !== null) {
+                if (is_string($value) && Arr::has($input, $value)) {
                     return [$field => data_get($input, $value)];
                 }
 

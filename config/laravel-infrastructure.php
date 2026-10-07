@@ -9,6 +9,11 @@ return [
         'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
     ],
 
+    'transactions' => [
+        // Deadlock/serialization retry attempts used by BaseAction by default.
+        'attempts' => max(1, (int) env('LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS', 1)),
+    ],
+
     'slug' => [
         // Disabled globally by default. Enable per model with slugOptions().
         'enabled' => false,
@@ -29,10 +34,22 @@ return [
         'delete_on_soft_delete' => false,
     ],
 
+    'responses' => [
+        // Normalize exceptions only for requests that explicitly expect JSON.
+        'exception_renderer_enabled' => env(
+            'LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED',
+            true,
+        ),
+    ],
+
     'logging' => [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED', true),
         'channel' => env('LARAVEL_INFRASTRUCTURE_LOG_CHANNEL'),
         'exception_trace_enabled' => env('LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE', false),
+        'log_client_exceptions' => env('LARAVEL_INFRASTRUCTURE_LOG_CLIENT_EXCEPTIONS', false),
+        'log_server_exceptions' => env('LARAVEL_INFRASTRUCTURE_LOG_SERVER_EXCEPTIONS', true),
+        'correlation_header' => env('LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER', 'X-Request-ID'),
+        'accept_incoming_correlation_id' => env('LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID', true),
         'max_depth' => 6,
         'max_string_length' => 4096,
         'max_array_items' => 100,
