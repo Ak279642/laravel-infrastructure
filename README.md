@@ -35,8 +35,11 @@ config/laravel-infrastructure.php
 Useful environment variables include:
 
 ```dotenv
+LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
 LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
+LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS=10
+LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS=3
 LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
 
 LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
@@ -1225,6 +1228,22 @@ composer test:architecture
 13. **Lower maintenance cost** — infrastructure fixes are made once in the package and reused across consuming applications.
 14. **Faster project setup** — new Laravel projects can begin with proven infrastructure instead of recreating foundational patterns.
 15. **Incremental adoption** — the package does not require using everything. Applications can use only repositories, only caching, only slug/file concerns, or the complete architecture.
+
+## Detailed documentation
+
+- [Architecture](docs/architecture.md)
+- [Repositories](docs/repositories.md)
+- [Filtering and query security](docs/filtering.md)
+- [Caching](docs/caching.md)
+- [Validation and automatic context reuse](docs/validation.md)
+- [Transactions](docs/transactions.md)
+- [Files and storage audit](docs/files.md)
+- [Logging](docs/logging.md)
+- [API responses](docs/responses.md)
+- [Exceptions](docs/exceptions.md)
+- [Slugs](docs/slugs.md)
+- [Testing and quality gates](docs/testing.md)
+- [Security](docs/security.md)
 
 ## Recommended application architecture
 
