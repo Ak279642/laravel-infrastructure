@@ -79,37 +79,28 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
 
         $handler = $this->app->make(ExceptionHandlerContract::class);
 
-        if (! method_exists($handler, 'renderable')) {
-            return;
-        }
-
         $renderer = $this->app->make(ApiExceptionRenderer::class);
 
-        if (method_exists($handler, 'reportable')) {
-            $handler->reportable(
-                function (Throwable $exception) use ($renderer): bool {
-                    if (! app()->bound('request')) {
-                        return true;
-                    }
+        $handler->reportable(
+            function (Throwable $exception) use ($renderer): bool {
+                if (! app()->bound('request')) {
+                    return true;
+                }
 
-                    $request = request();
+                $request = request();
 
-                    if (
-                        ! $request instanceof Request
-                        || ! $renderer->shouldRender($request)
-                    ) {
-                        return true;
-                    }
+                if (! $renderer->shouldRender($request)) {
+                    return true;
+                }
 
-                    $renderer->report($exception, $request);
+                $renderer->report($exception, $request);
 
-                    // The package has either logged the exception through the
-                    // redacted structured logger or intentionally suppressed a
-                    // low-signal client error.
-                    return false;
-                },
-            );
-        }
+                // The package has either logged the exception through the
+                // redacted structured logger or intentionally suppressed a
+                // low-signal client error.
+                return false;
+            },
+        );
 
         $handler->renderable(
             function (Throwable $exception, Request $request) use ($renderer) {
