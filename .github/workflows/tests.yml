@@ -88,10 +88,13 @@ jobs:
         run: composer analyse
 
       - name: Formatting
+        if: always()
         run: composer format:check
 
       - name: Architecture
+        if: always()
         run: composer test:architecture
 
       - name: Security audit
+        if: always()
         run: composer audit
