@@ -112,6 +112,22 @@ final class ModelInfrastructureTest extends TestCase
             );
     }
 
+    public function test_file_storage_rejects_malformed_extension(): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        $this->app
+            ->make(FileStorage::class)
+            ->store(
+                UploadedFile::fake()->create(
+                    'contract.bad$ext',
+                    10,
+                    'application/octet-stream',
+                ),
+                directory: 'contracts',
+            );
+    }
+
     public function test_file_storage_stores_uploaded_files_with_safe_generated_names(): void
     {
         $path = $this->app
