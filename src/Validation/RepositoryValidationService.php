@@ -78,10 +78,6 @@ final class RepositoryValidationService
         $errors = [];
 
         foreach ($rules as $rule) {
-            if (! $rule instanceof RepositoryValidationRule) {
-                throw RepositoryValidationConfigurationException::invalidRule($rule);
-            }
-
             $repository = $this->resolveRepository($rule->repository);
 
             if ($rule->unique !== []) {
