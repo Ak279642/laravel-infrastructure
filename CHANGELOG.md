@@ -2,85 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
-### Added
-- Automatic request-scoped ValidationContext identity-map reuse for repository validation and ID lookups.
-- Explicit relation-filter and request-scope allow-lists.
-- Pint and Larastan quality gates in CI.
-- Focused docs for architecture, repositories, filtering/security, caching, validation, transactions, files, logging, responses, exceptions, slugs, testing, and security.
-- Transaction-manager regression coverage for commits, rollbacks, nested transactions, and null/false returns.
-- Slug regression coverage for Unicode, empty sources, and soft-deleted slug reservation.
-
-### Changed
-- Repository reads automatically bypass cache inside open database transactions to prevent rolled-back uncommitted data from being cached.
-- Repository selected/aggregate/validation helper columns are schema-validated before query construction.
-- Repository cache enablement and lock/wait durations are globally configurable while preserving existing defaults.
-- File storage rejects traversal/absolute/control-character paths and malformed upload extensions.
-- Slug uniqueness checks include soft-deleted records when the model uses SoftDeletes.
-- Context create/update/restore paths refresh remembered models; delete/force-delete evict them.
-
-### Fixed
-- Soft-deleted rows are now visible to bulkRestore() and bulkForceDelete().
-- Relation filters require explicit authorization and related-column existence.
-- Request-supplied model scopes cannot invoke arbitrary local scopes.
-- groupCount() no longer interpolates a column name into raw SQL.
-
-### Maintenance
-- Repository history consolidated onto `main` after branch cleanup; all previously completed infrastructure features remain present.
-
 ## [1.1.0] - 2026-10-07
 
 ### Added
-- Multiple independent model slug fields through `slugFields()`, while preserving the existing single-slug API.
-- Automatic `UploadedFile` storage for configured model file attributes with per-field disks/directories.
-- Model-scoped `infrastructure:storage-audit` command with dry-run and explicit `--delete` cleanup.
-- Storage-audit safety rules that only scan explicitly registered models and model-owned directories.
-
-- Explicit repository query allow-lists with optional strict filter/sort/relation exceptions.
-- Reusable `BaseAction` and `BaseService` application infrastructure.
-- Repository-validation contract and atomic/scoped `ValidationContext` reuse.
-- Locked cache population for stampede protection.
-- Nested relation cache-dependency tags.
-- Uniform API response envelopes and JSON exception normalization.
-- Correlation IDs and reusable request-correlation middleware.
-- Recursive structured-log redaction for sensitive keys and common inline credentials.
-- Regression coverage for caching, validation, transactions, responses, logging, provider lifetimes, and long-running-worker isolation.
+- Reusable Eloquent repository infrastructure with CRUD, filtering, searching, sorting, relations, pagination, aggregates, scopes, streaming, duplicate/existence helpers, and bulk operations.
+- Explicit repository query allow-lists for filters, relation filters, sorts, relations, search columns, and request-driven model scopes.
+- Deterministic tag-aware repository caching with per-query TTL controls, cache bypassing, forever caching, dependency tags, and stampede-protected population.
+- Automatic after-commit Eloquent cache invalidation for create, update, delete, restore, and force-delete lifecycle events.
+- Repository-backed validation, `RepositoryFormRequest`, `RepositoryValidationRule`, and scoped `ValidationContext`.
+- Automatic validation-context identity-map reuse: existing models/collections are reused first, only missing records are queried, missing relations are loaded onto the same instance, and queried records are remembered automatically.
+- Validation-context snapshot/restore so failed additive validation restores aliases and automatically remembered models atomically.
+- Reusable `BaseAction`, `BaseService`, transaction manager abstraction, configurable transaction retries, and operation context primitives.
+- Generic API response helpers, normalized JSON exception rendering, correlation IDs, request-correlation middleware, structured/domain logging, redaction, and log rotation helpers.
+- Optional package `BaseModel` with cache, slug, and file lifecycle concerns.
+- Single and multiple model slug fields through `slugOptions()` and `slugFields()`, including scoped uniqueness and independent regeneration policies.
+- Generic `FileStorage` helpers plus model-level automatic `UploadedFile` persistence with per-field disk, directory, filename, lifecycle, and audit options.
+- Model-scoped `infrastructure:storage-audit` command with dry-run default, explicit `--delete`, model filtering, shared-directory reference aggregation, and chunked database reads.
+- Pint and Larastan development tooling plus transaction, caching, query-security, validation-context, files, slugs, API, logging, and provider regression coverage.
+- Focused documentation under `docs/` for architecture, repositories, filtering/security, caching, validation, transactions, files, logging, responses, exceptions, slugs, testing, and security.
 
 ### Changed
-- Repository caching now honors `LARAVEL_INFRASTRUCTURE_CACHE_TTL` by default while preserving explicit repository TTL overrides.
-- `withoutCache()` is an isolated one-operation clone instead of shared mutable repository state.
-- Repository cache keys include repository/model identity and deterministic query normalization.
-- Repository reads bypass cache on stores that cannot safely support tag invalidation.
-- Schema metadata caching is isolated by logical connection and physical database identity for tenant/database switching in long-running workers.
-- JSON API exceptions use correct 4xx/5xx status mappings while normal HTML exception rendering remains application-controlled.
-- Expected 4xx logs are quiet by default; unexpected 5xx logs are redacted and emitted once.
-- Composer metadata and architecture checks were strengthened for package distribution.
+- Repository cache enablement, default TTL, lock duration, and lock wait duration are centrally configurable while preserving backwards-compatible defaults.
+- Repository reads automatically bypass cache inside open database transactions so rolled-back uncommitted data cannot become cached.
+- Repository reads bypass unsafe tagged-cache behavior on stores that cannot reliably support tag invalidation.
+- `withoutCache()` is isolated to a cloned repository operation instead of mutating shared repository state.
+- Cache keys include repository/model identity and deterministic query normalization.
+- Cache invalidation now runs explicitly after database commit.
+- Schema metadata caching is isolated by logical connection and physical database identity for tenant/database switching and long-running workers.
+- Repository selected, aggregate, validation-helper, relation-filter, and relation-aggregate columns are validated before query construction.
+- PostgreSQL uses native `ILIKE`; MySQL/MariaDB and SQLite use portable case-insensitive behavior without emitting invalid `ILIKE` SQL.
+- File storage rejects traversal, absolute paths, null bytes, control characters, unsafe filenames, and malformed upload extensions across store/read/delete/URL operations.
+- Slug uniqueness checks include soft-deleted rows when the model uses `SoftDeletes`.
+- Create/update/restore refresh remembered validation-context models; delete/force-delete evict them.
+- JSON API exceptions use correct 4xx/5xx mappings while normal HTML exception rendering remains application-controlled.
+- Expected client exceptions are quiet by default; unexpected server failures are redacted and logged without exposing internal details.
 
 ### Fixed
-- Arbitrary filters, sorts, relations, relation counts, and search columns can no longer bypass repository allow-lists.
-- Legacy repository operator arrays such as `['>=', 18]` remain compatible.
-- Failed repository validation no longer leaves partially resolved models in context.
-- Nullable scoped validation values are no longer mistaken for literal input field names.
-- Replacing a validation alias no longer leaves a stale model in the class/id index.
-- Production 500 responses no longer expose raw exception details.
-- Direct database writes and their manual cache-invalidation requirements are documented explicitly.
+- Arbitrary dotted filter keys can no longer become relation filters without explicit authorization.
+- Unknown or malformed relation/filter/sort/search/scope identifiers can no longer affect repository queries.
+- Aggregate, selected-column, duplicate-check, and repository-validation helper APIs reject unsafe or nonexistent model columns.
+- `groupCount()` no longer interpolates caller-supplied column names into raw SQL.
+- Legacy operator arrays such as `['>=', 18]` remain compatible.
+- Failed repository validation no longer leaves partial aliases or remembered models in context.
+- Nullable validation-scope values are no longer treated as literal input-field names.
+- Replacing a validation alias no longer leaves stale models in the class/id identity map.
+- Soft-deleted rows are visible to `bulkRestore()` and `bulkForceDelete()`.
+- Repository caching remains correct across rolled-back transactions.
+- Production 500 responses do not expose exception messages, SQL, or stack traces.
+- File replacement/deletion lifecycle handling avoids deleting previous files before a successful model write.
+- Storage auditing never falls back to globally scanning unmanaged upload directories.
 
-## [1.0.0] - 2026-10-07
+### Security
+- Request-controlled query identifiers are allow-listed and schema-validated where appropriate; query values remain parameter-bound through Laravel.
+- Relation filters require both an allowed dotted filter and an allowed relation.
+- Storage cleanup is restricted to explicitly registered models and explicitly model-owned directories.
+- Logging recursively redacts passwords, tokens, API keys, authorization headers, cookies, secrets, and nested sensitive values.
+- Correlation IDs are bounded and validated before reuse.
+- File-system paths cannot escape configured storage locations.
 
-### Added
-- Standalone Laravel infrastructure package extracted from the Ledger foundation.
-- Eloquent repository abstraction with filters, sorting, relations, scopes, pagination, aggregates, and bulk operations.
-- Safe tag-aware repository caching and cache invalidation.
-- Opt-in model cache invalidation through `CacheableModel` and `InteractsWithCache`.
-- Validation and operation context primitives.
-- Generic JSON response and application exception helpers.
-- Transaction manager abstraction for action/orchestration boundaries.
-- Package logging utilities with sensitive-value redaction.
-- Laravel package auto-discovery and publishable configuration.
-- Optional package `BaseModel` with configurable slug generation and file lifecycle handling.
-- `FileStorage` service for generic Laravel uploads without image-library coupling.
-- Scoped unique slug generation through the repository layer.
-- Repository-aware `FormRequest` validation with aliased resolved models/collections.
-- Validation-context reuse inside services and automatic `BaseRepository` class+ID reuse.
-- Database-portable schema inspection for MySQL, PostgreSQL, SQLite, and SQL Server.
+### Compatibility verified
+- PHP 8.2 / Laravel 10.
+- PHP 8.2 and 8.3 / Laravel 11.
+- PHP 8.3 and 8.4 / Laravel 12.
+- PHP 8.4 / Laravel 13.
+- SQLite test suite.
+- MySQL 8.4 filter compatibility.
+- PostgreSQL 17 filter compatibility.
+- `composer validate --strict`, PHPUnit, Laravel Pint, and Larastan level 5.
