@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure\Slugs;
 
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Collection;
 
 final class SlugLookupRepository extends BaseRepository
@@ -30,7 +31,7 @@ final class SlugLookupRepository extends BaseRepository
                 true,
             )
         ) {
-            $query->withTrashed();
+            $query->withoutGlobalScope(SoftDeletingScope::class);
         }
 
         $query->where($column, 'LIKE', $baseSlug.'%');
