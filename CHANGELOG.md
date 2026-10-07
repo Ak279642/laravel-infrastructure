@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-07
+
 ### Added
 - Added optional Intervention Image v3 processing for model file fields with WebP conversion, resize/scale/cover modes, quality control, GD/Imagick drivers, and rollback-safe cleanup.
 - Added model file-field access rules (`enabled`, `signed`, `guard`) plus `fileAssetUrl()` for model-aware asset URLs.
