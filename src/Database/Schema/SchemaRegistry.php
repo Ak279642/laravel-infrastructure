@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Schema;
 
 use Illuminate\Database\Connection;
-use Illuminate\Support\Facades\Cache;
 
 final class SchemaRegistry
 {
     /**
+     * Columns are cached in memory for the lifetime of the package service.
+     *
      * @var array<string, array<string, array<string, true>>>
      */
     private array $columns = [];
@@ -19,9 +20,13 @@ final class SchemaRegistry
         string $table,
         string $column,
     ): bool {
-        $connectionName = $connection->getName() ?: config('database.default');
+        $connectionName = $this->connectionName($connection);
 
-        $this->loadConnection($connection, $connectionName);
+        $this->loadTable(
+            $connection,
+            $connectionName,
+            $table,
+        );
 
         return isset(
             $this->columns[$connectionName][$table][$column],
@@ -35,81 +40,66 @@ final class SchemaRegistry
         Connection $connection,
         string $table,
     ): array {
-        $connectionName = $connection->getName() ?: config('database.default');
+        $connectionName = $this->connectionName($connection);
 
-        $this->loadConnection($connection, $connectionName);
+        $this->loadTable(
+            $connection,
+            $connectionName,
+            $table,
+        );
 
         return array_keys(
             $this->columns[$connectionName][$table] ?? [],
         );
     }
 
-    private function loadConnection(
+    private function loadTable(
         Connection $connection,
         string $connectionName,
+        string $table,
     ): void {
-        if (isset($this->columns[$connectionName])) {
+        if (isset($this->columns[$connectionName][$table])) {
             return;
         }
 
-        $cacheKey = "_schema:columns:{$connectionName}";
+        $columns = $connection
+            ->getSchemaBuilder()
+            ->getColumnListing($table);
 
-        /**
-         * One query for the complete schema.
-         *
-         * @var array<string, array<string, true>> $schema
-         */
-        $schema = Cache::rememberForever(
-            $cacheKey,
-            function () use ($connection): array {
-                $database = $connection->getDatabaseName();
-
-                $rows = $connection->select(
-                    <<<'SQL'
-                    SELECT
-                        TABLE_NAME AS table_name,
-                        COLUMN_NAME AS column_name
-                    FROM information_schema.columns
-                    WHERE TABLE_SCHEMA = ?
-                    ORDER BY TABLE_NAME, ORDINAL_POSITION
-                    SQL,
-                    [$database],
-                );
-
-                $result = [];
-
-                foreach ($rows as $row) {
-                    $table = $row->table_name ?? null;
-                    $column = $row->column_name ?? null;
-
-                    if (
-                        ! is_string($table)
-                        || $table === ''
-                        || ! is_string($column)
-                        || $column === ''
-                    ) {
-                        continue;
-                    }
-
-                    $result[$table][$column] = true;
-                }
-
-                return $result;
-            },
+        $this->columns[$connectionName][$table] = array_fill_keys(
+            array_values(array_filter(
+                $columns,
+                static fn ($column): bool => is_string($column) && $column !== '',
+            )),
+            true,
         );
-
-        $this->columns[$connectionName] = $schema;
     }
 
     public function clear(
         ?string $connectionName = null,
+        ?string $table = null,
     ): void {
-        $connectionName ??= config('database.default');
+        if ($connectionName === null) {
+            $this->columns = [];
 
-        unset($this->columns[$connectionName]);
+            return;
+        }
 
-        Cache::forget(
-            "_schema:columns:{$connectionName}",
+        if ($table === null) {
+            unset($this->columns[$connectionName]);
+
+            return;
+        }
+
+        unset($this->columns[$connectionName][$table]);
+    }
+
+    private function connectionName(Connection $connection): string
+    {
+        return (string) (
+            $connection->getName()
+            ?: config('database.default')
+            ?: 'default'
         );
     }
 }
