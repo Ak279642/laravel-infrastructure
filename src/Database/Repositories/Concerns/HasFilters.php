@@ -272,10 +272,18 @@ trait HasFilters
                 );
             }
 
-            $searchable = array_values(array_intersect(
+            $allowedRequested = array_values(array_intersect(
                 $requested,
                 $searchable,
             ));
+
+            // If a caller supplied only disallowed columns, ignore that
+            // override and retain the repository's safe default search list.
+            // This avoids both unauthorized search expansion and accidentally
+            // turning a non-empty search into an unfiltered query.
+            if ($allowedRequested !== []) {
+                $searchable = $allowedRequested;
+            }
         }
 
         if ($searchable === []) {
