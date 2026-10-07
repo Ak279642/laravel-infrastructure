@@ -56,3 +56,42 @@ jobs:
 
       - name: Run tests
         run: composer test
+
+      - name: Run architecture tests
+        run: composer test:architecture
+
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Select quality-gate framework
+        run: |
+          composer require --dev --no-update \
+            "laravel/framework:^13.0" \
+            "orchestra/testbench:^11.0"
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Validate package
+        run: composer validate --strict
+
+      - name: Static analysis
+        run: composer analyse
+
+      - name: Formatting
+        run: composer format:check
+
+      - name: Architecture
+        run: composer test:architecture
+
+      - name: Security audit
+        run: composer audit
