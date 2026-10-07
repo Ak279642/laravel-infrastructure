@@ -44,6 +44,10 @@ final class RepositoryValidationService
         array $input,
         bool $resetContext = true,
     ): array {
+        $previousContext = $resetContext
+            ? []
+            : $this->context->all();
+
         if ($resetContext) {
             $this->context->clear();
         }
@@ -53,13 +57,13 @@ final class RepositoryValidationService
         } catch (Throwable $exception) {
             // Never leave partially resolved models available after a failed
             // validation/configuration/database operation.
-            $this->context->clear();
+            $this->restoreContext($previousContext);
 
             throw $exception;
         }
 
         if ($errors !== []) {
-            $this->context->clear();
+            $this->restoreContext($previousContext);
         }
 
         return $errors;
@@ -285,6 +289,18 @@ final class RepositoryValidationService
             static fn ($resolve): bool => is_array($resolve)
                 && ($resolve['field'] ?? null) === $field,
         ));
+    }
+
+    /**
+     * @param  array<string, Model|Collection>  $values
+     */
+    private function restoreContext(array $values): void
+    {
+        $this->context->clear();
+
+        foreach ($values as $key => $value) {
+            $this->context->put($key, $value);
+        }
     }
 
     private function resolveWhere(array $where, array $input): array
