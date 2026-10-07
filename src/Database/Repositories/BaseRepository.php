@@ -79,11 +79,15 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function all(array $columns = ['*']): Collection
     {
+        $columns = $this->safeColumns($columns);
+
         return $this->cacheRemember('all', fn () => $this->buildQuery()->get($columns), ['columns' => $columns]);
     }
 
     public function get(array $filters = [], array $columns = ['*']): Collection
     {
+        $columns = $this->safeColumns($columns);
+
         return $this->cacheRemember('get', fn () => $this->buildQuery($filters)->get($columns), [
             'filters' => $filters,
             'columns' => $columns,
@@ -93,6 +97,8 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function first(array $filters = [], array $columns = ['*']): ?Model
     {
+        $columns = $this->safeColumns($columns);
+
         return $this->cacheRemember('first', fn () => $this->buildQuery($filters)->first($columns), [
             'filters' => $filters,
             'columns' => $columns,
@@ -108,6 +114,8 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function find(int|string $id, array $with = [], array $columns = ['*']): ?Model
     {
+        $columns = $this->safeColumns($columns);
+
         if ($contextModel = $this->findFromContext($id, $with)) {
             return $contextModel;
         }
@@ -271,7 +279,12 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         string $pageName = 'page',
         ?int $page = null,
     ): LengthAwarePaginator {
-        return $this->buildQuery($filters)->paginate($perPage, $columns, $pageName, $page);
+        return $this->buildQuery($filters)->paginate(
+            $perPage,
+            $this->safeColumns($columns),
+            $pageName,
+            $page,
+        );
     }
 
     public function simplePaginate(
@@ -280,7 +293,12 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         string $pageName = 'page',
         ?int $page = null,
     ): Paginator {
-        return $this->buildQuery()->simplePaginate($perPage, $columns, $pageName, $page);
+        return $this->buildQuery()->simplePaginate(
+            $perPage,
+            $this->safeColumns($columns),
+            $pageName,
+            $page,
+        );
     }
 
     public function cursorPaginate(
@@ -289,7 +307,12 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         string $cursorName = 'cursor',
         mixed $cursor = null,
     ): CursorPaginator {
-        return $this->buildQuery()->cursorPaginate($perPage, $columns, $cursorName, $cursor);
+        return $this->buildQuery()->cursorPaginate(
+            $perPage,
+            $this->safeColumns($columns),
+            $cursorName,
+            $cursor,
+        );
     }
 
     public function chunk(int $count, callable $callback): bool
@@ -331,6 +354,20 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             return null;
         }
 
+        foreach (array_keys($fields) as $field) {
+            if (! is_string($field)) {
+                throw new \InvalidArgumentException('Duplicate-check fields must use string column names.');
+            }
+
+            $column = str_ends_with($field, '.*')
+                ? substr($field, 0, -2)
+                : $field;
+
+            $this->safeModelColumn($column);
+        }
+
+        $where = $this->safeWhere($where);
+
         return $this->cacheRemember('findDuplicate', function () use ($fields, $ignore, $where): ?Model {
             $query = $this->query();
             if ($ignore !== null) {
@@ -366,6 +403,8 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             return new Collection();
         }
 
+        $field = $this->safeModelColumn($field);
+        $where = $this->safeWhere($where);
         $values = array_values(array_unique($values));
         $context = $this->validationContext ?? app(ValidationContext::class);
         $resolved = $context->findManyMatching(
@@ -428,6 +467,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function findWhere(mixed $id, array $where = [], array $with = []): ?Model
     {
+        $where = $this->safeWhere($where);
         $context = $this->validationContext ?? app(ValidationContext::class);
         $conditions = [
             $this->model->getKeyName() => $id,
@@ -512,6 +552,46 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         }
 
         return $query;
+    }
+
+    /**
+     * @param  list<string>  $columns
+     * @return list<string>
+     */
+    protected function safeColumns(array $columns): array
+    {
+        if ($columns === []) {
+            throw new \InvalidArgumentException('At least one selected column is required.');
+        }
+
+        foreach ($columns as $column) {
+            if (! is_string($column)) {
+                throw new \InvalidArgumentException('Selected columns must be strings.');
+            }
+
+            if ($column !== '*') {
+                $this->safeModelColumn($column);
+            }
+        }
+
+        return array_values($columns);
+    }
+
+    /**
+     * @param  array<string, mixed>  $where
+     * @return array<string, mixed>
+     */
+    protected function safeWhere(array $where): array
+    {
+        foreach (array_keys($where) as $column) {
+            if (! is_string($column)) {
+                throw new \InvalidArgumentException('Where conditions must use string column names.');
+            }
+
+            $this->safeModelColumn($column);
+        }
+
+        return $where;
     }
 
     protected function safeModelColumn(string $column): string
