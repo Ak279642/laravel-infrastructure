@@ -24,6 +24,7 @@ final class CacheInvalidator
     public function invalidateTags(array $tags): bool
     {
         $tags = CacheTag::tags(...$tags);
+
         return $tags !== [] && $this->cache->flushTags($tags);
     }
 
