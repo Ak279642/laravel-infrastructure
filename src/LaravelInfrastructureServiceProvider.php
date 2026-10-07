@@ -8,14 +8,18 @@ use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
 use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
+use Ak279642\LaravelInfrastructure\Exceptions\ApiExceptionRenderer;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
 use Ak279642\LaravelInfrastructure\Slugs\SlugGenerator;
 use Ak279642\LaravelInfrastructure\Transactions\LaravelTransactionManager;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
+use Illuminate\Http\Request;
 use Illuminate\Support\ServiceProvider;
+use Throwable;
 
 final class LaravelInfrastructureServiceProvider extends ServiceProvider
 {
@@ -50,6 +54,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->app->scoped(ValidationContext::class, fn (): ValidationContext => new ValidationContext());
 
         $this->app->bind(TransactionManager::class, LaravelTransactionManager::class);
+        $this->app->singleton(ApiExceptionRenderer::class);
     }
 
     public function boot(): void
@@ -57,5 +62,30 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/laravel-infrastructure.php' => config_path('laravel-infrastructure.php'),
         ], 'laravel-infrastructure-config');
+
+        if (! (bool) config(
+            'laravel-infrastructure.responses.exception_renderer_enabled',
+            true,
+        )) {
+            return;
+        }
+
+        $handler = $this->app->make(ExceptionHandlerContract::class);
+
+        if (! method_exists($handler, 'renderable')) {
+            return;
+        }
+
+        $renderer = $this->app->make(ApiExceptionRenderer::class);
+
+        $handler->renderable(
+            function (Throwable $exception, Request $request) use ($renderer) {
+                if (! $renderer->shouldRender($request)) {
+                    return null;
+                }
+
+                return $renderer->render($exception, $request);
+            },
+        );
     }
 }
