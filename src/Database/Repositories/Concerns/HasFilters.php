@@ -16,22 +16,31 @@ trait HasFilters
                 continue;
             }
 
-            if (! $this->isFilterAllowed($key)) {
-                $this->handleDisallowedFilter($key);
-
-                continue;
-            }
-
             if (str_contains($key, '.')) {
+                if (! $this->isRelationFilterAllowed($key)) {
+                    $this->handleDisallowedFilter($key);
+
+                    continue;
+                }
+
                 $relation = substr($key, 0, (int) strrpos($key, '.'));
 
-                if (! $this->isRelationAllowed($relation)) {
+                if (
+                    ! $this->isRelationAllowed($relation)
+                    || ! $this->relationColumnExists($key)
+                ) {
                     $this->handleDisallowedFilter($key);
 
                     continue;
                 }
 
                 $this->applyNestedFilter($query, $key, $value);
+
+                continue;
+            }
+
+            if (! $this->isFilterAllowed($key)) {
+                $this->handleDisallowedFilter($key);
 
                 continue;
             }
@@ -126,7 +135,50 @@ trait HasFilters
 
     protected function isFilterAllowed(string $key): bool
     {
-        return in_array($key, $this->allowedFilters, true);
+        return $this->isSafeIdentifier($key)
+            && in_array($key, $this->allowedFilters, true);
+    }
+
+    protected function isRelationFilterAllowed(string $key): bool
+    {
+        if (! $this->isSafeDottedIdentifier($key)) {
+            return false;
+        }
+
+        $legacy = array_values(array_filter(
+            $this->allowedFilters,
+            static fn ($filter): bool => is_string($filter)
+                && str_contains($filter, '.'),
+        ));
+
+        return in_array(
+            $key,
+            array_values(array_unique([
+                ...$legacy,
+                ...$this->allowedRelationFilters,
+            ])),
+            true,
+        );
+    }
+
+    protected function isSafeIdentifier(string $identifier): bool
+    {
+        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $identifier) === 1;
+    }
+
+    protected function isSafeDottedIdentifier(string $identifier): bool
+    {
+        if ($identifier === '' || ! str_contains($identifier, '.')) {
+            return false;
+        }
+
+        foreach (explode('.', $identifier) as $segment) {
+            if (! $this->isSafeIdentifier($segment)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     protected function applySearch(Builder $query, string $search, ?array $searchColumns = null): Builder
@@ -155,12 +207,19 @@ trait HasFilters
                 $q->where(function (Builder $sub) use ($term, $like, $searchable): void {
                     foreach ($searchable as $column) {
                         if (str_contains($column, '.')) {
-                            $this->applyNestedSearch($sub, $column, $term, $like);
+                            if (
+                                $this->isSafeDottedIdentifier($column)
+                                && $this->relationColumnExists($column)
+                            ) {
+                                $this->applyNestedSearch($sub, $column, $term, $like);
+                            }
 
                             continue;
                         }
 
-                        $sub->orWhere($column, $like, "%{$term}%");
+                        if ($this->isSafeIdentifier($column)) {
+                            $sub->orWhere($column, $like, "%{$term}%");
+                        }
                     }
                 });
             }
