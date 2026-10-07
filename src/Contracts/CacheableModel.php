@@ -8,8 +8,10 @@ interface CacheableModel
 {
     public static function cacheTag(): string;
 
+    /** @return list<string> */
     public function getCacheTags(): array;
 
+    /** @param list<string> $relations @return list<string> */
     public function getCacheDependencyTags(
         mixed $result = null,
         array $relations = []

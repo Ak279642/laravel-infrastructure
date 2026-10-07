@@ -52,7 +52,7 @@ final class CacheTag
         return array_keys($result);
     }
 
-    /** @return list<string> */
+    /** @param list<string> ...$groups @return list<string> */
     public static function merge(array ...$groups): array
     {
         return self::tags(...$groups);

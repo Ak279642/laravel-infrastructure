@@ -10,7 +10,7 @@ use Ak279642\LaravelInfrastructure\Cache\Events\CacheInvalidated;
 use Ak279642\LaravelInfrastructure\Cache\Events\CacheMiss;
 use DateInterval;
 use DateTimeInterface;
-use Illuminate\Cache\Repository;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Cache\TaggableStore;
 use Illuminate\Cache\TaggedCache;
 use Illuminate\Contracts\Cache\Factory;
@@ -23,7 +23,7 @@ use Throwable;
 
 final class CacheManager
 {
-    private Repository $store;
+    private CacheRepository $store;
 
     private bool $tagsSupported;
 
@@ -36,7 +36,7 @@ final class CacheManager
         $this->tagsSupported = $this->resolveTagsSupport();
     }
 
-    public function get(
+    /** @param list<string> $tags */\n    public function get(
         string $key,
         mixed $default = null,
         array $tags = [],
@@ -67,7 +67,7 @@ final class CacheManager
      * @param  list<string>  $keys
      * @return array<string, mixed>
      */
-    public function many(
+    /** @param list<string> $keys @param list<string> $tags @return array<string, mixed> */\n    public function many(
         array $keys,
         array $tags = [],
     ): array {
@@ -93,7 +93,7 @@ final class CacheManager
         return $this->store($tags)->many($normalizedKeys);
     }
 
-    public function put(
+    /** @param list<string> $tags */\n    public function put(
         string $key,
         mixed $value,
         DateInterval|DateTimeInterface|int|null $ttl = null,
@@ -119,7 +119,7 @@ final class CacheManager
     /**
      * @param  array<string, mixed>  $values
      */
-    public function putMany(
+    /** @param array<string, mixed> $values @param list<string> $tags */\n    public function putMany(
         array $values,
         DateInterval|DateTimeInterface|int|null $ttl = null,
         array $tags = [],
@@ -162,7 +162,7 @@ final class CacheManager
         );
     }
 
-    public function forever(
+    /** @param list<string> $tags */\n    public function forever(
         string $key,
         mixed $value,
         array $tags = [],
@@ -175,7 +175,7 @@ final class CacheManager
         );
     }
 
-    public function putForever(
+    /** @param list<string> $tags */\n    public function putForever(
         string $key,
         mixed $value,
         array $tags = [],
@@ -187,7 +187,7 @@ final class CacheManager
         );
     }
 
-    public function remember(
+    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function remember(
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
         callable $callback,
@@ -290,7 +290,7 @@ final class CacheManager
         }
     }
 
-    public function rememberForever(
+    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function rememberForever(
         string $key,
         callable $callback,
         array $tags = [],
@@ -303,7 +303,7 @@ final class CacheManager
         );
     }
 
-    public function bypass(
+    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function bypass(
         string $key,
         callable $callback,
         array $tags = [],
@@ -317,7 +317,7 @@ final class CacheManager
         );
     }
 
-    public function pull(
+    /** @param list<string> $tags */\n    public function pull(
         string $key,
         mixed $default = null,
         array $tags = [],
@@ -337,7 +337,7 @@ final class CacheManager
         );
     }
 
-    public function add(
+    /** @param list<string> $tags */\n    public function add(
         string $key,
         mixed $value,
         DateInterval|DateTimeInterface|int|null $ttl = null,
@@ -367,7 +367,7 @@ final class CacheManager
         );
     }
 
-    public function increment(
+    /** @param list<string> $tags */\n    public function increment(
         string $key,
         int $amount = 1,
         array $tags = [],
@@ -387,7 +387,7 @@ final class CacheManager
         );
     }
 
-    public function decrement(
+    /** @param list<string> $tags */\n    public function decrement(
         string $key,
         int $amount = 1,
         array $tags = [],
@@ -407,7 +407,7 @@ final class CacheManager
         );
     }
 
-    public function has(
+    /** @param list<string> $tags */\n    public function has(
         string $key,
         array $tags = [],
     ): bool {
@@ -423,14 +423,14 @@ final class CacheManager
         return $this->store($tags)->has($key);
     }
 
-    public function missing(
+    /** @param list<string> $tags */\n    public function missing(
         string $key,
         array $tags = [],
     ): bool {
         return ! $this->has($key, $tags);
     }
 
-    public function forget(
+    /** @param list<string> $tags */\n    public function forget(
         string $key,
         array $tags = [],
     ): bool {
@@ -446,7 +446,7 @@ final class CacheManager
         return $this->store($tags)->forget($key);
     }
 
-    public function forgetMany(
+    /** @param list<string> $keys @param list<string> $tags */\n    public function forgetMany(
         array $keys,
         array $tags = [],
     ): bool {
@@ -461,7 +461,7 @@ final class CacheManager
         return $success;
     }
 
-    public function refresh(
+    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function refresh(
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
         callable $callback,
@@ -495,7 +495,7 @@ final class CacheManager
         return null;
     }
 
-    public function flushTags(array $tags): bool
+    /** @param list<string> $tags */\n    public function flushTags(array $tags): bool
     {
         $normalizedTags = CacheTag::tags(...$tags);
 
@@ -570,7 +570,7 @@ final class CacheManager
             : $prefix.':'.$key;
     }
 
-    private function resolveStore(): Repository
+    private function resolveStore(): CacheRepository
     {
         return $this->cache->store($this->storeName);
     }
@@ -580,7 +580,7 @@ final class CacheManager
         return $this->store->getStore() instanceof TaggableStore;
     }
 
-    private function store(array $tags = []): Repository|TaggedCache
+    /** @param list<string> $tags */\n    private function store(array $tags = []): CacheRepository|TaggedCache
     {
         if ($tags === []) {
             return $this->store;
@@ -589,7 +589,7 @@ final class CacheManager
         return $this->store->tags($tags);
     }
 
-    private function tagsUnsupported(array $tags): bool
+    /** @param list<string> $tags */\n    private function tagsUnsupported(array $tags): bool
     {
         return $tags !== [] && ! $this->tagsSupported;
     }
@@ -610,8 +610,8 @@ final class CacheManager
         );
     }
 
-    private function populate(
-        Repository|TaggedCache $store,
+    /** @param callable(): mixed $callback */\n    private function populate(
+        CacheRepository|TaggedCache $store,
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
         callable $callback,
@@ -623,8 +623,8 @@ final class CacheManager
         return $value;
     }
 
-    private function populateAfterLock(
-        Repository|TaggedCache $store,
+    /** @param callable(): mixed $callback @param list<string> $tags */\n    private function populateAfterLock(
+        CacheRepository|TaggedCache $store,
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
         callable $callback,
@@ -644,8 +644,8 @@ final class CacheManager
         );
     }
 
-    private function write(
-        Repository|TaggedCache $store,
+    /** @param mixed $value */\n    private function write(
+        CacheRepository|TaggedCache $store,
         string $key,
         mixed $value,
         DateInterval|DateTimeInterface|int|null $ttl,
@@ -657,7 +657,7 @@ final class CacheManager
         return $store->put($key, $value, $ttl);
     }
 
-    private function bypassNormalized(
+    /** @param callable(): mixed $callback @param list<string> $tags */\n    private function bypassNormalized(
         string $normalizedKey,
         callable $callback,
         array $tags,

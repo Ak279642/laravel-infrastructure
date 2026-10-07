@@ -15,6 +15,7 @@ namespace Ak279642\LaravelInfrastructure\Cache;
  */
 final readonly class UnorderedArray
 {
+    /** @param array<array-key, mixed> $values */
     public function __construct(
         public array $values
     ) {}

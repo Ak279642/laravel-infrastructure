@@ -17,6 +17,7 @@ final class CacheKey
 {
     private function __construct() {}
 
+    /** @param array<array-key, mixed> $params */
     public static function make(string $resource, array $params = []): string
     {
         $resource = self::normalizeResource($resource);
@@ -27,6 +28,7 @@ final class CacheKey
             : $resource.':'.self::hash($params);
     }
 
+    /** @param array<array-key, mixed>|Collection<array-key, mixed> $value */
     public static function unordered(array|Collection $value): UnorderedArray
     {
         return new UnorderedArray(
@@ -34,6 +36,7 @@ final class CacheKey
         );
     }
 
+    /** @param array<array-key, mixed> $params */
     public static function readable(string $resource, array $params = []): string
     {
         $resource = self::normalizeResource($resource);
@@ -74,6 +77,7 @@ final class CacheKey
         return $resource;
     }
 
+    /** @param array<array-key, mixed> $data */
     private static function hash(array $data): string
     {
         ksort($data);
@@ -161,6 +165,7 @@ final class CacheKey
         return $normalized;
     }
 
+    /** @param array<array-key, mixed> $values @return array<array-key, mixed> */
     private static function normalizeUnordered(array $values): array
     {
         $normalized = self::normalize($values);
