@@ -77,7 +77,13 @@ trait HasCache
 
     protected function initializeCache(): void
     {
+        $modelCacheEnabled = ! method_exists(
+            $this->model,
+            'usesInfrastructureCache',
+        ) || $this->model->usesInfrastructureCache();
+
         $this->cacheEnabled = $this->cacheEnabled
+            && $modelCacheEnabled
             && (bool) config(
                 'laravel-infrastructure.cache.enabled',
                 true,

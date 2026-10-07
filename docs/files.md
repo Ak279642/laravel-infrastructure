@@ -35,3 +35,41 @@ Automatic model uploads use compensating cleanup.
 - On the default soft-delete configuration, a soft delete keeps the file; force delete removes it. Non-soft deletes remove their configured files normally.
 
 This prevents failed inserts, failed updates, and rolled-back transactions from leaving newly uploaded orphan files while preserving the file referenced by the committed database row.
+
+
+## Built-in asset route
+
+The package can serve stored files through `AssetsController`.
+
+Default route:
+
+```text
+GET /infrastructure/assets/{disk}/{path}
+laravel-infrastructure.assets.show
+```
+
+Defaults:
+
+```php
+'assets' => [
+    'enabled' => true,
+    'prefix' => 'infrastructure/assets',
+    'signed' => true,
+    'allowed_disks' => ['public'],
+],
+```
+
+Generate a temporary signed URL:
+
+```php
+$url = URL::temporarySignedRoute(
+    'laravel-infrastructure.assets.show',
+    now()->addMinutes(15),
+    [
+        'disk' => 'public',
+        'path' => $model->file_path,
+    ],
+);
+```
+
+Private disks are never enabled implicitly. Add them to `allowed_disks` explicitly and keep signed URLs enabled.

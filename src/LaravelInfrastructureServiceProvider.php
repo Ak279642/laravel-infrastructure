@@ -13,6 +13,7 @@ use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Exceptions\ApiExceptionRenderer;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
+use Ak279642\LaravelInfrastructure\Http\Controllers\AssetsController;
 use Ak279642\LaravelInfrastructure\Http\Middleware\RejectSensitivePaths;
 use Ak279642\LaravelInfrastructure\Http\Middleware\SecurityHeaders;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
@@ -109,6 +110,34 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             'infrastructure.reject-sensitive-paths',
             RejectSensitivePaths::class,
         );
+
+        if ((bool) config(
+            'laravel-infrastructure.assets.enabled',
+            true,
+        )) {
+            $prefix = trim(
+                (string) config(
+                    'laravel-infrastructure.assets.prefix',
+                    'infrastructure/assets',
+                ),
+                '/',
+            );
+
+            $route = $router
+                ->get(
+                    $prefix.'/{disk}/{path}',
+                    AssetsController::class,
+                )
+                ->where('path', '.*')
+                ->name('laravel-infrastructure.assets.show');
+
+            if ((bool) config(
+                'laravel-infrastructure.assets.signed',
+                true,
+            )) {
+                $route->middleware('signed');
+            }
+        }
 
         if ($this->app->runningInConsole()) {
             $this->commands([

@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added per-model repository cache enable/disable through model `cacheOptions()`.
+- Added signed `AssetsController` file-serving route with configurable prefix and disk allow-list.
 - Added `infrastructure:database-backup` for MySQL/MariaDB and PostgreSQL logical backups with optional gzip compression, schema-only exclusions, Laravel filesystem storage, and retention pruning.
 - Added opt-in `SecurityHeaders` and `RejectSensitivePaths` middleware with package middleware aliases.
 

@@ -89,6 +89,37 @@ final class RepositoryCacheHardeningTest extends TestCase
         self::assertCount(0, $repository->get());
     }
 
+    public function test_repository_cache_can_be_disabled_for_one_model(): void
+    {
+        $repository = new CacheDisabledUserRepository(
+            new CacheDisabledUser,
+            $this->app->make(CacheManager::class),
+        );
+
+        $repository->create([
+            'account_id' => 1,
+            'name' => 'Initial',
+            'status' => 'active',
+        ]);
+
+        self::assertSame(
+            'Initial',
+            $repository->get()->first()->name,
+        );
+
+        DB::table('cache_hardening_users')
+            ->where('id', 1)
+            ->update(['name' => 'Direct Write']);
+
+        self::assertSame(
+            'Direct Write',
+            $repository->get()->first()->name,
+        );
+        self::assertFalse(
+            (new CacheDisabledUser)->usesInfrastructureCache(),
+        );
+    }
+
     public function test_repository_cache_can_be_disabled_globally_without_changing_repository_code(): void
     {
         $this->app['config']->set(
@@ -481,4 +512,26 @@ final class CacheHardeningRegion extends Model implements CacheableModel
     protected $table = 'cache_hardening_regions';
 
     protected $guarded = [];
+}
+
+
+final class CacheDisabledUserRepository extends BaseRepository
+{
+    protected array $allowedFilters = ['status'];
+}
+
+final class CacheDisabledUser extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'cache_hardening_users';
+
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return [
+            'enabled' => false,
+        ];
+    }
 }

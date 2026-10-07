@@ -67,6 +67,15 @@ final class Product extends BaseModel
         'document_path',
     ];
 
+    // Model-level repository cache.
+    // Default: true. Set false to disable cache only for Product.
+    protected function cacheOptions(): array
+    {
+        return [
+            'enabled' => true,
+        ];
+    }
+
     // Multiple slug columns.
     protected function slugFields(): array
     {
@@ -89,19 +98,36 @@ final class Product extends BaseModel
         return [
             'image_path' => [
                 'disk' => 'public',
+                // default: config files.disk -> "public"
+
                 'directory' => 'products/images',
+                // default: config files.directory -> "uploads"
+
                 'auto_upload' => true,
+                // default: true
+
                 'delete_on_replace' => true,
+                // default: true
+
                 'delete_on_delete' => true,
+                // default: true
+
                 'delete_on_soft_delete' => false,
+                // default: false
+
+                'audit' => true,
+                // default: true when a model-owned directory is configured
+
+                // 'filename' => null,
+                // default: null -> generated UUID + uploaded extension
+                // may also be a string or callable
             ],
 
             'document_path' => [
                 'disk' => 'private',
                 'directory' => 'products/documents',
-                'auto_upload' => true,
-                'delete_on_replace' => true,
-                'delete_on_delete' => true,
+
+                // All omitted options use the defaults above.
             ],
         ];
     }
@@ -543,7 +569,22 @@ $oldestProduct = $products
 
 Inject `TransactionManager` when several repository writes must succeed or fail as one unit.
 
-`run()` starts the database transaction, commits when the callback finishes successfully, rolls everything back when an exception is thrown, and can retry deadlocks when `attempts` is greater than 1.
+### Why `run()`?
+
+`run()` is the package transaction boundary. It is a small wrapper around Laravel's database transaction API so Controllers and Actions use the same injectable transaction contract.
+
+```text
+run(callback)
+    -> begin DB transaction
+    -> execute every repository write inside callback
+    -> callback succeeds: COMMIT
+    -> callback throws: ROLLBACK
+    -> attempts > 1: Laravel can retry deadlock/serialization failures
+```
+
+Without a transaction, the first repository write may succeed while a later write fails. With `run()`, those writes are atomic.
+
+You do **not** call `run()` for a single normal `find()` or simple one-record update. Use it when multiple writes belong to one business operation.
 
 ```php
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
@@ -879,6 +920,38 @@ Disable completely:
 LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=false
 ```
 
+## Enable / disable cache for one model
+
+Caching is enabled for models by default.
+
+```php
+protected function cacheOptions(): array
+{
+    return [
+        'enabled' => true, // default
+    ];
+}
+```
+
+Disable repository caching only for this model:
+
+```php
+protected function cacheOptions(): array
+{
+    return [
+        'enabled' => false,
+    ];
+}
+```
+
+Priority:
+
+```text
+global cache false -> cache disabled everywhere
+global cache true + model false -> disabled for that model
+global cache true + model true -> normal repository caching
+```
+
 ## Bypass cache for one operation
 
 ```php
@@ -983,12 +1056,14 @@ protected function fileAttributes(): array
 {
     return [
         'avatar_path' => [
-            'disk' => 'public',
-            'directory' => 'users/avatars',
-            'auto_upload' => true,
-            'delete_on_replace' => true,
-            'delete_on_delete' => true,
-            'delete_on_soft_delete' => false,
+            'disk' => 'public',              // default: "public"
+            'directory' => 'users/avatars', // default: "uploads"
+            'auto_upload' => true,           // default: true
+            'delete_on_replace' => true,     // default: true
+            'delete_on_delete' => true,      // default: true
+            'delete_on_soft_delete' => false,// default: false
+            'audit' => true,                 // default: true
+            // 'filename' => null,            // default: UUID filename
         ],
     ];
 }
@@ -1006,47 +1081,80 @@ The package handles storage path assignment, replacement cleanup, failed-save cl
 
 ---
 
-## Access uploaded documents
+## Access uploaded files with the package AssetsController
 
-Public-disk files can use the package storage URL helper:
+The package registers this route by default:
+
+```text
+GET /infrastructure/assets/{disk}/{path}
+route name: laravel-infrastructure.assets.show
+controller: AssetsController
+```
+
+The route is **signed by default** and only the `public` disk is allowed by default.
+
+Create a temporary signed URL:
 
 ```php
-use Ak279642\LaravelInfrastructure\Files\FileStorage;
+use Illuminate\Support\Facades\URL;
 
-$url = app(FileStorage::class)->url(
-    $product->image_path,
-    'public',
+$url = URL::temporarySignedRoute(
+    'laravel-infrastructure.assets.show',
+    now()->addMinutes(15),
+    [
+        'disk' => 'public',
+        'path' => $product->image_path,
+    ],
 );
 ```
 
-For private/protected documents, expose an application route by model ID instead of accepting an arbitrary filesystem path:
+Return it from a Resource:
 
 ```php
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Storage;
+final class ProductResource extends JsonResource
+{
+    public function toArray($request): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
 
-Route::get(
-    '/products/{product}/document',
-    function (Product $product) {
-        // Add your authorization/policy check here.
-        abort_unless(
-            is_string($product->document_path)
-                && Storage::disk('private')->exists(
-                    $product->document_path,
-                ),
-            404,
-        );
-
-        return Storage::disk('private')->download(
-            $product->document_path,
-        );
-    },
-)->name('products.document');
+            'image_url' => URL::temporarySignedRoute(
+                'laravel-infrastructure.assets.show',
+                now()->addMinutes(15),
+                [
+                    'disk' => 'public',
+                    'path' => $this->image_path,
+                ],
+            ),
+        ];
+    }
+}
 ```
 
-This keeps the stored path server-controlled and lets the application enforce authorization before serving private files.
+Asset route config:
 
-> The package currently provides file storage/lifecycle helpers, but does not auto-register a public download route. The route above is the safe application-level pattern.
+```php
+'assets' => [
+    'enabled' => true, // default
+    'prefix' => 'infrastructure/assets', // default
+    'signed' => true, // default
+    'allowed_disks' => [
+        'public', // default
+        // 'private', // explicitly opt in when needed
+    ],
+],
+```
+
+For a private disk, add the disk to `allowed_disks` and keep signed URLs enabled. The controller validates the disk allow-list, signature, safe relative path, and file existence before serving the file.
+
+Disable the package asset route completely:
+
+```php
+'assets' => [
+    'enabled' => false,
+],
+```
 
 ---
 

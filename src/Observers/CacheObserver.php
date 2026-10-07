@@ -46,6 +46,13 @@ final class CacheObserver implements ShouldHandleEventsAfterCommit
             return;
         }
 
+        if (
+            method_exists($model, 'usesInfrastructureCache')
+            && ! $model->usesInfrastructureCache()
+        ) {
+            return;
+        }
+
         $tags = $model->getCacheInvalidationTags();
 
         if ($tags === []) {

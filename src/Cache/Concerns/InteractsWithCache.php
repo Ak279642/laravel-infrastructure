@@ -19,6 +19,24 @@ use Throwable;
  */
 trait InteractsWithCache
 {
+    /**
+     * Override cache behavior per model.
+     *
+     * @return array{enabled?:bool}
+     */
+    protected function cacheOptions(): array
+    {
+        return [];
+    }
+
+    public function usesInfrastructureCache(): bool
+    {
+        return (bool) (
+            $this->cacheOptions()['enabled']
+            ?? true
+        );
+    }
+
     public static function bootInteractsWithCache(): void
     {
         static::created(function (self $model): void {
@@ -50,6 +68,10 @@ trait InteractsWithCache
     private function runInfrastructureCacheObserverAfterCommit(
         string $method,
     ): void {
+        if (! $this->usesInfrastructureCache()) {
+            return;
+        }
+
         $callback = function () use ($method): void {
             $observer = app(CacheObserver::class);
             $observer->{$method}($this);

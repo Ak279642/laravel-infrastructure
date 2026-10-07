@@ -40,6 +40,24 @@ return [
         'auto_upload' => true,
     ],
 
+    'assets' => [
+        // Signed package route for serving storage files.
+        'enabled' => env(
+            'LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED',
+            true,
+        ),
+        'prefix' => env(
+            'LARAVEL_INFRASTRUCTURE_ASSETS_PREFIX',
+            'infrastructure/assets',
+        ),
+        'signed' => env(
+            'LARAVEL_INFRASTRUCTURE_ASSETS_SIGNED',
+            true,
+        ),
+        // Private disks must be explicitly added by the host application.
+        'allowed_disks' => ['public'],
+    ],
+
     'storage_audit' => [
         // Explicit opt-in only. The command never discovers/scans App models.
         'models' => [],
