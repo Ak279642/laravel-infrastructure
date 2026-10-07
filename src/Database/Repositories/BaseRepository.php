@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Collection as BaseCollection;
 use Illuminate\Support\LazyCollection;
 
@@ -208,8 +209,14 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function forceDelete(int|string|Model $id): bool
     {
-        $model = $id instanceof Model ? $id : $this->query()->withTrashed()->findOrFail($id);
-        $deleted = method_exists($model, 'forceDelete') ? (bool) $model->forceDelete() : (bool) $model->delete();
+        $model = $id instanceof Model
+            ? $id
+            : $this->query()
+                ->withoutGlobalScope(SoftDeletingScope::class)
+                ->findOrFail($id);
+        $deleted = is_callable([$model, 'forceDelete'])
+            ? (bool) call_user_func([$model, 'forceDelete'])
+            : (bool) $model->delete();
 
         if ($deleted) {
             $this->clearCache();
@@ -223,11 +230,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     public function restore(int|string|Model $id): bool
     {
         $model = $id instanceof Model ? $id : $this->query()->withTrashed()->findOrFail($id);
-        if (! method_exists($model, 'restore')) {
+        if (! is_callable([$model, 'restore'])) {
             return false;
         }
 
-        $restored = (bool) $model->restore();
+        $restored = (bool) call_user_func([$model, 'restore']);
 
         if ($restored) {
             $this->clearCache();
@@ -589,7 +596,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     }
 
     /**
-     * @param  list<string>  $columns
+     * @param  array<int, mixed>  $columns
      * @return list<string>
      */
     protected function safeColumns(array $columns): array
@@ -612,7 +619,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     }
 
     /**
-     * @param  array<string, mixed>  $where
+     * @param  array<array-key, mixed>  $where
      * @return array<string, mixed>
      */
     protected function safeWhere(array $where): array
