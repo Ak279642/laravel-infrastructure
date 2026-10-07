@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file.
 ## [1.1.0] - 2026-10-07
 
 ### Added
+- Multiple independent model slug fields through `slugFields()`, while preserving the existing single-slug API.
+- Automatic `UploadedFile` storage for configured model file attributes with per-field disks/directories.
+- Model-scoped `infrastructure:storage-audit` command with dry-run and explicit `--delete` cleanup.
+- Storage-audit safety rules that only scan explicitly registered models and model-owned directories.
+
 - Explicit repository query allow-lists with optional strict filter/sort/relation exceptions.
 - Reusable `BaseAction` and `BaseService` application infrastructure.
 - Repository-validation contract and atomic/scoped `ValidationContext` reuse.
