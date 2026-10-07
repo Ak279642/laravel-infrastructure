@@ -23,6 +23,6 @@ final readonly class RepositoryValidationRule
         public array $where = [],
         public array $existsIn = [],
         public array $resolve = [],
-        public ?int $ignore = null,
+        public int|string|null $ignore = null,
     ) {}
 }
