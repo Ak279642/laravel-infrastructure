@@ -72,7 +72,13 @@ trait HasCache
 
     protected function cacheRemember(string $operation, callable $callback, array $params = []): mixed
     {
-        if ($this->consumeCacheBypass() || ! $this->cacheEnabled) {
+        if ($this->consumeCacheBypass()) {
+            $this->getCacheManager()->notifyBypassed(static::class, $operation);
+
+            return $callback();
+        }
+
+        if (! $this->cacheEnabled) {
             return $callback();
         }
 
