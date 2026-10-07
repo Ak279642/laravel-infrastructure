@@ -3167,7 +3167,7 @@ Validate the Composer package:
 composer validate --strict
 ```
 
-The GitHub Actions compatibility matrix runs the complete test suite across PHP 8.2-8.4 and Laravel 10-13. It also includes an architecture suite that scans runtime package source/config for accidental host-application `App\` dependencies.
+The package includes an architecture suite that scans runtime package source/config for accidental host-application `App\` dependencies. Run the supported PHP/Laravel/database combinations in your own CI when publishing or changing compatibility claims.
 
 Run only the architecture guard with:
 
