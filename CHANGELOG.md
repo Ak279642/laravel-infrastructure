@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Deferred validation-context create/update/delete/restore mutations until transaction commit so rollbacks cannot leave phantom or stale identity-map models.
+- Made bulk update/delete/restore/force-delete keep ValidationContext coherent using the same transaction-aware rules as single-record repository writes.
+- Deferred model file replacement/delete cleanup until database commit so rolled-back writes never restore rows that reference already-deleted files.
+- Rejected custom upload filenames containing path separators or hidden dotfile names.
+- Rejected unsafe storage-audit directories and referenced paths before any deletion scan is allowed to proceed.
+
+### Notes
+- Newly uploaded files are still written before the database save so their paths can be persisted. If a surrounding database transaction later rolls back, the new file can remain orphaned; infrastructure:storage-audit is the supported cleanup path.
+
 ## [1.1.0] - 2026-10-07
 
 ### Added

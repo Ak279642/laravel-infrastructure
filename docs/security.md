@@ -13,3 +13,11 @@ Core boundaries:
 - cache invalidation is after-commit for cache-aware Eloquent models.
 
 Application code should never map untrusted request identifiers directly into low-level Eloquent/raw SQL APIs.
+
+
+Additional transactional/file guarantees:
+
+- validation-context write mutations are applied after commit and skipped on rollback;
+- file replacement/delete cleanup is applied after commit, preventing rollback from restoring a row whose old file was already deleted;
+- custom upload filenames cannot contain path separators or begin with a dot;
+- storage-audit directories and referenced paths reject absolute, traversal, null-byte, control-character, and malformed path segments before any deletion scan proceeds.

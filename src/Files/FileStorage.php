@@ -166,20 +166,34 @@ final class FileStorage
         }
 
         if (is_string($filename) && trim($filename) !== '') {
+            $filename = trim($filename);
+
             if (
                 str_contains($filename, "\0")
+                || str_contains($filename, '/')
+                || str_contains($filename, '\\')
+                || str_starts_with($filename, '.')
                 || preg_match('/[\x00-\x1F\x7F]/', $filename) === 1
             ) {
                 throw new RuntimeException('Filename contains unsafe characters.');
             }
 
-            $filename = basename(str_replace('\\', '/', trim($filename)));
-
-            if ($filename === '' || $filename === '.' || $filename === '..') {
+            if ($filename === '.' || $filename === '..') {
                 throw new RuntimeException('Filename is invalid.');
             }
 
-            if ($extension !== '' && pathinfo($filename, PATHINFO_EXTENSION) === '') {
+            $providedExtension = strtolower(
+                (string) pathinfo($filename, PATHINFO_EXTENSION),
+            );
+
+            if (
+                $providedExtension !== ''
+                && preg_match('/^[a-z0-9]{1,20}$/', $providedExtension) !== 1
+            ) {
+                throw new RuntimeException('Filename extension is invalid.');
+            }
+
+            if ($extension !== '' && $providedExtension === '') {
                 $filename .= '.'.$extension;
             }
 

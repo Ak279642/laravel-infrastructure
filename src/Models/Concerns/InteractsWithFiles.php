@@ -248,18 +248,15 @@ trait InteractsWithFiles
             return;
         }
 
-        $storage = app(FileStorage::class);
-
-        foreach ($this->infrastructurePendingFileDeletes as $file) {
-            $storage->delete($file['path'], $file['disk']);
-        }
-
+        $files = $this->infrastructurePendingFileDeletes;
         $this->infrastructurePendingFileDeletes = [];
+
+        $this->deleteInfrastructureFilesAfterCommit($files);
     }
 
     private function deleteInfrastructureModelFiles(bool $softDelete = false): void
     {
-        $storage = app(FileStorage::class);
+        $files = [];
 
         foreach ($this->configuredFileAttributes() as $column => $options) {
             if ($softDelete && ! (bool) ($options['delete_on_soft_delete'] ?? false)) {
@@ -276,11 +273,41 @@ trait InteractsWithFiles
                 continue;
             }
 
-            $storage->delete(
-                $path,
-                (string) ($options['disk']
+            $files[] = [
+                'path' => $path,
+                'disk' => (string) ($options['disk']
                     ?? config('laravel-infrastructure.files.disk', 'public')),
-            );
+            ];
         }
+
+        $this->deleteInfrastructureFilesAfterCommit($files);
+    }
+
+    /**
+     * @param  list<array{path:string,disk:string}>  $files
+     */
+    private function deleteInfrastructureFilesAfterCommit(array $files): void
+    {
+        if ($files === []) {
+            return;
+        }
+
+        $delete = static function () use ($files): void {
+            $storage = app(FileStorage::class);
+
+            foreach ($files as $file) {
+                $storage->delete($file['path'], $file['disk']);
+            }
+        };
+
+        $connection = $this->getConnection();
+
+        if ($connection->transactionLevel() > 0) {
+            $connection->afterCommit($delete);
+
+            return;
+        }
+
+        $delete();
     }
 }

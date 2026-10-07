@@ -385,18 +385,76 @@ final class StorageAuditCommand extends Command
 
     private function normalizeDirectory(string $directory): string
     {
-        return trim(
-            str_replace('\\', '/', trim($directory)),
-            '/',
-        );
+        if (str_contains($directory, "\0")) {
+            throw new \RuntimeException(
+                'Storage audit directory contains a null byte.',
+            );
+        }
+
+        $directory = str_replace('\\', '/', trim($directory));
+
+        if (
+            $directory === ''
+            || str_starts_with($directory, '/')
+            || preg_match('/^[A-Za-z]:\//', $directory) === 1
+        ) {
+            throw new \RuntimeException(
+                'Storage audit directory must be relative.',
+            );
+        }
+
+        $segments = explode('/', trim($directory, '/'));
+
+        foreach ($segments as $segment) {
+            if (
+                $segment === ''
+                || $segment === '.'
+                || $segment === '..'
+                || preg_match('/[\x00-\x1F\x7F]/', $segment) === 1
+            ) {
+                throw new \RuntimeException(
+                    'Storage audit directory contains an unsafe path segment.',
+                );
+            }
+        }
+
+        return implode('/', $segments);
     }
 
     private function normalizePath(string $path): string
     {
-        return ltrim(
-            str_replace('\\', '/', trim($path)),
-            '/',
-        );
+        if (str_contains($path, "\0")) {
+            throw new \RuntimeException(
+                'Storage audit path contains a null byte.',
+            );
+        }
+
+        $path = str_replace('\\', '/', trim($path));
+
+        if (
+            $path === ''
+            || str_starts_with($path, '/')
+            || preg_match('/^[A-Za-z]:\//', $path) === 1
+        ) {
+            throw new \RuntimeException(
+                'Storage audit path must be relative.',
+            );
+        }
+
+        foreach (explode('/', $path) as $segment) {
+            if (
+                $segment === ''
+                || $segment === '.'
+                || $segment === '..'
+                || preg_match('/[\x00-\x1F\x7F]/', $segment) === 1
+            ) {
+                throw new \RuntimeException(
+                    'Storage audit path contains an unsafe path segment.',
+                );
+            }
+        }
+
+        return $path;
     }
 
     private function belongsToDirectory(

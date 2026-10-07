@@ -5,12 +5,18 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 trait HasBulkCache
 {
     abstract protected function buildQuery(array $filters = []): Builder;
+
+    abstract protected function rememberValidationValue(Model|Collection $value): void;
+
+    abstract protected function forgetValidationModel(Model $model): void;
 
     /**
      * Bulk update records and invalidate all affected cache dependencies.
@@ -28,6 +34,7 @@ trait HasBulkCache
 
             if ($model->isDirty() && $model->save()) {
                 $affected++;
+                $this->rememberValidationValue($model);
             }
         }
 
@@ -47,6 +54,7 @@ trait HasBulkCache
         foreach ($models as $model) {
             if ($model->delete()) {
                 $affected++;
+                $this->forgetValidationModel($model);
             }
         }
 
@@ -78,6 +86,7 @@ trait HasBulkCache
         foreach ($models as $model) {
             if (call_user_func([$model, 'restore'])) {
                 $affected++;
+                $this->rememberValidationValue($model);
             }
         }
 
@@ -109,6 +118,7 @@ trait HasBulkCache
         foreach ($models as $model) {
             if (call_user_func([$model, 'forceDelete'])) {
                 $affected++;
+                $this->forgetValidationModel($model);
             }
         }
 

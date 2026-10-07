@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
+use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Models\BaseModel;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 final class ModelSlugFileAuditTest extends TestCase
 {
@@ -201,6 +204,154 @@ final class ModelSlugFileAuditTest extends TestCase
         );
     }
 
+    public function test_file_replacement_cleanup_waits_for_transaction_commit(): void
+    {
+        $model = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Transactional File',
+            'seo_title' => 'Transactional File SEO',
+            'avatar_path' => UploadedFile::fake()->create(
+                'original.jpg',
+                5,
+                'image/jpeg',
+            ),
+        ]);
+
+        $original = $model->avatar_path;
+        $replacement = null;
+
+        DB::beginTransaction();
+
+        try {
+            $model->avatar_path = UploadedFile::fake()->create(
+                'replacement.jpg',
+                5,
+                'image/jpeg',
+            );
+            $model->save();
+            $replacement = $model->avatar_path;
+
+            Storage::disk('public')->assertExists($original);
+            Storage::disk('public')->assertExists($replacement);
+
+            DB::commit();
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+
+            throw $exception;
+        }
+
+        self::assertIsString($replacement);
+        Storage::disk('public')->assertMissing($original);
+        Storage::disk('public')->assertExists($replacement);
+    }
+
+    public function test_file_replacement_rollback_preserves_database_referenced_file(): void
+    {
+        $model = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Rollback File',
+            'seo_title' => 'Rollback File SEO',
+            'avatar_path' => UploadedFile::fake()->create(
+                'original.jpg',
+                5,
+                'image/jpeg',
+            ),
+        ]);
+
+        $original = $model->avatar_path;
+
+        DB::beginTransaction();
+
+        try {
+            $model->avatar_path = UploadedFile::fake()->create(
+                'replacement.jpg',
+                5,
+                'image/jpeg',
+            );
+            $model->save();
+
+            Storage::disk('public')->assertExists($original);
+        } finally {
+            DB::rollBack();
+        }
+
+        $model->refresh();
+
+        self::assertSame($original, $model->avatar_path);
+        Storage::disk('public')->assertExists($original);
+    }
+
+    public function test_force_delete_rollback_does_not_delete_model_file(): void
+    {
+        $model = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Rollback Delete',
+            'seo_title' => 'Rollback Delete SEO',
+            'avatar_path' => UploadedFile::fake()->create(
+                'original.jpg',
+                5,
+                'image/jpeg',
+            ),
+        ]);
+
+        $path = $model->avatar_path;
+
+        DB::beginTransaction();
+
+        try {
+            $model->forceDelete();
+
+            Storage::disk('public')->assertExists($path);
+        } finally {
+            DB::rollBack();
+        }
+
+        Storage::disk('public')->assertExists($path);
+        self::assertNotNull(
+            ModelSlugFileAuditDocument::query()->find($model->getKey()),
+        );
+    }
+
+    public function test_custom_filenames_reject_paths_and_hidden_dotfiles(): void
+    {
+        $storage = $this->app->make(FileStorage::class);
+
+        foreach ([
+            '../escape.jpg',
+            'nested/escape.jpg',
+            '.htaccess',
+            'avatar.bad-ext',
+        ] as $filename) {
+            try {
+                $storage->store(
+                    UploadedFile::fake()->create(
+                        'avatar.jpg',
+                        5,
+                        'image/jpeg',
+                    ),
+                    directory: 'models/documents/avatars',
+                    disk: 'public',
+                    filename: $filename,
+                );
+
+                self::fail(
+                    "Expected unsafe filename [{$filename}] to be rejected.",
+                );
+            } catch (RuntimeException) {
+                self::assertTrue(true);
+            }
+        }
+    }
+
+    public function test_storage_audit_rejects_traversal_directory_configuration(): void
+    {
+        $this->app['config']->set(
+            'laravel-infrastructure.storage_audit.models',
+            [UnsafeStorageAuditDocument::class],
+        );
+
+        $this->artisan('infrastructure:storage-audit')
+            ->assertFailed();
+    }
+
     public function test_file_field_without_model_directory_is_not_auditable(): void
     {
         $model = new ModelSlugFileAuditDocument;
@@ -271,6 +422,23 @@ final class ModelSlugFileAuditDocument extends BaseModel
             'legacy_path' => [
                 'disk' => 'public',
                 'auto_upload' => true,
+                'audit' => true,
+            ],
+        ];
+    }
+}
+
+
+final class UnsafeStorageAuditDocument extends BaseModel
+{
+    protected $table = 'unsafe_storage_audit_documents';
+
+    protected function fileAttributes(): array
+    {
+        return [
+            'path' => [
+                'disk' => 'public',
+                'directory' => '../outside',
                 'audit' => true,
             ],
         ];

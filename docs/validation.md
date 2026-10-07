@@ -13,3 +13,6 @@
 - failed validation restores the previous context.
 
 This prevents repeated validation -> service -> repository lookups within one request/use case.
+
+
+Repository writes are transaction-aware. During an open database transaction, repository reads bypass the identity map and write-side context mutations are deferred until commit. Rolled-back creates, updates, deletes, restores, and bulk writes therefore cannot leave phantom or stale models in ValidationContext.

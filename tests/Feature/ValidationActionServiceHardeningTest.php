@@ -17,6 +17,7 @@ use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
@@ -405,6 +406,124 @@ final class ValidationActionServiceHardeningTest extends TestCase
                 Batch3Product::class,
                 $updated->getKey(),
             ),
+        );
+    }
+
+    public function test_rolled_back_repository_create_is_not_remembered_in_context(): void
+    {
+        $repository = $this->app->make(Batch3ProductRepository::class);
+        $context = $this->app->make(ValidationContext::class);
+        $context->clear();
+        $id = null;
+
+        DB::beginTransaction();
+
+        try {
+            $created = $repository->create(['name' => 'Transient']);
+            $id = $created->getKey();
+
+            self::assertNull(
+                $context->findModel(Batch3Product::class, $id),
+            );
+        } finally {
+            DB::rollBack();
+        }
+
+        self::assertNotNull($id);
+        self::assertNull(
+            $context->findModel(Batch3Product::class, $id),
+        );
+        self::assertNull(Batch3Product::query()->find($id));
+    }
+
+    public function test_rolled_back_repository_update_does_not_poison_existing_context(): void
+    {
+        $repository = $this->app->make(Batch3ProductRepository::class);
+        $context = $this->app->make(ValidationContext::class);
+        $product = $repository->create(['name' => 'Committed']);
+
+        DB::beginTransaction();
+
+        try {
+            $updated = $repository->update(
+                $product,
+                ['name' => 'Transient'],
+            );
+
+            self::assertSame('Transient', $updated->name);
+            self::assertSame(
+                'Committed',
+                $context->findModel(
+                    Batch3Product::class,
+                    $product->getKey(),
+                )?->name,
+            );
+        } finally {
+            DB::rollBack();
+        }
+
+        self::assertSame(
+            'Committed',
+            $context->findModel(
+                Batch3Product::class,
+                $product->getKey(),
+            )?->name,
+        );
+        self::assertSame(
+            'Committed',
+            $repository->findOrFail($product->getKey())->name,
+        );
+    }
+
+    public function test_committed_repository_update_refreshes_context_after_commit(): void
+    {
+        $repository = $this->app->make(Batch3ProductRepository::class);
+        $context = $this->app->make(ValidationContext::class);
+        $product = $repository->create(['name' => 'Before']);
+
+        DB::transaction(function () use ($repository, $product): void {
+            $repository->update(
+                $product,
+                ['name' => 'After'],
+            );
+        });
+
+        self::assertSame(
+            'After',
+            $context->findModel(
+                Batch3Product::class,
+                $product->getKey(),
+            )?->name,
+        );
+    }
+
+    public function test_bulk_writes_keep_validation_context_coherent(): void
+    {
+        $repository = $this->app->make(Batch3ItemRepository::class);
+        $context = $this->app->make(ValidationContext::class);
+        $item = $repository->create(['name' => 'Original']);
+
+        self::assertSame(
+            1,
+            $repository->bulkUpdate(
+                ['name' => 'Updated'],
+                ['name' => 'Original'],
+            ),
+        );
+        self::assertSame(
+            'Updated',
+            $context->findModel(
+                Batch3Item::class,
+                $item->getKey(),
+            )?->name,
+        );
+
+        self::assertSame(
+            1,
+            $repository->bulkDelete(['name' => 'Updated']),
+        );
+        self::assertNull(
+            $context->findModel(Batch3Item::class, $item->getKey()),
         );
     }
 

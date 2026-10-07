@@ -160,15 +160,14 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             $this->load($model, $with);
         }
 
-        ($this->validationContext ?? app(ValidationContext::class))
-            ->remember($model);
+        $this->rememberValidationValue($model);
 
         return $model;
     }
 
     public function update(int|string|Model $id, array $data, bool $refresh = false, array $with = []): Model
     {
-        $model = $id instanceof Model ? $id : $this->findOrFail($id);
+        $model = $this->resolveMutationModel($id);
         $model->fill($data);
         $model->save();
         $this->clearCache();
@@ -180,8 +179,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             $this->load($model, $with);
         }
 
-        ($this->validationContext ?? app(ValidationContext::class))
-            ->remember($model);
+        $this->rememberValidationValue($model);
 
         return $model;
     }
@@ -190,19 +188,19 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     {
         $model = $this->query()->updateOrCreate($attributes, $values);
         $this->clearCache();
+        $this->rememberValidationValue($model);
 
         return $model;
     }
 
     public function delete(int|string|Model $id): bool
     {
-        $model = $id instanceof Model ? $id : $this->findOrFail($id);
+        $model = $this->resolveMutationModel($id);
         $deleted = (bool) $model->delete();
 
         if ($deleted) {
             $this->clearCache();
-            ($this->validationContext ?? app(ValidationContext::class))
-                ->forgetModel($model);
+            $this->forgetValidationModel($model);
         }
 
         return $deleted;
@@ -210,11 +208,10 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function forceDelete(int|string|Model $id): bool
     {
-        $model = $id instanceof Model
-            ? $id
-            : $this->query()
-                ->withoutGlobalScope(SoftDeletingScope::class)
-                ->findOrFail($id);
+        $model = $this->resolveMutationModel(
+            $id,
+            withoutSoftDeleteScope: true,
+        );
         $deleted = in_array(
             SoftDeletes::class,
             class_uses_recursive($model::class),
@@ -225,8 +222,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
         if ($deleted) {
             $this->clearCache();
-            ($this->validationContext ?? app(ValidationContext::class))
-                ->forgetModel($model);
+            $this->forgetValidationModel($model);
         }
 
         return $deleted;
@@ -234,11 +230,10 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function restore(int|string|Model $id): bool
     {
-        $model = $id instanceof Model
-            ? $id
-            : $this->query()
-                ->withoutGlobalScope(SoftDeletingScope::class)
-                ->findOrFail($id);
+        $model = $this->resolveMutationModel(
+            $id,
+            withoutSoftDeleteScope: true,
+        );
         if (! in_array(
             SoftDeletes::class,
             class_uses_recursive($model::class),
@@ -251,8 +246,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
         if ($restored) {
             $this->clearCache();
-            ($this->validationContext ?? app(ValidationContext::class))
-                ->remember($model);
+            $this->rememberValidationValue($model);
         }
 
         return $restored;
@@ -460,13 +454,15 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $field = $this->safeModelColumn($field);
         $where = $this->safeWhere($where);
         $values = array_values(array_unique($values));
-        $context = $this->validationContext ?? app(ValidationContext::class);
-        $resolved = $context->findManyMatching(
-            $this->model::class,
-            $field,
-            $values,
-            $where,
-        );
+        $context = $this->validationContextInstance();
+        $resolved = $this->hasOpenTransaction()
+            ? new Collection
+            : $context->findManyMatching(
+                $this->model::class,
+                $field,
+                $values,
+                $where,
+            );
 
         $resolvedValues = $resolved
             ->pluck($field)
@@ -501,7 +497,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
                 ],
             );
 
-            $context->remember($queried);
+            $this->rememberValidationValue($queried);
             $resolved = new Collection([
                 ...$resolved->all(),
                 ...$queried->all(),
@@ -522,16 +518,18 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     public function findWhere(mixed $id, array $where = [], array $with = []): ?Model
     {
         $where = $this->safeWhere($where);
-        $context = $this->validationContext ?? app(ValidationContext::class);
+        $context = $this->validationContextInstance();
         $conditions = [
             $this->model->getKeyName() => $id,
             ...$where,
         ];
 
-        $model = $context->findMatching(
-            $this->model::class,
-            $conditions,
-        );
+        $model = $this->hasOpenTransaction()
+            ? null
+            : $context->findMatching(
+                $this->model::class,
+                $conditions,
+            );
 
         if ($model instanceof Model) {
             if ($with !== []) {
@@ -564,7 +562,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         );
 
         if ($model instanceof Model) {
-            $context->remember($model);
+            $this->rememberValidationValue($model);
         }
 
         return $model;
@@ -664,9 +662,88 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         return $column;
     }
 
+    protected function validationContextInstance(): ValidationContext
+    {
+        return $this->validationContext
+            ?? app(ValidationContext::class);
+    }
+
+    protected function hasOpenTransaction(): bool
+    {
+        return $this->model->getConnection()->transactionLevel() > 0;
+    }
+
+    protected function rememberValidationValue(Model|Collection $value): void
+    {
+        $context = $this->validationContextInstance();
+        $connection = $this->model->getConnection();
+
+        if ($connection->transactionLevel() > 0) {
+            $connection->afterCommit(
+                static function () use ($context, $value): void {
+                    $context->remember($value);
+                },
+            );
+
+            return;
+        }
+
+        $context->remember($value);
+    }
+
+    protected function forgetValidationModel(Model $model): void
+    {
+        $context = $this->validationContextInstance();
+        $connection = $model->getConnection();
+
+        if ($connection->transactionLevel() > 0) {
+            $connection->afterCommit(
+                static function () use ($context, $model): void {
+                    $context->forgetModel($model);
+                },
+            );
+
+            return;
+        }
+
+        $context->forgetModel($model);
+    }
+
+    protected function resolveMutationModel(
+        int|string|Model $id,
+        bool $withoutSoftDeleteScope = false,
+    ): Model {
+        if (
+            $id instanceof Model
+            && (
+                ! $this->hasOpenTransaction()
+                || ! $id->exists
+                || $id->getKey() === null
+            )
+        ) {
+            return $id;
+        }
+
+        $key = $id instanceof Model
+            ? $id->getKey()
+            : $id;
+
+        $query = $this->query();
+
+        if ($withoutSoftDeleteScope) {
+            $query->withoutGlobalScope(SoftDeletingScope::class);
+        }
+
+        return $query->findOrFail($key);
+    }
+
     protected function findFromContext(int|string $id, array $with = []): ?Model
     {
-        $context = $this->validationContext ?? app(ValidationContext::class);
+        if ($this->hasOpenTransaction()) {
+            return null;
+        }
+
+        $context = $this->validationContextInstance();
         $model = $context->findModel($this->model::class, $id);
 
         if (! $model) {
