@@ -154,6 +154,37 @@ final class RepositoryCacheHardeningTest extends TestCase
         self::assertSame('Newest Name', $repository->get()->first()->name);
     }
 
+    public function test_rolled_back_transaction_cannot_cache_uncommitted_repository_reads(): void
+    {
+        $repository = $this->repository();
+
+        $user = $repository->create([
+            'account_id' => 1,
+            'name' => 'Committed',
+            'status' => 'active',
+        ]);
+
+        self::assertSame('Committed', $repository->get()->first()->name);
+
+        DB::beginTransaction();
+
+        try {
+            $repository->update($user, ['name' => 'Uncommitted']);
+
+            self::assertSame(
+                'Uncommitted',
+                $repository->get()->first()->name,
+            );
+        } finally {
+            DB::rollBack();
+        }
+
+        self::assertSame(
+            'Committed',
+            $repository->get()->first()->name,
+        );
+    }
+
     public function test_nested_relation_dependency_tags_invalidate_parent_repository_cache(): void
     {
         $repository = $this->repository();
