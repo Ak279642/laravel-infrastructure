@@ -93,6 +93,26 @@ final class ModelSlugFileAuditTest extends TestCase
         self::assertSame('financial-results', $first->fresh()->seo_slug);
     }
 
+    public function test_model_slug_configuration_ignores_legacy_global_slug_config(): void
+    {
+        $this->app['config']->set(
+            'laravel-infrastructure.slug',
+            [
+                'enabled' => false,
+                'separator' => '_',
+                'source' => 'seo_title',
+            ],
+        );
+
+        $model = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Model Owned Slug',
+            'seo_title' => 'SEO Owned Slug',
+        ]);
+
+        self::assertSame('model-owned-slug', $model->slug);
+        self::assertSame('seo-owned-slug', $model->seo_slug);
+    }
+
     public function test_slug_generation_handles_unicode_and_empty_slug_sources(): void
     {
         $unicode = ModelSlugFileAuditDocument::query()->create([
@@ -549,6 +569,24 @@ final class ModelSlugFileAuditTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_model_upload_requires_model_owned_directory(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'must define a model-owned directory',
+        );
+
+        ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Missing Directory',
+            'seo_title' => 'Missing Directory SEO',
+            'legacy_path' => UploadedFile::fake()->create(
+                'legacy.txt',
+                1,
+                'text/plain',
+            ),
+        ]);
+    }
+
     public function test_file_field_without_model_directory_is_not_auditable(): void
     {
         $model = new ModelSlugFileAuditDocument;
@@ -614,9 +652,7 @@ final class ModelSlugFileAuditDocument extends BaseModel
                 'auto_upload' => true,
                 'audit' => true,
             ],
-            // Auto-upload may still use the global directory for compatibility,
-            // but the audit command will never scan it because this model does
-            // not explicitly own a directory for this field.
+            // No directory: assigning UploadedFile here must fail clearly.
             'legacy_path' => [
                 'disk' => 'public',
                 'auto_upload' => true,

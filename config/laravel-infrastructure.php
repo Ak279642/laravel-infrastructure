@@ -8,7 +8,6 @@ return [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_CACHE_ENABLED', true),
         // Null uses Laravel's default cache store.
         'store' => env('LARAVEL_INFRASTRUCTURE_CACHE_STORE'),
-        'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
         'lock_seconds' => max(1, (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS', 10)),
         'lock_wait_seconds' => max(0, (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS', 3)),
     ],
@@ -18,40 +17,20 @@ return [
         'attempts' => max(1, (int) env('LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS', 1)),
     ],
 
-    'slug' => [
-        // Disabled globally by default. Enable a legacy single slug with slugOptions(),
-        // or declare one/more fields explicitly with slugFields().
-        'enabled' => false,
-        'source' => 'name',
-        'column' => 'slug',
-        'unique' => true,
-        'regenerate_on_update' => false,
-        'separator' => '-',
-        // List of model attributes that scope uniqueness, e.g. ['organization_id'].
-        'scope' => [],
-    ],
-
     'files' => [
         'disk' => env('LARAVEL_INFRASTRUCTURE_FILE_DISK', 'public'),
-        'directory' => env('LARAVEL_INFRASTRUCTURE_FILE_DIRECTORY', 'uploads'),
         'delete_on_replace' => true,
         'delete_on_delete' => true,
         'delete_on_soft_delete' => false,
         'auto_upload' => true,
 
-        // Optional Intervention Image v3 processing.
+        // Infrastructure-level driver only.
+        // A model field enables image processing by declaring "image".
         'image' => [
-            'enabled' => false,
             'driver' => env(
                 'LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER',
                 'gd',
             ),
-            'format' => 'webp',
-            'resize' => 'scale_down',
-            'width' => null,
-            'height' => null,
-            'quality' => 80,
-            'position' => 'center',
         ],
     ],
 

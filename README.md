@@ -90,6 +90,7 @@ final class Product extends BaseModel
         ];
     }
 
+    // Slugs are model-local; there is no global slug config.
     // Multiple slug columns can use different sources.
     protected function slugFields(): array
     {
@@ -115,7 +116,8 @@ final class Product extends BaseModel
                 // default: config files.disk -> "public"
 
                 'directory' => 'products/images',
-                // default: config files.directory -> "uploads"
+                // required for model-owned uploads
+                // may also be shared through model fileOptions()
 
                 'auto_upload' => true,
                 // default: true
@@ -137,8 +139,7 @@ final class Product extends BaseModel
                 // may also be a string/callable
 
                 'image' => [
-                    'enabled' => true,
-                    // default: false
+                    // Presence of this "image" block enables processing.
 
                     'driver' => 'gd',
                     // default: gd
@@ -231,7 +232,6 @@ Use `cover_down` for fixed-size thumbnails:
 
 ```php
 'image' => [
-    'enabled' => true,
     'format' => 'webp',
     'resize' => 'cover_down',
     'width' => 300,
@@ -253,7 +253,7 @@ Use original format but still resize:
 ],
 ```
 
-`image => true` is also supported and uses the global image defaults.
+`image => true` is also supported and uses the package image defaults. Without an `image` key, the file is stored normally.
 
 Automatic file lifecycle:
 
@@ -325,11 +325,19 @@ products/documents/...
 ## 2. ProductRepository
 
 ```php
+use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
 use Illuminate\Database\Eloquent\Collection;
 
 final class ProductRepository extends BaseRepository
 {
+    // Repository-specific cache TTL.
+    // No global 300-second TTL exists.
+    protected function defaultCacheTtl(): int
+    {
+        return CacheTtl::MINUTES_10;
+    }
+
     protected array $allowedFilters = [
         'id',
         'category_id',
@@ -873,12 +881,22 @@ foreach ($products->cursor() as $product) {
 
 # Cache usage
 
-Global:
+Global settings control cache infrastructure only. TTL belongs to the repository.
 
 ```dotenv
 LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
-LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
+```
+
+Repository default:
+
+```php
+use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
+
+protected function defaultCacheTtl(): int
+{
+    return CacheTtl::MINUTES_10;
+}
 ```
 
 Model-specific:
@@ -902,7 +920,7 @@ $fresh = $this->products
     ->findOrFail($id);
 
 $cachedFor60Seconds = $this->products
-    ->withCache(60)
+    ->withCache(CacheTtl::MINUTE)
     ->findOrFail($id);
 
 $cachedForever = $this->products
@@ -1058,7 +1076,6 @@ LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER=gd
 # Cache
 LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
-LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS=10
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS=3
 

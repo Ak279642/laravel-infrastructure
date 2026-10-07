@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
 use Ak279642\LaravelInfrastructure\Cache\Concerns\InteractsWithCache;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
@@ -87,6 +88,26 @@ final class RepositoryCacheHardeningTest extends TestCase
 
         $repository->forceDelete($user->getKey());
         self::assertCount(0, $repository->get());
+    }
+
+    public function test_repository_default_ttl_is_repository_specific(): void
+    {
+        $repository = new CustomTtlUserRepository(
+            new CacheHardeningUser,
+            $this->app->make(CacheManager::class),
+        );
+
+        self::assertSame(
+            CacheTtl::MINUTES_10,
+            $repository->resolvedCacheTtl(),
+        );
+
+        $repository->cacheTtl(CacheTtl::MINUTE);
+
+        self::assertSame(
+            CacheTtl::MINUTE,
+            $repository->resolvedCacheTtl(),
+        );
     }
 
     public function test_repository_cache_can_be_disabled_for_one_model(): void
@@ -512,6 +533,20 @@ final class CacheHardeningRegion extends Model implements CacheableModel
     protected $table = 'cache_hardening_regions';
 
     protected $guarded = [];
+}
+
+
+final class CustomTtlUserRepository extends BaseRepository
+{
+    protected function defaultCacheTtl(): int
+    {
+        return CacheTtl::MINUTES_10;
+    }
+
+    public function resolvedCacheTtl(): ?int
+    {
+        return $this->cacheTtl;
+    }
 }
 
 

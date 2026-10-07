@@ -172,7 +172,6 @@ final class ImageProcessingDocument extends BaseModel
                 'directory' => 'images/processed',
 
                 'image' => [
-                    'enabled' => true,
                     'format' => 'webp',
                     'resize' => 'scale_down',
                     'width' => 720,
@@ -186,7 +185,6 @@ final class ImageProcessingDocument extends BaseModel
                 'directory' => 'images/thumbnails',
 
                 'image' => [
-                    'enabled' => true,
                     'format' => 'webp',
                     'resize' => 'cover_down',
                     'width' => 300,

@@ -264,9 +264,7 @@ trait InteractsWithFiles
                 continue;
             }
 
-            // Storage audit is intentionally restricted to a directory that is
-            // declared by the model itself. We do not fall back to the package
-            // global files.directory value here.
+            // Storage audit only scans directories explicitly owned by the model.
             $directory = $attributeOptions['directory']
                 ?? $modelOptions['directory']
                 ?? null;
@@ -303,10 +301,21 @@ trait InteractsWithFiles
                 continue;
             }
 
-            $directory = (string) (
-                $options['directory']
-                ?? config('laravel-infrastructure.files.directory', 'uploads')
-            );
+            $directory = $options['directory'] ?? null;
+
+            if (
+                ! is_string($directory)
+                || trim($directory, '/') === ''
+            ) {
+                throw new RuntimeException(
+                    "File field [{$column}] on model [".
+                    static::class.
+                    '] must define a model-owned directory.',
+                );
+            }
+
+            $directory = trim($directory, '/');
+
             $disk = (string) (
                 $options['disk']
                 ?? config('laravel-infrastructure.files.disk', 'public')
@@ -323,15 +332,13 @@ trait InteractsWithFiles
             }
 
             $image = $options['image'] ?? null;
+            $processImage = $image === true
+                || is_array($image);
             $imageOptions = is_array($image)
                 ? $image
                 : [];
 
-            if ($image === true) {
-                $imageOptions['enabled'] = true;
-            }
-
-            $path = (bool) ($imageOptions['enabled'] ?? false)
+            $path = $processImage
                 ? app(ImageProcessor::class)->store(
                     file: $file,
                     directory: $directory,

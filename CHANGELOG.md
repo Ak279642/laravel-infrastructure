@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Removed global slug configuration; slug behavior is now model-local through `slugOptions()` / `slugFields()`.
+- Removed the global 300-second repository cache TTL; repositories now define defaults with `defaultCacheTtl()` and `CacheTtl`, with per-operation overrides still supported.
+- Removed the global model-upload directory fallback; model-owned file fields must define `directory` directly or through model `fileOptions()`.
+- Removed the global image-processing `enabled` flag; declaring a model field `image` option now enables processing.
+
+
 ## [1.2.1] - 2026-10-07
 
 ### Fixed

@@ -33,6 +33,11 @@ trait HasCache
 
     protected int $cacheLockWaitSeconds = 3;
 
+    protected function defaultCacheTtl(): int
+    {
+        return CacheTtl::MINUTES_5;
+    }
+
     public function cacheTtl(int $ttl): static
     {
         $this->cacheTtl = $ttl;
@@ -95,10 +100,7 @@ trait HasCache
 
         $this->cacheTtl = max(
             1,
-            (int) config(
-                'laravel-infrastructure.cache.default_ttl',
-                CacheTtl::MINUTES_5,
-            ),
+            $this->defaultCacheTtl(),
         );
     }
 

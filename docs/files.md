@@ -102,6 +102,29 @@ Generic files that are not tied to a model field can use `assets.folder_access`.
 
 Rules merge from `*` through parent folders to the most-specific folder. Model field `access` overrides folder fallback.
 
+## Model-owned directory
+
+Model-owned uploads must define a directory either on the field or in the model's `fileOptions()`. There is no global `files.directory` fallback.
+
+```php
+protected function fileOptions(): array
+{
+    return [
+        'directory' => 'products',
+    ];
+}
+```
+
+or:
+
+```php
+'image_path' => [
+    'directory' => 'products/images',
+],
+```
+
+Missing directory configuration throws before storage.
+
 ## File lifecycle
 
 - successful create/update keeps the new file;
@@ -124,7 +147,7 @@ Only explicitly model-owned directories are scanned.
 
 The package supports Intervention Image v3 and v4. PHP 8.2 resolves v3; PHP 8.3+ applications may use v4.
 
-Image fields can opt into Intervention Image v3 processing directly from `fileAttributes()`.
+Image fields opt into processing directly from `fileAttributes()`. There is no global image enable/disable flag.
 
 ```php
 'image_path' => [
@@ -132,7 +155,7 @@ Image fields can opt into Intervention Image v3 processing directly from `fileAt
     'directory' => 'products/images',
 
     'image' => [
-        'enabled' => true,
+        // Presence of this block enables processing.
         'driver' => 'gd',
         'format' => 'webp',
         'resize' => 'scale_down',
@@ -161,7 +184,7 @@ Resize modes:
 
 `cover` and `cover_down` require both width and height.
 
-`image => true` enables processing with the package defaults.
+`image => true` enables processing with package defaults. Omitting `image` stores the upload without image processing.
 
 The processed output is tracked by the same file lifecycle system, so DB failures and transaction rollbacks remove generated WebP/resized files automatically.
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
 use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
@@ -14,34 +15,32 @@ use PDO;
 
 final class PackagePolishTest extends TestCase
 {
-    public function test_repository_uses_configured_default_cache_ttl(): void
+    public function test_repository_uses_repository_default_cache_ttl(): void
     {
-        $this->app['config']->set(
-            'laravel-infrastructure.cache.default_ttl',
-            123,
-        );
-
         $repository = new ConfiguredTtlRepository(
             new PackagePolishModel,
             $this->app->make(CacheManager::class),
         );
 
-        self::assertSame(123, $repository->configuredCacheTtl());
+        self::assertSame(
+            CacheTtl::MINUTES_2,
+            $repository->configuredCacheTtl(),
+        );
     }
 
     public function test_repository_explicit_cache_ttl_override_is_preserved(): void
     {
-        $this->app['config']->set(
-            'laravel-infrastructure.cache.default_ttl',
-            123,
-        );
-
-        $repository = new ExplicitTtlRepository(
+        $repository = new ConfiguredTtlRepository(
             new PackagePolishModel,
             $this->app->make(CacheManager::class),
         );
 
-        self::assertSame(900, $repository->configuredCacheTtl());
+        $repository->cacheTtl(CacheTtl::MINUTES_15);
+
+        self::assertSame(
+            CacheTtl::MINUTES_15,
+            $repository->configuredCacheTtl(),
+        );
     }
 
     public function test_schema_registry_does_not_cross_contaminate_databases_with_same_logical_connection_name(): void
@@ -110,15 +109,15 @@ final class PackagePolishTest extends TestCase
 
 class ConfiguredTtlRepository extends BaseRepository
 {
+    protected function defaultCacheTtl(): int
+    {
+        return CacheTtl::MINUTES_2;
+    }
+
     public function configuredCacheTtl(): ?int
     {
         return $this->cacheTtl;
     }
-}
-
-final class ExplicitTtlRepository extends ConfiguredTtlRepository
-{
-    protected ?int $cacheTtl = 900;
 }
 
 final class PackagePolishModel extends Model

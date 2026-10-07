@@ -1,27 +1,59 @@
 # Caching
 
-Repository reads support deterministic cache keys, model/dependency tags, TTL overrides, one-operation bypasses, forever caching and automatic after-commit invalidation for cache-aware models.
+Repository reads support deterministic keys, model/dependency tags, repository-specific TTLs, per-operation overrides, one-operation bypasses, forever caching, lock protection and after-commit invalidation.
 
-Global settings:
+## Global settings
+
+Global config controls cache infrastructure only:
 
 ```dotenv
 LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
-LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS=10
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS=3
 ```
 
-`rememberLocked()` protects expensive population from stampedes when the store supports locks and falls back safely on stores without locks.
+There is no global repository TTL.
 
-Non-taggable stores bypass repository reads that require tag invalidation, favoring correctness over stale cache.
+## Repository TTL
 
+```php
+use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
 
-## Model-level cache control
+final class ProductRepository extends BaseRepository
+{
+    protected function defaultCacheTtl(): int
+    {
+        return CacheTtl::MINUTES_10;
+    }
+}
+```
 
-Repository caching is enabled per model by default when global caching is enabled.
+If not overridden, repositories use `CacheTtl::MINUTES_5`.
 
-Disable it for one model without affecting other repositories:
+Per operation:
+
+```php
+$product = $this->products
+    ->cacheTtl(CacheTtl::MINUTE)
+    ->findOrFail($id);
+
+$product = $this->products
+    ->withCache(CacheTtl::MINUTES_15)
+    ->findOrFail($id);
+
+$product = $this->products
+    ->withoutCache()
+    ->findOrFail($id);
+
+$product = $this->products
+    ->rememberForever()
+    ->findOrFail($id);
+
+$this->products->clearCache();
+```
+
+## Model-level cache switch
 
 ```php
 protected function cacheOptions(): array
@@ -32,16 +64,4 @@ protected function cacheOptions(): array
 }
 ```
 
-Global disable always wins:
-
-```dotenv
-LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=false
-```
-
-Priority:
-
-```text
-global false -> all repository caching disabled
-global true + model false -> this model bypasses repository caching
-global true + model true -> normal repository caching
-```
+Global disable always wins. Otherwise the model switch and repository TTL policy apply.

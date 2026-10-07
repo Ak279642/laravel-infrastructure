@@ -22,7 +22,15 @@ final class SlugGenerator
     public function generateFor(Model $model, array $options = []): ?string
     {
         $options = array_replace(
-            (array) config('laravel-infrastructure.slug', []),
+            [
+                'enabled' => false,
+                'source' => 'name',
+                'column' => 'slug',
+                'unique' => true,
+                'regenerate_on_update' => false,
+                'separator' => '-',
+                'scope' => [],
+            ],
             $options,
         );
 
