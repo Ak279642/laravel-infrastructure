@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheBypassed;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
 use Ak279642\LaravelInfrastructure\Exceptions\FilterNotAllowedException;
 use Ak279642\LaravelInfrastructure\Exceptions\RelationNotAllowedException;
@@ -13,6 +14,7 @@ use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use ReflectionProperty;
 
@@ -54,6 +56,8 @@ final class RepositoryHardeningTest extends TestCase
 
     public function test_without_cache_is_consumed_by_one_operation(): void
     {
+        Event::fake([CacheBypassed::class]);
+
         $repository = $this->repository();
 
         self::assertSame(2, $repository->withoutCache()->count());
@@ -63,6 +67,11 @@ final class RepositoryHardeningTest extends TestCase
 
         self::assertFalse($property->getValue($repository));
         self::assertSame(2, $repository->count());
+
+        Event::assertDispatched(CacheBypassed::class, function (CacheBypassed $event): bool {
+            return $event->repository === HardeningUserRepository::class
+                && $event->operation === 'count';
+        });
     }
 
     public function test_strict_filter_mode_reports_allowed_filters(): void
