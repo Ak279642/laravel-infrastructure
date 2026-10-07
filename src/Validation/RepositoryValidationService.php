@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Validation;
 
+use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryValidationRepository;
+use Ak279642\LaravelInfrastructure\Exceptions\RepositoryValidationConfigurationException;
 use Ak279642\LaravelInfrastructure\Exceptions\ValidationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
+use Throwable;
 
 final class RepositoryValidationService
 {
@@ -50,7 +54,7 @@ final class RepositoryValidationService
         $errors = [];
 
         foreach ($rules as $rule) {
-            $repository = app($rule->repository);
+            $repository = $this->resolveRepository($rule->repository);
 
             if ($rule->unique !== []) {
                 $fields = collect($rule->unique)
@@ -188,7 +192,32 @@ final class RepositoryValidationService
             }
         }
 
+        if ($errors !== []) {
+            $this->context->clear();
+        }
+
         return $errors;
+    }
+
+    private function resolveRepository(string $repository): RepositoryValidationRepository
+    {
+        try {
+            $resolved = app($repository);
+        } catch (Throwable $exception) {
+            $this->context->clear();
+
+            throw $exception;
+        }
+
+        if (! $resolved instanceof RepositoryValidationRepository) {
+            $this->context->clear();
+
+            throw RepositoryValidationConfigurationException::invalidRepository(
+                $repository,
+            );
+        }
+
+        return $resolved;
     }
 
     private function resolveModel(
@@ -251,7 +280,7 @@ final class RepositoryValidationService
     {
         return collect($where)
             ->mapWithKeys(function ($value, $field) use ($input): array {
-                if (is_string($value) && data_get($input, $value) !== null) {
+                if (is_string($value) && Arr::has($input, $value)) {
                     return [$field => data_get($input, $value)];
                 }
 
