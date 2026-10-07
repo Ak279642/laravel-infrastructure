@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Observers;
 
-use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
+use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Illuminate\Contracts\Events\ShouldHandleEventsAfterCommit;
 use Illuminate\Database\Eloquent\Model;
 
@@ -42,7 +42,7 @@ final class CacheObserver implements ShouldHandleEventsAfterCommit
 
     private function invalidate(Model $model, string $event): void
     {
-        if (!$model instanceof CacheableModel) {
+        if (! $model instanceof CacheableModel) {
             return;
         }
 
