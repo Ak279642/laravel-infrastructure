@@ -2,6 +2,8 @@
 
 Models extending `BaseModel` can configure automatic uploads through `fileAttributes()`.
 
+Published file config is intentionally limited to the default disk and image driver. Directory, lifecycle, image transformation and access behavior belong to the model field.
+
 ## File definition
 
 ```php

@@ -18,6 +18,8 @@ Optional config:
 php artisan vendor:publish --tag=laravel-infrastructure-config
 ```
 
+The published config is intentionally small. Model behavior belongs in the model, cache TTL belongs in the repository, and safe internal defaults stay in package code.
+
 ## Features
 
 ```text
@@ -244,7 +246,6 @@ Use original format but still resize:
 
 ```php
 'image' => [
-    'enabled' => true,
     'format' => 'original',
     'resize' => 'scale_down',
     'width' => 1200,
@@ -1070,39 +1071,29 @@ throw new BusinessLogicException(
 # Main environment options
 
 ```dotenv
-# Image processing
-LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER=gd
-
-# Cache
 LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
-LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS=10
-LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS=3
 
-# Action transaction retries
 LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
 
-# Asset URLs
+LARAVEL_INFRASTRUCTURE_FILE_DISK=public
+LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER=gd
+
 LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED=true
 LARAVEL_INFRASTRUCTURE_ASSETS_PREFIX=infrastructure/assets
-LARAVEL_INFRASTRUCTURE_ASSETS_SIGNED=true
-LARAVEL_INFRASTRUCTURE_ASSETS_URL_TTL=15
 
-# Backup
 LARAVEL_INFRASTRUCTURE_BACKUP_DISK=local
 LARAVEL_INFRASTRUCTURE_BACKUP_PATH=backups/database
 LARAVEL_INFRASTRUCTURE_BACKUP_KEEP=3
 LARAVEL_INFRASTRUCTURE_BACKUP_COMPRESS=true
 
-# Logging / exceptions
 LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
-LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
+LARAVEL_INFRASTRUCTURE_LOG_CHANNEL=
 LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
-
-# Correlation
-LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER=X-Request-ID
-LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID=true
+LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
 ```
+
+Other behavior uses package defaults unless configured directly on the model/repository or in the relevant config section.
 
 # Docs
 

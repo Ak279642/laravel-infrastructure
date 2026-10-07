@@ -43,6 +43,31 @@ final class PackagePolishTest extends TestCase
         );
     }
 
+    public function test_published_config_keeps_feature_defaults_out_of_global_config(): void
+    {
+        self::assertNull(
+            config('laravel-infrastructure.cache.default_ttl'),
+        );
+        self::assertNull(
+            config('laravel-infrastructure.slug'),
+        );
+        self::assertNull(
+            config('laravel-infrastructure.files.directory'),
+        );
+        self::assertNull(
+            config('laravel-infrastructure.files.image.enabled'),
+        );
+        self::assertNull(
+            config('laravel-infrastructure.assets.url_ttl_minutes'),
+        );
+        self::assertNull(
+            config('laravel-infrastructure.storage_audit.chunk_size'),
+        );
+        self::assertNull(
+            config('laravel-infrastructure.logging.max_depth'),
+        );
+    }
+
     public function test_schema_registry_does_not_cross_contaminate_databases_with_same_logical_connection_name(): void
     {
         $first = $this->sqliteConnection('tenant-a');
