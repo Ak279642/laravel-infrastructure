@@ -1,6 +1,6 @@
 {
     "name": "ak279642/laravel-infrastructure",
-    "description": "Reusable Laravel infrastructure for Eloquent repositories, safe tagged caching, filtering, validation contexts, API responses, logging, and transaction boundaries.",
+    "description": "Reusable Laravel infrastructure for repositories, safe tagged caching, repository-aware FormRequests, slug and file lifecycle handling, validation contexts, API responses, logging, and transaction boundaries.",
     "type": "library",
     "license": "MIT",
     "keywords": [
@@ -13,7 +13,10 @@
         "repository-pattern",
         "query-filter",
         "validation",
-        "transactions"
+        "transactions",
+        "form-request",
+        "slug",
+        "file-storage"
     ],
     "authors": [
         {
