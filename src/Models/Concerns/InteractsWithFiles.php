@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
+use Ak279642\LaravelInfrastructure\Logging\CustomLog;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Throwable;
 
 trait InteractsWithFiles
 {
     /**
-     * Files queued here are removed only after a successful update.
-     *
-     * @var list<array{path:string,disk:string}>
+     * @var list<array{attribute:string,path:string,disk:string}>
      */
     private array $infrastructurePendingFileDeletes = [];
 
@@ -24,7 +24,7 @@ trait InteractsWithFiles
         });
 
         static::updated(function (Model $model): void {
-            $model->deleteInfrastructurePendingFiles();
+            $model->scheduleInfrastructurePendingFiles();
         });
 
         static::deleted(function (Model $model): void {
@@ -34,41 +34,46 @@ trait InteractsWithFiles
                 true,
             );
 
-            if ($usesSoftDeletes) {
-                $model->deleteInfrastructureModelFiles(softDelete: true);
+            $forceDeleting = method_exists(
+                $model,
+                'isForceDeleting',
+            ) && $model->isForceDeleting();
+
+            if (
+                $usesSoftDeletes
+                && ! $forceDeleting
+            ) {
+                $model->scheduleInfrastructureModelFiles(
+                    softDelete: true,
+                );
 
                 return;
             }
 
-            $model->deleteInfrastructureModelFiles();
+            if (! $usesSoftDeletes) {
+                $model->scheduleInfrastructureModelFiles();
+            }
         });
 
-        if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
+        if (
+            in_array(
+                SoftDeletes::class,
+                class_uses_recursive(static::class),
+                true,
+            )
+        ) {
             static::forceDeleted(function (Model $model): void {
-                $model->deleteInfrastructureModelFiles();
+                $model->scheduleInfrastructureModelFiles();
             });
         }
     }
 
-    /**
-     * Override shared file behavior on an application base model.
-     *
-     * @return array<string, mixed>
-     */
     protected function fileOptions(): array
     {
         return [];
     }
 
     /**
-     * Configure file-path attributes on the model.
-     *
-     * Examples:
-     * [
-     *     'avatar',
-     *     'document' => ['disk' => 'private'],
-     * ]
-     *
      * @return array<int|string, string|array<string, mixed>>
      */
     protected function fileAttributes(): array
@@ -82,13 +87,20 @@ trait InteractsWithFiles
     public function configuredFileAttributes(): array
     {
         $defaults = array_replace(
-            (array) config('laravel-infrastructure.files', []),
+            (array) config(
+                'laravel-infrastructure.files',
+                [],
+            ),
             $this->fileOptions(),
         );
+
         $configured = [];
 
         foreach ($this->fileAttributes() as $key => $value) {
-            if (is_int($key) && is_string($value)) {
+            if (
+                is_int($key)
+                && is_string($value)
+            ) {
                 $configured[$value] = $defaults;
 
                 continue;
@@ -100,7 +112,9 @@ trait InteractsWithFiles
 
             $configured[$key] = array_replace(
                 $defaults,
-                is_array($value) ? $value : [],
+                is_array($value)
+                    ? $value
+                    : [],
             );
         }
 
@@ -109,12 +123,16 @@ trait InteractsWithFiles
 
     private function captureInfrastructureChangedFiles(): void
     {
-        foreach ($this->configuredFileAttributes() as $column => $options) {
-            if (! (bool) ($options['delete_on_replace'] ?? true)) {
-                continue;
-            }
+        $pending = [];
 
-            if (! $this->isDirty($column)) {
+        foreach ($this->configuredFileAttributes() as $column => $options) {
+            if (
+                ! (bool) (
+                    $options['delete_on_replace']
+                    ?? true
+                )
+                || ! $this->isDirty($column)
+            ) {
                 continue;
             }
 
@@ -129,52 +147,188 @@ trait InteractsWithFiles
                 continue;
             }
 
-            $this->infrastructurePendingFileDeletes[] = [
+            $disk = (string) (
+                $options['disk']
+                ?? config(
+                    'laravel-infrastructure.files.disk',
+                    'public',
+                )
+            );
+
+            $pending[$disk.'|'.$oldPath] = [
+                'attribute' => $column,
                 'path' => $oldPath,
-                'disk' => (string) ($options['disk']
-                    ?? config('laravel-infrastructure.files.disk', 'public')),
+                'disk' => $disk,
             ];
         }
+
+        $this->infrastructurePendingFileDeletes = array_values(
+            $pending,
+        );
     }
 
-    private function deleteInfrastructurePendingFiles(): void
+    private function scheduleInfrastructurePendingFiles(): void
     {
         if ($this->infrastructurePendingFileDeletes === []) {
             return;
         }
 
-        $storage = app(FileStorage::class);
-
-        foreach ($this->infrastructurePendingFileDeletes as $file) {
-            $storage->delete($file['path'], $file['disk']);
-        }
-
+        $pending = $this->infrastructurePendingFileDeletes;
         $this->infrastructurePendingFileDeletes = [];
+
+        $this->afterInfrastructureCommit(
+            function () use ($pending): void {
+                foreach ($pending as $file) {
+                    if ($this->infrastructurePathStillReferenced(
+                        $file['path'],
+                        $file['disk'],
+                    )) {
+                        continue;
+                    }
+
+                    $this->deleteInfrastructureFile(
+                        $file['attribute'],
+                        $file['path'],
+                        $file['disk'],
+                    );
+                }
+            },
+        );
     }
 
-    private function deleteInfrastructureModelFiles(bool $softDelete = false): void
-    {
-        $storage = app(FileStorage::class);
+    private function scheduleInfrastructureModelFiles(
+        bool $softDelete = false,
+    ): void {
+        $files = [];
 
         foreach ($this->configuredFileAttributes() as $column => $options) {
-            if ($softDelete && ! (bool) ($options['delete_on_soft_delete'] ?? false)) {
+            if (
+                $softDelete
+                && ! (bool) (
+                    $options['delete_on_soft_delete']
+                    ?? false
+                )
+            ) {
                 continue;
             }
 
-            if (! $softDelete && ! (bool) ($options['delete_on_delete'] ?? true)) {
+            if (
+                ! $softDelete
+                && ! (bool) (
+                    $options['delete_on_delete']
+                    ?? true
+                )
+            ) {
                 continue;
             }
 
             $path = $this->getAttribute($column);
 
-            if (! is_string($path) || trim($path) === '') {
+            if (
+                ! is_string($path)
+                || trim($path) === ''
+            ) {
                 continue;
             }
 
-            $storage->delete(
+            $disk = (string) (
+                $options['disk']
+                ?? config(
+                    'laravel-infrastructure.files.disk',
+                    'public',
+                )
+            );
+
+            $files[$disk.'|'.$path] = [
+                'attribute' => $column,
+                'path' => $path,
+                'disk' => $disk,
+            ];
+        }
+
+        if ($files === []) {
+            return;
+        }
+
+        $this->afterInfrastructureCommit(
+            function () use ($files): void {
+                foreach ($files as $file) {
+                    $this->deleteInfrastructureFile(
+                        $file['attribute'],
+                        $file['path'],
+                        $file['disk'],
+                    );
+                }
+            },
+        );
+    }
+
+    private function afterInfrastructureCommit(
+        callable $callback,
+    ): void {
+        $connection = $this->getConnection();
+
+        if ($connection->transactionLevel() > 0) {
+            $connection->afterCommit($callback);
+
+            return;
+        }
+
+        $callback();
+    }
+
+    private function infrastructurePathStillReferenced(
+        string $path,
+        string $disk,
+    ): bool {
+        foreach ($this->configuredFileAttributes() as $column => $options) {
+            $configuredDisk = (string) (
+                $options['disk']
+                ?? config(
+                    'laravel-infrastructure.files.disk',
+                    'public',
+                )
+            );
+
+            if (
+                $configuredDisk === $disk
+                && $this->getAttribute($column) === $path
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function deleteInfrastructureFile(
+        string $attribute,
+        string $path,
+        string $disk,
+    ): void {
+        try {
+            app(FileStorage::class)->delete(
                 $path,
-                (string) ($options['disk']
-                    ?? config('laravel-infrastructure.files.disk', 'public')),
+                $disk,
+            );
+        } catch (Throwable $exception) {
+            if (
+                (bool) config(
+                    'laravel-infrastructure.files.throw_on_cleanup_failure',
+                    false,
+                )
+            ) {
+                throw $exception;
+            }
+
+            CustomLog::warning(
+                'File lifecycle cleanup failed.',
+                [
+                    'model' => static::class,
+                    'attribute' => $attribute,
+                    'disk' => $disk,
+                    'exception' => $exception,
+                ],
             );
         }
     }

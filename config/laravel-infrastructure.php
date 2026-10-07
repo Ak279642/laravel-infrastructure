@@ -4,35 +4,28 @@ declare(strict_types=1);
 
 return [
     'cache' => [
-        // Null uses Laravel's default cache store.
         'store' => env('LARAVEL_INFRASTRUCTURE_CACHE_STORE'),
         'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
-
-        // A package namespace prevents collisions with application-owned keys.
         'key_prefix' => env('LARAVEL_INFRASTRUCTURE_CACHE_PREFIX', 'laravel-infrastructure'),
 
-        // Stampede protection is used when the selected store supports locks.
         'lock' => [
             'enabled' => env('LARAVEL_INFRASTRUCTURE_CACHE_LOCKS', true),
             'seconds' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS', 10),
             'wait_seconds' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS', 3),
         ],
 
-        // Dispatch CacheHit / CacheMiss / CacheBypassed / CacheInvalidated.
         'events' => [
             'enabled' => env('LARAVEL_INFRASTRUCTURE_CACHE_EVENTS', false),
         ],
     ],
 
     'slug' => [
-        // Disabled globally by default. Enable per model with slugOptions().
         'enabled' => false,
         'source' => 'name',
         'column' => 'slug',
         'unique' => true,
         'regenerate_on_update' => false,
         'separator' => '-',
-        // List of model attributes that scope uniqueness, e.g. ['organization_id'].
         'scope' => [],
     ],
 
@@ -42,6 +35,10 @@ return [
         'delete_on_replace' => true,
         'delete_on_delete' => true,
         'delete_on_soft_delete' => false,
+
+        // Cleanup happens after a successful DB commit. By default a storage
+        // cleanup failure is logged instead of corrupting the persisted row.
+        'throw_on_cleanup_failure' => false,
     ],
 
     'logging' => [
