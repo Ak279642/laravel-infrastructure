@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Maintenance
+- Repository history consolidated onto `main` after branch cleanup; all previously completed infrastructure features remain present.
+
 ## [1.1.0] - 2026-10-07
 
 ### Added
