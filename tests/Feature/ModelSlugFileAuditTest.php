@@ -223,6 +223,7 @@ final class ModelSlugFileAuditTest extends TestCase
 final class ModelSlugFileAuditDocument extends BaseModel
 {
     use SoftDeletes;
+
     protected $table = 'model_slug_file_audit_documents';
 
     protected $fillable = [
