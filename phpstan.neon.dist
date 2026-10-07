@@ -5,4 +5,10 @@ parameters:
     paths:
         - src
     level: 5
+    treatPhpDocTypesAsCertain: false
     tmpDir: .phpstan-cache
+
+    ignoreErrors:
+        -
+            identifier: trait.unused
+            path: src/Cache/Concerns/Cacheable.php
