@@ -352,27 +352,114 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             return new Collection();
         }
 
-        return $this->cacheRemember('findWhereIn', function () use ($field, $values, $where): Collection {
-            $query = $this->query()->whereIn($field, array_values(array_unique($values)));
-            foreach ($where as $column => $value) {
-                $query->where($column, $value);
-            }
-            return $query->get();
-        }, ['field' => $field, 'values' => $values, 'where' => $where]);
+        $values = array_values(array_unique($values));
+        $context = $this->validationContext ?? app(ValidationContext::class);
+        $resolved = $context->findManyMatching(
+            $this->model::class,
+            $field,
+            $values,
+            $where,
+        );
+
+        $resolvedValues = $resolved
+            ->pluck($field)
+            ->map(static fn ($value): string => (string) $value)
+            ->all();
+
+        $missing = array_values(array_filter(
+            $values,
+            static fn ($value): bool => ! in_array(
+                (string) $value,
+                $resolvedValues,
+                true,
+            ),
+        ));
+
+        if ($missing !== []) {
+            $queried = $this->cacheRemember(
+                'findWhereIn',
+                function () use ($field, $missing, $where): Collection {
+                    $query = $this->query()->whereIn($field, $missing);
+
+                    foreach ($where as $column => $value) {
+                        $query->where($column, $value);
+                    }
+
+                    return $query->get();
+                },
+                [
+                    'field' => $field,
+                    'values' => $missing,
+                    'where' => $where,
+                ],
+            );
+
+            $context->remember($queried);
+            $resolved = new Collection([
+                ...$resolved->all(),
+                ...$queried->all(),
+            ]);
+        }
+
+        $order = array_flip(array_map('strval', $values));
+
+        return $resolved
+            ->sortBy(
+                static fn (Model $model): int => $order[
+                    (string) $model->getAttribute($field)
+                ] ?? PHP_INT_MAX,
+            )
+            ->values();
     }
 
     public function findWhere(mixed $id, array $where = [], array $with = []): ?Model
     {
-        return $this->cacheRemember('findWhere', function () use ($id, $where, $with): ?Model {
-            $query = $this->query()->whereKey($id);
-            foreach ($where as $column => $value) {
-                $query->where($column, $value);
-            }
+        $context = $this->validationContext ?? app(ValidationContext::class);
+        $conditions = [
+            $this->model->getKeyName() => $id,
+            ...$where,
+        ];
+
+        $model = $context->findMatching(
+            $this->model::class,
+            $conditions,
+        );
+
+        if ($model instanceof Model) {
             if ($with !== []) {
-                $this->applyRelations($query, $with);
+                $this->loadMissing($model, $with);
             }
-            return $query->first();
-        }, ['id' => $id, 'where' => $where, 'with' => $with]);
+
+            return $model;
+        }
+
+        $model = $this->cacheRemember(
+            'findWhere',
+            function () use ($id, $where, $with): ?Model {
+                $query = $this->query()->whereKey($id);
+
+                foreach ($where as $column => $value) {
+                    $query->where($column, $value);
+                }
+
+                if ($with !== []) {
+                    $this->applyRelations($query, $with);
+                }
+
+                return $query->first();
+            },
+            [
+                'id' => $id,
+                'where' => $where,
+                'with' => $with,
+            ],
+        );
+
+        if ($model instanceof Model) {
+            $context->remember($model);
+        }
+
+        return $model;
     }
 
     protected function buildQuery(array $filters = []): Builder
