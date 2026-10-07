@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Tests\Unit;
 
 use Ak279642\LaravelInfrastructure\Logging\CustomLog;
-use PHPUnit\Framework\TestCase;
+use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use ReflectionMethod;
 use RuntimeException;
 
