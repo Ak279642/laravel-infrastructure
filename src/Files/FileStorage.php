@@ -48,6 +48,8 @@ final class FileStorage
             return false;
         }
 
+        $path = $this->normalizeStoredPath($path);
+        $path = $this->normalizeStoredPath($path);
         $disk = $disk ?: (string) config('laravel-infrastructure.files.disk', 'public');
         $filesystem = $this->files->disk($disk);
 
@@ -64,6 +66,7 @@ final class FileStorage
             return false;
         }
 
+        $path = $this->normalizeStoredPath($path);
         $disk = $disk ?: (string) config('laravel-infrastructure.files.disk', 'public');
 
         return $this->files->disk($disk)->exists($path);
@@ -83,6 +86,38 @@ final class FileStorage
         }
 
         return $filesystem->url($path);
+    }
+
+    private function normalizeStoredPath(string $path): string
+    {
+        if (str_contains($path, "\0")) {
+            throw new RuntimeException('Storage path contains a null byte.');
+        }
+
+        $path = str_replace('\\', '/', trim($path));
+
+        if (
+            $path === ''
+            || str_starts_with($path, '/')
+            || preg_match('/^[A-Za-z]:\//', $path) === 1
+        ) {
+            throw new RuntimeException('Storage path must be relative.');
+        }
+
+        foreach (explode('/', $path) as $segment) {
+            if (
+                $segment === ''
+                || $segment === '.'
+                || $segment === '..'
+                || preg_match('/[\x00-\x1F\x7F]/', $segment) === 1
+            ) {
+                throw new RuntimeException(
+                    'Storage path contains an unsafe path segment.',
+                );
+            }
+        }
+
+        return $path;
     }
 
     private function normalizeDirectory(string $directory): string
