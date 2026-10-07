@@ -55,13 +55,31 @@ trait HasRelations
             $relation = is_string($key) ? $key : $value;
 
             if (! is_string($relation) || ! $this->relationExists($relation)) {
+                if ($this->strictRelations && is_string($relation)) {
+                    throw RelationNotAllowedException::forRepository(
+                        $relation,
+                        static::class,
+                        $this->allowedRelations,
+                    );
+                }
+
                 continue;
             }
 
+            $baseRelation = trim(explode(':', $relation, 2)[0]);
+
             if (
                 $this->allowedRelations !== []
-                && ! in_array($relation, $this->allowedRelations, true)
+                && ! in_array($baseRelation, $this->allowedRelations, true)
             ) {
+                if ($this->strictRelations) {
+                    throw RelationNotAllowedException::forRepository(
+                        $baseRelation,
+                        static::class,
+                        $this->allowedRelations,
+                    );
+                }
+
                 continue;
             }
 
