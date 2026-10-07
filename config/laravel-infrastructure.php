@@ -9,6 +9,11 @@ return [
         'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
     ],
 
+    'transactions' => [
+        // Deadlock/serialization retry attempts used by BaseAction by default.
+        'attempts' => max(1, (int) env('LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS', 1)),
+    ],
+
     'slug' => [
         // Disabled globally by default. Enable per model with slugOptions().
         'enabled' => false,
