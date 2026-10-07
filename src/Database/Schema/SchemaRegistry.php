@@ -122,11 +122,19 @@ final class SchemaRegistry
             ?: 'default'
         );
 
-        return implode('|', [
-            $name,
-            $connection->getDriverName(),
-            (string) $connection->getDatabaseName(),
-            $connection->getTablePrefix(),
-        ]);
+        $physicalIdentity = [
+            'driver' => $connection->getDriverName(),
+            'host' => $connection->getConfig('host'),
+            'port' => $connection->getConfig('port'),
+            'database' => $connection->getDatabaseName(),
+            'schema' => $connection->getConfig('schema'),
+            'search_path' => $connection->getConfig('search_path'),
+            'prefix' => $connection->getTablePrefix(),
+        ];
+
+        return $name.'|'.hash(
+            'sha256',
+            serialize($physicalIdentity),
+        );
     }
 }
