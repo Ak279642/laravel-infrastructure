@@ -14,6 +14,14 @@ The package provides a reusable repository layer, deterministic and tag-aware ca
 
 ## Installation
 
+Until the first stable release is tagged, install the package explicitly from `main`:
+
+```bash
+composer require ak279642/laravel-infrastructure:dev-main
+```
+
+After a stable version is published, the normal command will be:
+
 ```bash
 composer require ak279642/laravel-infrastructure
 ```
@@ -70,6 +78,18 @@ The package does not force this structure, but it is the intended use:
 - Services implement complete business operations.
 - Repositories own database querying and persistence.
 - Models describe Eloquent state/relations and may opt into automatic cache invalidation.
+
+## Architecture do / don't
+
+Do keep transaction boundaries in Actions/Orchestrators and business rules in Services.
+
+Do use repository allow-lists for filters, sorts, search fields, and relations.
+
+Don't start a transaction inside every repository method.
+
+Don't move business logic into `BaseRepository`.
+
+Don't accept arbitrary client-controlled database columns.
 
 ## Quick start
 
@@ -550,7 +570,7 @@ $customers = $repository->get([
 
 Search terms are split on spaces and applied to the configured columns.
 
-You can also provide search columns for a particular repository call:
+You can also provide search columns for a particular repository call. Requested columns are intersected with the repository's `$searchable` allow-list, so callers cannot expand search into undeclared fields:
 
 ```php
 $customers = $repository->get([
@@ -558,6 +578,20 @@ $customers = $repository->get([
     'search_columns' => ['name', 'email'],
 ]);
 ```
+
+## Optional strict query mode
+
+Unknown filters, sorts, and relations are ignored by default for backward compatibility.
+
+Repositories can opt into actionable exceptions:
+
+```php
+protected bool $strictFilters = true;
+protected bool $strictSorts = true;
+protected bool $strictRelations = true;
+```
+
+Strict mode reports the invalid input and the repository's allowed values, which is useful during development and for internal APIs while preserving legacy behavior by default.
 
 ## Sorting
 
@@ -682,7 +716,29 @@ Unknown scopes are ignored.
 
 # Repository caching
 
-Repository caching is enabled by default.
+Repository caching is enabled by default. Read operations use the repository cache when the configured store supports safe invalidation. Relevant Eloquent model mutations automatically invalidate affected cache tags.
+
+Normal reads are cached:
+
+```php
+$customers = $repository->get();
+```
+
+Use a one-shot fresh read when required:
+
+```php
+$customers = $repository
+    ->withoutCache()
+    ->get();
+```
+
+`withoutCache()` only affects the next cacheable repository operation. It does not permanently mutate the repository, which makes it safe for long-running workers, Octane, and scoped/shared service lifecycles.
+
+A repository that should never cache can override:
+
+```php
+protected bool $cacheEnabled = false;
+```
 
 Default repository TTL:
 
@@ -702,28 +758,12 @@ $customers = $repository
     ->get(['status' => 'active']);
 ```
 
-or:
-
-```php
-$customers = $repository
-    ->withCache(CacheTtl::HOUR)
-    ->get();
-```
-
 ### Disable cache
 
 ```php
 $customers = $repository
     ->withoutCache()
     ->get(['status' => 'active']);
-```
-
-### Re-enable cache
-
-```php
-$customers = $repository
-    ->withCache()
-    ->get();
 ```
 
 ### Cache forever
@@ -942,6 +982,18 @@ public function markCountryCustomersInactive(int $countryId): int
 
 For model-by-model saves on models using `InteractsWithCache`, the model observer also invalidates cache tags. Calling `clearCache()` explicitly for a custom bulk/database write is still the safest repository pattern.
 
+Direct database writes bypass Eloquent events entirely. For example:
+
+```php
+DB::table('customers')
+    ->where('country_id', $countryId)
+    ->update(['status' => 'inactive']);
+
+$repository->clearCache();
+```
+
+The package cannot automatically detect `DB::table(...)` mutations, so manual invalidation is required after those writes.
+
 ### Advanced: completely custom cache keys and tags
 
 For unusual repository requirements, subclasses can access the package cache manager through `getCacheManager()`.
@@ -1071,6 +1123,17 @@ CacheTtl::MEDIUM; // 1 hour
 CacheTtl::LONG;   // 6 hours
 CacheTtl::WEEK;   // 7 days
 ```
+
+## Cache observability
+
+The package dispatches metadata-only cache events that applications may listen to:
+
+- `CacheHit`
+- `CacheMiss`
+- `CacheInvalidated`
+- `CacheBypassed`
+
+These events contain cache keys/tags or repository operation metadata only. Cached values are never included.
 
 ## Cache-store safety
 
