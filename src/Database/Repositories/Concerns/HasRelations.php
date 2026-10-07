@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Exceptions\RelationNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
