@@ -34,10 +34,7 @@ final class RepositoryValidationService
     }
 
     /**
-     * Validate repository-backed rules without throwing.
-     *
-     * This is used by RepositoryFormRequest so repository errors become normal
-     * Laravel FormRequest validation errors.
+     * Validate repository-backed rules without throwing validation failures.
      *
      * @param  list<RepositoryValidationRule>  $rules
      * @return array<string, list<string>>
@@ -51,9 +48,36 @@ final class RepositoryValidationService
             $this->context->clear();
         }
 
+        try {
+            $errors = $this->collectErrors($rules, $input);
+        } catch (Throwable $exception) {
+            // Never leave partially resolved models available after a failed
+            // validation/configuration/database operation.
+            $this->context->clear();
+
+            throw $exception;
+        }
+
+        if ($errors !== []) {
+            $this->context->clear();
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param  list<RepositoryValidationRule>  $rules
+     * @return array<string, list<string>>
+     */
+    private function collectErrors(array $rules, array $input): array
+    {
         $errors = [];
 
         foreach ($rules as $rule) {
+            if (! $rule instanceof RepositoryValidationRule) {
+                throw RepositoryValidationConfigurationException::invalidRule($rule);
+            }
+
             $repository = $this->resolveRepository($rule->repository);
 
             if ($rule->unique !== []) {
@@ -146,11 +170,9 @@ final class RepositoryValidationService
 
                 $configuredValues = $rule->existsIn['values'] ?? $inputField;
 
-                if (is_string($configuredValues)) {
-                    $values = data_get($input, $configuredValues, []);
-                } else {
-                    $values = $configuredValues;
-                }
+                $values = is_string($configuredValues)
+                    ? data_get($input, $configuredValues, [])
+                    : $configuredValues;
 
                 $values = array_values(array_unique((array) $values));
 
@@ -192,26 +214,15 @@ final class RepositoryValidationService
             }
         }
 
-        if ($errors !== []) {
-            $this->context->clear();
-        }
-
         return $errors;
     }
 
-    private function resolveRepository(string $repository): RepositoryValidationRepository
-    {
-        try {
-            $resolved = app($repository);
-        } catch (Throwable $exception) {
-            $this->context->clear();
-
-            throw $exception;
-        }
+    private function resolveRepository(
+        string $repository,
+    ): RepositoryValidationRepository {
+        $resolved = app($repository);
 
         if (! $resolved instanceof RepositoryValidationRepository) {
-            $this->context->clear();
-
             throw RepositoryValidationConfigurationException::invalidRepository(
                 $repository,
             );
@@ -221,7 +232,7 @@ final class RepositoryValidationService
     }
 
     private function resolveModel(
-        mixed $repository,
+        RepositoryValidationRepository $repository,
         RepositoryValidationRule $rule,
         string $field,
         Model $model,
@@ -241,7 +252,7 @@ final class RepositoryValidationService
     }
 
     private function resolveCollection(
-        mixed $repository,
+        RepositoryValidationRepository $repository,
         RepositoryValidationRule $rule,
         string $field,
         Collection $models,
