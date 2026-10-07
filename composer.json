@@ -1,22 +1,27 @@
 {
     "name": "ak279642/laravel-infrastructure",
-    "description": "Reusable Laravel infrastructure for repositories, safe tagged caching, repository-aware FormRequests, slug and file lifecycle handling, validation contexts, API responses, logging, and transaction boundaries.",
+    "description": "Production-ready Laravel infrastructure for repositories, safe caching, validation, actions/services, API responses, structured logging, slugs, files, and transactions.",
     "type": "library",
     "license": "MIT",
     "keywords": [
-        "laravel",
-        "eloquent",
-        "repository",
+        "api",
         "cache",
         "caching",
-        "infrastructure",
-        "repository-pattern",
-        "query-filter",
-        "validation",
-        "transactions",
+        "correlation-id",
+        "eloquent",
+        "file-storage",
         "form-request",
+        "infrastructure",
+        "laravel",
+        "logging",
+        "octane",
+        "query-filter",
+        "repository",
+        "repository-pattern",
+        "service-layer",
         "slug",
-        "file-storage"
+        "transactions",
+        "validation"
     ],
     "authors": [
         {
@@ -61,5 +66,10 @@
     "prefer-stable": true,
     "config": {
         "sort-packages": true
+    },
+    "homepage": "https://github.com/Ak279642/laravel-infrastructure",
+    "support": {
+        "issues": "https://github.com/Ak279642/laravel-infrastructure/issues",
+        "source": "https://github.com/Ak279642/laravel-infrastructure"
     }
 }
