@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Cache;
 
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheBypassed;
 use Ak279642\LaravelInfrastructure\Cache\Events\CacheHit;
 use Ak279642\LaravelInfrastructure\Cache\Events\CacheInvalidated;
 use Ak279642\LaravelInfrastructure\Cache\Events\CacheMiss;
@@ -32,6 +33,11 @@ final class CacheManager
     ) {
         $this->store = $this->resolveStore();
         $this->tagsSupported = $this->resolveTagsSupport();
+    }
+
+    public function notifyBypassed(string $repository, string $operation): void
+    {
+        $this->events?->dispatch(new CacheBypassed($repository, $operation));
     }
 
     public function get(
