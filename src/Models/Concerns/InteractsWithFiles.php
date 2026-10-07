@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\UploadedFile;
 
@@ -20,20 +19,20 @@ trait InteractsWithFiles
 
     public static function bootInteractsWithFiles(): void
     {
-        static::creating(function (Model $model): void {
+        static::creating(function (self $model): void {
             $model->storeInfrastructureUploadedFiles();
         });
 
-        static::updating(function (Model $model): void {
+        static::updating(function (self $model): void {
             $model->storeInfrastructureUploadedFiles();
             $model->captureInfrastructureChangedFiles();
         });
 
-        static::updated(function (Model $model): void {
+        static::updated(function (self $model): void {
             $model->deleteInfrastructurePendingFiles();
         });
 
-        static::deleted(function (Model $model): void {
+        static::deleted(function (self $model): void {
             $usesSoftDeletes = in_array(
                 SoftDeletes::class,
                 class_uses_recursive($model),
@@ -50,9 +49,12 @@ trait InteractsWithFiles
         });
 
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
-            static::forceDeleted(function (Model $model): void {
-                $model->deleteInfrastructureModelFiles();
-            });
+            static::registerModelEvent(
+                'forceDeleted',
+                function (self $model): void {
+                    $model->deleteInfrastructureModelFiles();
+                },
+            );
         }
     }
 
