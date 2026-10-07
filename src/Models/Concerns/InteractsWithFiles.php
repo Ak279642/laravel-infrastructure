@@ -7,6 +7,7 @@ namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Http\UploadedFile;
 
 trait InteractsWithFiles
 {
@@ -19,7 +20,12 @@ trait InteractsWithFiles
 
     public static function bootInteractsWithFiles(): void
     {
+        static::creating(function (Model $model): void {
+            $model->storeInfrastructureUploadedFiles();
+        });
+
         static::updating(function (Model $model): void {
+            $model->storeInfrastructureUploadedFiles();
             $model->captureInfrastructureChangedFiles();
         });
 
@@ -105,6 +111,52 @@ trait InteractsWithFiles
         }
 
         return $configured;
+    }
+
+    private function storeInfrastructureUploadedFiles(): void
+    {
+        $storage = app(FileStorage::class);
+
+        foreach ($this->configuredFileAttributes() as $column => $options) {
+            if (! (bool) ($options['auto_upload'] ?? true)) {
+                continue;
+            }
+
+            $file = $this->getAttribute($column);
+
+            if (! $file instanceof UploadedFile) {
+                continue;
+            }
+
+            $directory = (string) (
+                $options['directory']
+                ?? config('laravel-infrastructure.files.directory', 'uploads')
+            );
+            $disk = (string) (
+                $options['disk']
+                ?? config('laravel-infrastructure.files.disk', 'public')
+            );
+
+            $filename = $options['filename'] ?? null;
+
+            if (is_callable($filename)) {
+                $filename = $filename($file, $this, $column);
+            }
+
+            if (! is_string($filename)) {
+                $filename = null;
+            }
+
+            $this->setAttribute(
+                $column,
+                $storage->store(
+                    file: $file,
+                    directory: $directory,
+                    disk: $disk,
+                    filename: $filename,
+                ),
+            );
+        }
     }
 
     private function captureInfrastructureChangedFiles(): void
