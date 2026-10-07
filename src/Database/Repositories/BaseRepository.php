@@ -92,7 +92,8 @@ abstract class BaseRepository implements RepositoryInterface
         $this->initializeCache();
     }
 
-    /** @return TModel */\n    public function getModel(): Model
+    /** @return TModel */
+    public function getModel(): Model
     {
         return $this->model;
     }
@@ -103,7 +104,8 @@ abstract class BaseRepository implements RepositoryInterface
      * Direct custom queries are intentionally not merged into the fluent
      * one-shot query state used by orderBy()/with()/scope().
      */
-    /** @return Builder<TModel> */\n    public function query(): Builder
+    /** @return Builder<TModel> */
+    public function query(): Builder
     {
         return $this->model->newQuery();
     }
@@ -121,7 +123,8 @@ abstract class BaseRepository implements RepositoryInterface
         $this->clearCache();
     }
 
-    /** @param list<string> $columns @return Collection<int, TModel> */\n    public function all(
+    /** @param list<string> $columns @return Collection<int, TModel> */
+    public function all(
         array $columns = ['*'],
     ): Collection {
         return $this->cacheRemember(
@@ -131,7 +134,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters @param list<string> $columns @return Collection<int, TModel> */\n    public function get(
+    /** @param array<string, mixed> $filters @param list<string> $columns @return Collection<int, TModel> */
+    public function get(
         array $filters = [],
         array $columns = ['*'],
     ): Collection {
@@ -148,7 +152,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters @param list<string> $columns @return TModel|null */\n    public function first(
+    /** @param array<string, mixed> $filters @param list<string> $columns @return TModel|null */
+    public function first(
         array $filters = [],
         array $columns = ['*'],
     ): ?Model {
@@ -165,7 +170,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters @param list<string> $columns @return TModel */\n    public function firstOrFail(
+    /** @param array<string, mixed> $filters @param list<string> $columns @return TModel */
+    public function firstOrFail(
         array $filters = [],
         array $columns = ['*'],
     ): Model {
@@ -176,7 +182,8 @@ abstract class BaseRepository implements RepositoryInterface
             ->setModel($this->model::class);
     }
 
-    /** @param list<string> $with @param list<string> $columns @return TModel|null */\n    public function find(
+    /** @param list<string> $with @param list<string> $columns @return TModel|null */
+    public function find(
         int|string $id,
         array $with = [],
         array $columns = ['*'],
@@ -220,7 +227,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param list<string> $with @param list<string> $columns @return TModel */\n    public function findOrFail(
+    /** @param list<string> $with @param list<string> $columns @return TModel */
+    public function findOrFail(
         int|string $id,
         array $with = [],
         array $columns = ['*'],
@@ -236,7 +244,8 @@ abstract class BaseRepository implements RepositoryInterface
             );
     }
 
-    /** @param array<string, mixed> $data @param list<string> $with @return TModel */\n    public function create(
+    /** @param array<string, mixed> $data @param list<string> $with @return TModel */
+    public function create(
         array $data,
         bool $refresh = false,
         array $with = [],
@@ -260,7 +269,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $model;
     }
 
-    /** @param TModel|int|string $id @param array<string, mixed> $data @param list<string> $with @return TModel */\n    public function update(
+    /** @param TModel|int|string $id @param array<string, mixed> $data @param list<string> $with @return TModel */
+    public function update(
         int|string|Model $id,
         array $data,
         bool $refresh = false,
@@ -289,7 +299,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $model;
     }
 
-    /** @param array<string, mixed> $attributes @param array<string, mixed> $values @return TModel */\n    public function updateOrCreate(
+    /** @param array<string, mixed> $attributes @param array<string, mixed> $values @return TModel */
+    public function updateOrCreate(
         array $attributes,
         array $values = [],
     ): Model {
@@ -305,7 +316,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $model;
     }
 
-    /** @param TModel|int|string $id */\n    public function delete(
+    /** @param TModel|int|string $id */
+    public function delete(
         int|string|Model $id,
     ): bool {
         $model = $id instanceof Model
@@ -321,7 +333,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $deleted;
     }
 
-    /** @param TModel|int|string $id */\n    public function forceDelete(
+    /** @param TModel|int|string $id */
+    public function forceDelete(
         int|string|Model $id,
     ): bool {
         $model = $id instanceof Model
@@ -345,7 +358,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $deleted;
     }
 
-    /** @param TModel|int|string $id */\n    public function restore(
+    /** @param TModel|int|string $id */
+    public function restore(
         int|string|Model $id,
     ): bool {
         $model = $id instanceof Model
@@ -368,7 +382,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $restored;
     }
 
-    /** @param array<string, mixed> $filters */\n    public function exists(array $filters = []): bool
+    /** @param array<string, mixed> $filters */
+    public function exists(array $filters = []): bool
     {
         return (bool) $this->cacheRemember(
             'exists',
@@ -379,12 +394,14 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters */\n    public function doesntExist(array $filters = []): bool
+    /** @param array<string, mixed> $filters */
+    public function doesntExist(array $filters = []): bool
     {
         return ! $this->exists($filters);
     }
 
-    /** @param array<string, mixed> $filters */\n    public function count(array $filters = []): int
+    /** @param array<string, mixed> $filters */
+    public function count(array $filters = []): int
     {
         return (int) $this->cacheRemember(
             'count',
@@ -395,7 +412,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters */\n    public function sum(
+    /** @param array<string, mixed> $filters */
+    public function sum(
         string $column,
         array $filters = [],
     ): float|int|null {
@@ -411,7 +429,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters */\n    public function avg(
+    /** @param array<string, mixed> $filters */
+    public function avg(
         string $column,
         array $filters = [],
     ): float|int|null {
@@ -427,7 +446,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters */\n    public function min(
+    /** @param array<string, mixed> $filters */
+    public function min(
         string $column,
         array $filters = [],
     ): mixed {
@@ -443,7 +463,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters */\n    public function max(
+    /** @param array<string, mixed> $filters */
+    public function max(
         string $column,
         array $filters = [],
     ): mixed {
@@ -459,7 +480,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters @return BaseCollection<array-key, mixed> */\n    public function pluck(
+    /** @param array<string, mixed> $filters @return BaseCollection<array-key, mixed> */
+    public function pluck(
         string $column,
         ?string $key = null,
         array $filters = [],
@@ -480,7 +502,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters @return BaseCollection<array-key, int> */\n    public function groupCount(
+    /** @param array<string, mixed> $filters @return BaseCollection<array-key, int> */
+    public function groupCount(
         string $column,
         array $filters = [],
     ): BaseCollection {
@@ -503,7 +526,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters @param list<string> $columns @return LengthAwarePaginator<int, TModel> */\n    public function paginate(
+    /** @param array<string, mixed> $filters @param list<string> $columns @return LengthAwarePaginator<int, TModel> */
+    public function paginate(
         array $filters = [],
         int $perPage = 15,
         array $columns = ['*'],
@@ -520,7 +544,8 @@ abstract class BaseRepository implements RepositoryInterface
             );
     }
 
-    /** @param list<string> $columns @return Paginator<int, TModel> */\n    public function simplePaginate(
+    /** @param list<string> $columns @return Paginator<int, TModel> */
+    public function simplePaginate(
         int $perPage = 15,
         array $columns = ['*'],
         string $pageName = 'page',
@@ -536,7 +561,8 @@ abstract class BaseRepository implements RepositoryInterface
             );
     }
 
-    /** @param list<string> $columns @return CursorPaginator<int, TModel> */\n    public function cursorPaginate(
+    /** @param list<string> $columns @return CursorPaginator<int, TModel> */
+    public function cursorPaginate(
         int $perPage = 15,
         array $columns = ['*'],
         string $cursorName = 'cursor',
@@ -552,7 +578,8 @@ abstract class BaseRepository implements RepositoryInterface
             );
     }
 
-    /** @param callable(Collection<int, TModel>): mixed $callback */\n    public function chunk(
+    /** @param callable(Collection<int, TModel>): mixed $callback */
+    public function chunk(
         int $count,
         callable $callback,
     ): bool {
@@ -564,7 +591,8 @@ abstract class BaseRepository implements RepositoryInterface
             );
     }
 
-    /** @return LazyCollection<int, TModel> */\n    public function lazy(
+    /** @return LazyCollection<int, TModel> */
+    public function lazy(
         int $chunkSize = 1000,
     ): LazyCollection {
         return $this
@@ -572,14 +600,16 @@ abstract class BaseRepository implements RepositoryInterface
             ->lazy($chunkSize);
     }
 
-    /** @return LazyCollection<int, TModel> */\n    public function cursor(): LazyCollection
+    /** @return LazyCollection<int, TModel> */
+    public function cursor(): LazyCollection
     {
         return $this
             ->buildQuery()
             ->cursor();
     }
 
-    /** @template TLoaded of Model @param TLoaded $model @param list<string>|string $relations @return TLoaded */\n    public function load(
+    /** @template TLoaded of Model @param TLoaded $model @param list<string>|string $relations @return TLoaded */
+    public function load(
         Model $model,
         array|string $relations,
     ): Model {
@@ -594,7 +624,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $model;
     }
 
-    /** @template TLoaded of Model @param TLoaded $model @param list<string>|string $relations @return TLoaded */\n    public function loadMissing(
+    /** @template TLoaded of Model @param TLoaded $model @param list<string>|string $relations @return TLoaded */
+    public function loadMissing(
         Model $model,
         array|string $relations,
     ): Model {
@@ -613,7 +644,8 @@ abstract class BaseRepository implements RepositoryInterface
      * Duplicate checks are intentionally fresh database reads. Caching a
      * uniqueness pre-check can return stale information inside write flows.
      */
-    /** @param array<string, mixed> $fields @param array<string, mixed> $where @return TModel|null */\n    public function findDuplicate(
+    /** @param array<string, mixed> $fields @param array<string, mixed> $where @return TModel|null */
+    public function findDuplicate(
         array $fields,
         ?int $ignore = null,
         array $where = [],
@@ -684,7 +716,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $query->first();
     }
 
-    /** @param list<mixed> $values @param array<string, mixed> $where @return Collection<int, TModel> */\n    public function findWhereIn(
+    /** @param list<mixed> $values @param array<string, mixed> $where @return Collection<int, TModel> */
+    public function findWhereIn(
         string $field,
         array $values,
         array $where = [],
@@ -730,7 +763,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $where @param list<string> $with @return TModel|null */\n    public function findWhere(
+    /** @param array<string, mixed> $where @param list<string> $with @return TModel|null */
+    public function findWhere(
         mixed $id,
         array $where = [],
         array $with = [],
@@ -770,7 +804,8 @@ abstract class BaseRepository implements RepositoryInterface
         );
     }
 
-    /** @param array<string, mixed> $filters @return Builder<TModel> */\n    protected function buildQuery(
+    /** @param array<string, mixed> $filters @return Builder<TModel> */
+    protected function buildQuery(
         array $filters = [],
     ): Builder {
         $query = $this->readQuery();
@@ -856,7 +891,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $query;
     }
 
-    /** @param list<string> $with @return TModel|null */\n    protected function findFromContext(
+    /** @param list<string> $with @return TModel|null */
+    protected function findFromContext(
         int|string $id,
         array $with = [],
     ): ?Model {
@@ -893,7 +929,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $model;
     }
 
-    /** @return static<TModel> */\n    protected function forkQuery(): static
+    /** @return static<TModel> */
+    protected function forkQuery(): static
     {
         $clone = clone $this;
         $clone->query = clone $this->query;
@@ -902,7 +939,8 @@ abstract class BaseRepository implements RepositoryInterface
         return $clone;
     }
 
-    /** @return bool */\n    protected function hasCustomQueryState(): bool
+    /** @return bool */
+    protected function hasCustomQueryState(): bool
     {
         return $this->customQueryState;
     }

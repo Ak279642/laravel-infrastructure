@@ -36,7 +36,8 @@ final class CacheManager
         $this->tagsSupported = $this->resolveTagsSupport();
     }
 
-    /** @param list<string> $tags */\n    public function get(
+    /** @param list<string> $tags */
+    public function get(
         string $key,
         mixed $default = null,
         array $tags = [],
@@ -67,7 +68,8 @@ final class CacheManager
      * @param  list<string>  $keys
      * @return array<string, mixed>
      */
-    /** @param list<string> $keys @param list<string> $tags @return array<string, mixed> */\n    public function many(
+    /** @param list<string> $keys @param list<string> $tags @return array<string, mixed> */
+    public function many(
         array $keys,
         array $tags = [],
     ): array {
@@ -93,7 +95,8 @@ final class CacheManager
         return $this->store($tags)->many($normalizedKeys);
     }
 
-    /** @param list<string> $tags */\n    public function put(
+    /** @param list<string> $tags */
+    public function put(
         string $key,
         mixed $value,
         DateInterval|DateTimeInterface|int|null $ttl = null,
@@ -119,7 +122,8 @@ final class CacheManager
     /**
      * @param  array<string, mixed>  $values
      */
-    /** @param array<string, mixed> $values @param list<string> $tags */\n    public function putMany(
+    /** @param array<string, mixed> $values @param list<string> $tags */
+    public function putMany(
         array $values,
         DateInterval|DateTimeInterface|int|null $ttl = null,
         array $tags = [],
@@ -162,7 +166,8 @@ final class CacheManager
         );
     }
 
-    /** @param list<string> $tags */\n    public function forever(
+    /** @param list<string> $tags */
+    public function forever(
         string $key,
         mixed $value,
         array $tags = [],
@@ -175,7 +180,8 @@ final class CacheManager
         );
     }
 
-    /** @param list<string> $tags */\n    public function putForever(
+    /** @param list<string> $tags */
+    public function putForever(
         string $key,
         mixed $value,
         array $tags = [],
@@ -187,7 +193,8 @@ final class CacheManager
         );
     }
 
-    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function remember(
+    /** @param callable(): mixed $callback @param list<string> $tags */
+    public function remember(
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
         callable $callback,
@@ -290,7 +297,8 @@ final class CacheManager
         }
     }
 
-    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function rememberForever(
+    /** @param callable(): mixed $callback @param list<string> $tags */
+    public function rememberForever(
         string $key,
         callable $callback,
         array $tags = [],
@@ -303,7 +311,8 @@ final class CacheManager
         );
     }
 
-    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function bypass(
+    /** @param callable(): mixed $callback @param list<string> $tags */
+    public function bypass(
         string $key,
         callable $callback,
         array $tags = [],
@@ -317,7 +326,8 @@ final class CacheManager
         );
     }
 
-    /** @param list<string> $tags */\n    public function pull(
+    /** @param list<string> $tags */
+    public function pull(
         string $key,
         mixed $default = null,
         array $tags = [],
@@ -337,7 +347,8 @@ final class CacheManager
         );
     }
 
-    /** @param list<string> $tags */\n    public function add(
+    /** @param list<string> $tags */
+    public function add(
         string $key,
         mixed $value,
         DateInterval|DateTimeInterface|int|null $ttl = null,
@@ -367,7 +378,8 @@ final class CacheManager
         );
     }
 
-    /** @param list<string> $tags */\n    public function increment(
+    /** @param list<string> $tags */
+    public function increment(
         string $key,
         int $amount = 1,
         array $tags = [],
@@ -387,7 +399,8 @@ final class CacheManager
         );
     }
 
-    /** @param list<string> $tags */\n    public function decrement(
+    /** @param list<string> $tags */
+    public function decrement(
         string $key,
         int $amount = 1,
         array $tags = [],
@@ -407,7 +420,8 @@ final class CacheManager
         );
     }
 
-    /** @param list<string> $tags */\n    public function has(
+    /** @param list<string> $tags */
+    public function has(
         string $key,
         array $tags = [],
     ): bool {
@@ -423,14 +437,16 @@ final class CacheManager
         return $this->store($tags)->has($key);
     }
 
-    /** @param list<string> $tags */\n    public function missing(
+    /** @param list<string> $tags */
+    public function missing(
         string $key,
         array $tags = [],
     ): bool {
         return ! $this->has($key, $tags);
     }
 
-    /** @param list<string> $tags */\n    public function forget(
+    /** @param list<string> $tags */
+    public function forget(
         string $key,
         array $tags = [],
     ): bool {
@@ -446,7 +462,8 @@ final class CacheManager
         return $this->store($tags)->forget($key);
     }
 
-    /** @param list<string> $keys @param list<string> $tags */\n    public function forgetMany(
+    /** @param list<string> $keys @param list<string> $tags */
+    public function forgetMany(
         array $keys,
         array $tags = [],
     ): bool {
@@ -461,7 +478,8 @@ final class CacheManager
         return $success;
     }
 
-    /** @param callable(): mixed $callback @param list<string> $tags */\n    public function refresh(
+    /** @param callable(): mixed $callback @param list<string> $tags */
+    public function refresh(
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
         callable $callback,
@@ -495,7 +513,8 @@ final class CacheManager
         return null;
     }
 
-    /** @param list<string> $tags */\n    public function flushTags(array $tags): bool
+    /** @param list<string> $tags */
+    public function flushTags(array $tags): bool
     {
         $normalizedTags = CacheTag::tags(...$tags);
 
@@ -580,7 +599,8 @@ final class CacheManager
         return $this->store->getStore() instanceof TaggableStore;
     }
 
-    /** @param list<string> $tags */\n    private function store(array $tags = []): CacheRepository|TaggedCache
+    /** @param list<string> $tags */
+    private function store(array $tags = []): CacheRepository|TaggedCache
     {
         if ($tags === []) {
             return $this->store;
@@ -589,7 +609,8 @@ final class CacheManager
         return $this->store->tags($tags);
     }
 
-    /** @param list<string> $tags */\n    private function tagsUnsupported(array $tags): bool
+    /** @param list<string> $tags */
+    private function tagsUnsupported(array $tags): bool
     {
         return $tags !== [] && ! $this->tagsSupported;
     }
@@ -610,7 +631,8 @@ final class CacheManager
         );
     }
 
-    /** @param callable(): mixed $callback */\n    private function populate(
+    /** @param callable(): mixed $callback */
+    private function populate(
         CacheRepository|TaggedCache $store,
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
@@ -623,7 +645,8 @@ final class CacheManager
         return $value;
     }
 
-    /** @param callable(): mixed $callback @param list<string> $tags */\n    private function populateAfterLock(
+    /** @param callable(): mixed $callback @param list<string> $tags */
+    private function populateAfterLock(
         CacheRepository|TaggedCache $store,
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
@@ -644,7 +667,8 @@ final class CacheManager
         );
     }
 
-    /** @param mixed $value */\n    private function write(
+    /** @param mixed $value */
+    private function write(
         CacheRepository|TaggedCache $store,
         string $key,
         mixed $value,
@@ -657,7 +681,8 @@ final class CacheManager
         return $store->put($key, $value, $ttl);
     }
 
-    /** @param callable(): mixed $callback @param list<string> $tags */\n    private function bypassNormalized(
+    /** @param callable(): mixed $callback @param list<string> $tags */
+    private function bypassNormalized(
         string $normalizedKey,
         callable $callback,
         array $tags,

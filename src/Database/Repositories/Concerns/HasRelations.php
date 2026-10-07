@@ -16,7 +16,8 @@ use Throwable;
  */
 trait HasRelations
 {
-    /** @param array<array-key, mixed>|string $relations @return array<array-key, mixed> */\n    protected function normalizeRelations(
+    /** @param array<array-key, mixed>|string $relations @return array<array-key, mixed> */
+    protected function normalizeRelations(
         array|string $relations,
     ): array {
         if (is_string($relations)) {
@@ -31,7 +32,8 @@ trait HasRelations
         return $relations;
     }
 
-    /** @param Builder<TModel> $query @param array<array-key, mixed>|string $relations @return Builder<TModel> */\n    protected function applyRelations(
+    /** @param Builder<TModel> $query @param array<array-key, mixed>|string $relations @return Builder<TModel> */
+    protected function applyRelations(
         Builder $query,
         array|string $relations,
     ): Builder {
@@ -46,7 +48,8 @@ trait HasRelations
         return $query;
     }
 
-    /** @param Builder<TModel> $query @param array<array-key, mixed>|string $relations @return Builder<TModel> */\n    protected function applyRelationCounts(
+    /** @param Builder<TModel> $query @param array<array-key, mixed>|string $relations @return Builder<TModel> */
+    protected function applyRelationCounts(
         Builder $query,
         array|string $relations,
     ): Builder {
@@ -61,7 +64,8 @@ trait HasRelations
         return $query;
     }
 
-    /** @param array<array-key, mixed> $relations @return array<array-key, mixed> */\n    protected function getAllowedRelations(array $relations): array
+    /** @param array<array-key, mixed> $relations @return array<array-key, mixed> */
+    protected function getAllowedRelations(array $relations): array
     {
         $result = [];
 
@@ -153,7 +157,8 @@ trait HasRelations
         return true;
     }
 
-    /** @param array<array-key, mixed>|string $relations */\n    public function with(array|string $relations): static
+    /** @param array<array-key, mixed>|string $relations */
+    public function with(array|string $relations): static
     {
         $relations = $this->getAllowedRelations(
             $this->normalizeRelations($relations),
@@ -168,7 +173,8 @@ trait HasRelations
         return $clone;
     }
 
-    /** @param array<array-key, mixed>|string $relations */\n    public function withCount(array|string $relations): static
+    /** @param array<array-key, mixed>|string $relations */
+    public function withCount(array|string $relations): static
     {
         $relations = $this->getAllowedRelations(
             $this->normalizeRelations($relations),
@@ -183,7 +189,8 @@ trait HasRelations
         return $clone;
     }
 
-    /** @param array<array-key, mixed>|string $relations */\n    public function withSum(
+    /** @param array<array-key, mixed>|string $relations */
+    public function withSum(
         array|string $relations,
         string $column,
     ): static {
@@ -209,7 +216,8 @@ trait HasRelations
         return $clone;
     }
 
-    /** @param array<array-key, mixed>|string $relations */\n    public function withAvg(
+    /** @param array<array-key, mixed>|string $relations */
+    public function withAvg(
         array|string $relations,
         string $column,
     ): static {

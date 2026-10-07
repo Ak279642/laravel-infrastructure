@@ -46,7 +46,8 @@ trait HasFilters
         'not_null',
     ];
 
-    /** @param Builder<TModel> $query @param array<string, mixed> $filters @return Builder<TModel> */\n    protected function applyFilters(
+    /** @param Builder<TModel> $query @param array<string, mixed> $filters @return Builder<TModel> */
+    protected function applyFilters(
         Builder $query,
         array $filters,
     ): Builder {
@@ -118,7 +119,8 @@ trait HasFilters
         return $query;
     }
 
-    /** @param Builder<TModel> $query @return Builder<TModel> */\n    protected function applyNestedFilter(
+    /** @param Builder<TModel> $query @return Builder<TModel> */
+    protected function applyNestedFilter(
         Builder $query,
         string $key,
         mixed $value,
@@ -170,7 +172,8 @@ trait HasFilters
         );
     }
 
-    /** @param Builder<TModel> $query @return Builder<TModel> */\n    protected function applyOperatorFilter(
+    /** @param Builder<TModel> $query @return Builder<TModel> */
+    protected function applyOperatorFilter(
         Builder $query,
         string $key,
         string $operator,
@@ -251,7 +254,8 @@ trait HasFilters
         );
     }
 
-    /** @param Builder<TModel> $query @param list<string>|null $searchColumns @return Builder<TModel> */\n    protected function applySearch(
+    /** @param Builder<TModel> $query @param list<string>|null $searchColumns @return Builder<TModel> */
+    protected function applySearch(
         Builder $query,
         string $search,
         ?array $searchColumns = null,
@@ -344,7 +348,8 @@ trait HasFilters
         );
     }
 
-    /** @param Builder<TModel> $query @return Builder<TModel> */\n    protected function applyNestedSearch(
+    /** @param Builder<TModel> $query @return Builder<TModel> */
+    protected function applyNestedSearch(
         Builder $query,
         string $column,
         string $term,

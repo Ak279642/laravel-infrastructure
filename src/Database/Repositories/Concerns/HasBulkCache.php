@@ -46,7 +46,9 @@ trait HasBulkCache
 
         return $affected;
     }
-\n    /** @param array<string, mixed> $filters */\n    public function bulkDelete(
+
+    /** @param array<string, mixed> $filters */
+    public function bulkDelete(
         array $filters = [],
     ): int {
         $models = $this
@@ -67,7 +69,9 @@ trait HasBulkCache
 
         return $affected;
     }
-\n    /** @param array<string, mixed> $filters */\n    public function bulkRestore(
+
+    /** @param array<string, mixed> $filters */
+    public function bulkRestore(
         array $filters = [],
     ): int {
         $models = $this
@@ -88,7 +92,9 @@ trait HasBulkCache
 
         return $affected;
     }
-\n    /** @param array<string, mixed> $filters */\n    public function bulkForceDelete(
+
+    /** @param array<string, mixed> $filters */
+    public function bulkForceDelete(
         array $filters = [],
     ): int {
         $models = $this
