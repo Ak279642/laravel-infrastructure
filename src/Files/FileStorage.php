@@ -121,7 +121,14 @@ final class FileStorage
         UploadedFile $file,
         ?string $filename,
     ): string {
-        $extension = strtolower($file->getClientOriginalExtension());
+        $extension = strtolower(trim($file->getClientOriginalExtension()));
+
+        if (
+            $extension !== ''
+            && preg_match('/^[a-z0-9]{1,20}$/', $extension) !== 1
+        ) {
+            throw new RuntimeException('Uploaded file extension is invalid.');
+        }
 
         if (is_string($filename) && trim($filename) !== '') {
             if (
