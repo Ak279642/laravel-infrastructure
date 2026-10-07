@@ -1091,6 +1091,34 @@ LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
 
 Correctness is preferred over stale cache.
 
+## Direct database writes and manual invalidation
+
+Repository cache invalidation is driven by repository writes and Eloquent model lifecycle events.
+
+A direct database/query-builder write does **not** dispatch Eloquent model events:
+
+```php
+DB::table('customers')->where('id', $id)->update([
+    'status' => 'inactive',
+]);
+```
+
+If cached repository reads may be affected, invalidate them explicitly afterward:
+
+```php
+$customerRepository->clearCache();
+```
+
+For a one-operation fresh read, use the returned repository chain:
+
+```php
+$customers = $customerRepository
+    ->withoutCache()
+    ->get();
+```
+
+`withoutCache()` does not disable caching on the original repository instance and its bypass is consumed by that read operation. This prevents request-specific cache state from leaking through long-running workers or shared repository instances.
+
 ## Bulk repository operations
 
 The package provides model-aware bulk methods:
