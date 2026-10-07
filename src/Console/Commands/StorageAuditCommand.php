@@ -80,12 +80,23 @@ final class StorageAuditCommand extends Command
         // shared model-owned directory cannot delete another model's files.
         $references = [];
 
-        foreach ($definitions as $definition) {
-            $this->collectReferences(
-                $definition['model'],
-                $definition['scopes'],
-                $references,
+        try {
+            foreach ($definitions as $definition) {
+                $this->collectReferences(
+                    $definition['model'],
+                    $definition['scopes'],
+                    $references,
+                );
+            }
+        } catch (Throwable $exception) {
+            // Fail before touching storage if any database reference scan is
+            // incomplete. Partial knowledge must never be used for deletion.
+            $this->error(
+                'Storage audit aborted before deletion: '.
+                $exception->getMessage(),
             );
+
+            return self::FAILURE;
         }
 
         $delete = (bool) $this->option('delete');
