@@ -297,7 +297,10 @@ trait HasFilters
             throw FilterNotAllowedException::forRepository(
                 $key,
                 static::class,
-                $this->allowedFilters,
+                array_values(array_unique([
+                    ...$this->allowedFilters,
+                    ...$this->allowedRelationFilters,
+                ])),
             );
         }
     }
