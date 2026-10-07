@@ -42,6 +42,39 @@ final class FileStorage
         return $path;
     }
 
+    public function storeContents(
+        string $contents,
+        string $extension,
+        ?string $directory = null,
+        ?string $disk = null,
+        ?string $filename = null,
+    ): string {
+        $disk = $disk ?: (string) config(
+            'laravel-infrastructure.files.disk',
+            'public',
+        );
+        $directory = $this->normalizeDirectory(
+            $directory ?? (string) config(
+                'laravel-infrastructure.files.directory',
+                'uploads',
+            ),
+        );
+        $extension = $this->normalizeExtension($extension);
+        $filename = $this->normalizeFilenameForExtension(
+            $extension,
+            $filename,
+        );
+        $path = $directory.'/'.$filename;
+
+        if (! $this->files->disk($disk)->put($path, $contents)) {
+            throw new RuntimeException(
+                'Unable to store generated file contents.',
+            );
+        }
+
+        return $path;
+    }
+
     public function delete(?string $path, ?string $disk = null): bool
     {
         if (! is_string($path) || trim($path) === '') {
@@ -156,15 +189,19 @@ final class FileStorage
         UploadedFile $file,
         ?string $filename,
     ): string {
-        $extension = strtolower(trim($file->getClientOriginalExtension()));
+        return $this->normalizeFilenameForExtension(
+            $this->normalizeExtension(
+                $file->getClientOriginalExtension(),
+                allowEmpty: true,
+            ),
+            $filename,
+        );
+    }
 
-        if (
-            $extension !== ''
-            && preg_match('/^[a-z0-9]{1,20}$/', $extension) !== 1
-        ) {
-            throw new RuntimeException('Uploaded file extension is invalid.');
-        }
-
+    private function normalizeFilenameForExtension(
+        string $extension,
+        ?string $filename,
+    ): string {
         if (is_string($filename) && trim($filename) !== '') {
             $filename = trim($filename);
 
@@ -205,5 +242,26 @@ final class FileStorage
         return $extension === ''
             ? $name
             : $name.'.'.$extension;
+    }
+
+    private function normalizeExtension(
+        string $extension,
+        bool $allowEmpty = false,
+    ): string {
+        $extension = strtolower(trim($extension));
+        $extension = ltrim($extension, '.');
+
+        if ($extension === '' && $allowEmpty) {
+            return '';
+        }
+
+        if (
+            $extension === ''
+            || preg_match('/^[a-z0-9]{1,20}$/', $extension) !== 1
+        ) {
+            throw new RuntimeException('File extension is invalid.');
+        }
+
+        return $extension;
     }
 }

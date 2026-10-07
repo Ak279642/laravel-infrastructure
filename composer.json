@@ -11,6 +11,7 @@
         "eloquent",
         "file-storage",
         "form-request",
+        "image-processing",
         "infrastructure",
         "laravel",
         "logging",
@@ -21,7 +22,8 @@
         "service-layer",
         "slug",
         "transactions",
-        "validation"
+        "validation",
+        "webp"
     ],
     "authors": [
         {
@@ -31,7 +33,8 @@
     ],
     "require": {
         "php": "^8.2",
-        "laravel/framework": "^10.0|^11.0|^12.0|^13.0"
+        "laravel/framework": "^10.0|^11.0|^12.0|^13.0",
+        "intervention/image": "^3.0"
     },
     "require-dev": {
         "orchestra/testbench": "^8.0|^9.0|^10.0|^11.0",
@@ -75,5 +78,9 @@
     "support": {
         "issues": "https://github.com/Ak279642/laravel-infrastructure/issues",
         "source": "https://github.com/Ak279642/laravel-infrastructure"
+    },
+    "suggest": {
+        "ext-gd": "Required when image processing uses the gd driver.",
+        "ext-imagick": "Required when image processing uses the imagick driver."
     }
 }

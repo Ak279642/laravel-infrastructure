@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added optional Intervention Image v3 processing for model file fields with WebP conversion, resize/scale/cover modes, quality control, GD/Imagick drivers, and rollback-safe cleanup.
 - Added model file-field access rules (`enabled`, `signed`, `guard`) plus `fileAssetUrl()` for model-aware asset URLs.
 - Added per-model repository cache enable/disable through model `cacheOptions()`.
 - Added signed `AssetsController` file-serving route with configurable prefix and disk allow-list.

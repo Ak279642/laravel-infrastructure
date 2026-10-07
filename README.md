@@ -4,6 +4,8 @@ Reusable Laravel infrastructure for repository-driven Laravel applications.
 
 **Requires:** PHP 8.2+ · Laravel 10–13
 
+For image processing, enable either PHP `ext-gd` or `ext-imagick`.
+
 ## Install
 
 ```bash
@@ -27,7 +29,7 @@ Repository cache + model cache switch + per-operation cache
 Repository validation + automatic model reuse + named resolvers
 BaseService + BaseAction + transaction retries
 Multiple slugs per model
-Automatic file upload + rollback/failure cleanup
+Automatic file upload + WebP/resize processing + rollback/failure cleanup
 Per-file guard visibility
 Signed AssetsController URLs
 Storage orphan audit
@@ -134,6 +136,33 @@ final class Product extends BaseModel
                 // default: UUID + uploaded extension
                 // may also be a string/callable
 
+                'image' => [
+                    'enabled' => true,
+                    // default: false
+
+                    'driver' => 'gd',
+                    // default: gd
+                    // supported: gd, imagick
+
+                    'format' => 'webp',
+                    // supported: webp, original
+
+                    'resize' => 'scale_down',
+                    // supported:
+                    // none, scale, scale_down,
+                    // resize, resize_down,
+                    // cover, cover_down
+
+                    'width' => 720,
+                    'height' => 720,
+
+                    'quality' => 80,
+                    // 0-100
+
+                    'position' => 'center',
+                    // used by cover / cover_down
+                ],
+
                 'access' => [
                     'enabled' => true,
                     // default: true
@@ -187,6 +216,44 @@ $product->image_path = $request->file('image');
 $product->document_path = $request->file('document');
 $product->save();
 ```
+
+For `image_path` above the package will:
+
+```text
+read uploaded image
+    -> scale down inside 720x720
+    -> keep aspect ratio
+    -> encode WebP at quality 80
+    -> store .webp path in image_path
+```
+
+Use `cover_down` for fixed-size thumbnails:
+
+```php
+'image' => [
+    'enabled' => true,
+    'format' => 'webp',
+    'resize' => 'cover_down',
+    'width' => 300,
+    'height' => 300,
+    'quality' => 80,
+],
+```
+
+Use original format but still resize:
+
+```php
+'image' => [
+    'enabled' => true,
+    'format' => 'original',
+    'resize' => 'scale_down',
+    'width' => 1200,
+    'height' => 1200,
+    'quality' => 85,
+],
+```
+
+`image => true` is also supported and uses the global image defaults.
 
 Automatic file lifecycle:
 
@@ -928,6 +995,9 @@ throw new BusinessLogicException(
 # Main environment options
 
 ```dotenv
+# Image processing
+LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER=gd
+
 # Cache
 LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
 LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis

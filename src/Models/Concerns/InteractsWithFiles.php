@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
+use Ak279642\LaravelInfrastructure\Files\ImageProcessor;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use DateTimeInterface;
@@ -300,12 +301,29 @@ trait InteractsWithFiles
                 $filename = null;
             }
 
-            $path = $storage->store(
-                file: $file,
-                directory: $directory,
-                disk: $disk,
-                filename: $filename,
-            );
+            $image = $options['image'] ?? null;
+            $imageOptions = is_array($image)
+                ? $image
+                : [];
+
+            if ($image === true) {
+                $imageOptions['enabled'] = true;
+            }
+
+            $path = (bool) ($imageOptions['enabled'] ?? false)
+                ? app(ImageProcessor::class)->store(
+                    file: $file,
+                    directory: $directory,
+                    disk: $disk,
+                    filename: $filename,
+                    options: $imageOptions,
+                )
+                : $storage->store(
+                    file: $file,
+                    directory: $directory,
+                    disk: $disk,
+                    filename: $filename,
+                );
 
             $upload = [
                 'column' => $column,

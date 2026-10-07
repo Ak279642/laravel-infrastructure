@@ -12,6 +12,7 @@ use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
 use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Exceptions\ApiExceptionRenderer;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
+use Ak279642\LaravelInfrastructure\Files\ImageProcessor;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
 use Ak279642\LaravelInfrastructure\Http\Controllers\AssetsController;
 use Ak279642\LaravelInfrastructure\Http\Middleware\RejectSensitivePaths;
@@ -55,6 +56,9 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->app->singleton(SchemaRegistry::class);
         $this->app->singleton(FileStorage::class, fn ($app): FileStorage => new FileStorage(
             $app->make(FilesystemFactory::class),
+        ));
+        $this->app->singleton(ImageProcessor::class, fn ($app): ImageProcessor => new ImageProcessor(
+            $app->make(FileStorage::class),
         ));
         $this->app->scoped(PendingFileUploads::class, fn ($app): PendingFileUploads => new PendingFileUploads(
             $app->make(FilesystemFactory::class),

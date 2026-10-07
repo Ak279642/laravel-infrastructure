@@ -38,6 +38,21 @@ return [
         'delete_on_delete' => true,
         'delete_on_soft_delete' => false,
         'auto_upload' => true,
+
+        // Optional Intervention Image v3 processing.
+        'image' => [
+            'enabled' => false,
+            'driver' => env(
+                'LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER',
+                'gd',
+            ),
+            'format' => 'webp',
+            'resize' => 'scale_down',
+            'width' => null,
+            'height' => null,
+            'quality' => 80,
+            'position' => 'center',
+        ],
     ],
 
     'assets' => [
