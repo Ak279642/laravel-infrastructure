@@ -113,6 +113,57 @@ trait InteractsWithFiles
         return $configured;
     }
 
+    /**
+     * Return only file attributes whose audit directory is explicitly owned by
+     * the model configuration. Global package directories are never inferred
+     * for storage auditing.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function auditableFileAttributes(): array
+    {
+        $modelOptions = $this->fileOptions();
+        $configured = [];
+
+        foreach ($this->fileAttributes() as $key => $value) {
+            $column = is_int($key) && is_string($value)
+                ? $value
+                : (is_string($key) ? $key : null);
+
+            if (! is_string($column) || $column === '') {
+                continue;
+            }
+
+            $attributeOptions = is_array($value) ? $value : [];
+
+            if (! (bool) ($attributeOptions['audit'] ?? $modelOptions['audit'] ?? true)) {
+                continue;
+            }
+
+            // Storage audit is intentionally restricted to a directory that is
+            // declared by the model itself. We do not fall back to the package
+            // global files.directory value here.
+            $directory = $attributeOptions['directory']
+                ?? $modelOptions['directory']
+                ?? null;
+
+            if (! is_string($directory) || trim($directory, '/') === '') {
+                continue;
+            }
+
+            $configured[$column] = array_replace(
+                (array) config('laravel-infrastructure.files', []),
+                $modelOptions,
+                $attributeOptions,
+                [
+                    'directory' => trim($directory, '/'),
+                ],
+            );
+        }
+
+        return $configured;
+    }
+
     private function storeInfrastructureUploadedFiles(): void
     {
         $storage = app(FileStorage::class);
