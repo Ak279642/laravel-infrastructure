@@ -82,28 +82,66 @@ trait HasRelations
 
     protected function relationExists(string $relation): bool
     {
+        return $this->resolveRelatedModel($relation) !== null;
+    }
+
+    protected function relationColumnExists(string $path): bool
+    {
+        $segments = explode('.', $path);
+
+        if (count($segments) < 2) {
+            return false;
+        }
+
+        $column = array_pop($segments);
+        $relation = implode('.', $segments);
+        $model = $this->resolveRelatedModel($relation);
+
+        if (
+            $model === null
+            || ! is_string($column)
+            || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1
+        ) {
+            return false;
+        }
+
+        try {
+            return $model->getConnection()
+                ->getSchemaBuilder()
+                ->hasColumn($model->getTable(), $column);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    protected function resolveRelatedModel(string $relation): ?\Illuminate\Database\Eloquent\Model
+    {
         $relation = $this->canonicalRelationName($relation);
 
         if ($relation === '') {
-            return false;
+            return null;
         }
 
         $model = $this->model;
 
         foreach (explode('.', $relation) as $segment) {
-            if ($segment === '' || ! method_exists($model, $segment)) {
-                return false;
+            if (
+                $segment === ''
+                || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $segment) !== 1
+                || ! method_exists($model, $segment)
+            ) {
+                return null;
             }
 
             try {
                 $relationObject = $model->{$segment}();
                 $model = $relationObject->getRelated();
             } catch (Throwable) {
-                return false;
+                return null;
             }
         }
 
-        return true;
+        return $model;
     }
 
     public function with(array|string $relations): static
@@ -135,7 +173,12 @@ trait HasRelations
         foreach ($relations as $key => $value) {
             $relation = is_string($key) ? $key : $value;
 
-            if (is_string($relation)) {
+            if (
+                is_string($relation)
+                && $this->relationColumnExists(
+                    $this->canonicalRelationName($relation).'.'.$column,
+                )
+            ) {
                 $this->query->withSum($relation, $column);
             }
         }
@@ -150,7 +193,12 @@ trait HasRelations
         foreach ($relations as $key => $value) {
             $relation = is_string($key) ? $key : $value;
 
-            if (is_string($relation)) {
+            if (
+                is_string($relation)
+                && $this->relationColumnExists(
+                    $this->canonicalRelationName($relation).'.'.$column,
+                )
+            ) {
                 $this->query->withAvg($relation, $column);
             }
         }
