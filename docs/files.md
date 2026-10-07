@@ -18,7 +18,7 @@ The audit only scans explicitly registered model-owned directories and defaults 
 
 File replacement and delete cleanup is commit-aware. When a model write runs inside a database transaction, old files are deleted only after the outer transaction commits. A rollback therefore never leaves a restored database row pointing at a file that was already removed.
 
-Uploads are written before the database save so the stored path can be persisted. If a later database transaction rolls back, the newly uploaded replacement can remain as an orphan. Run the storage audit to report or remove those unreferenced files.
+Uploads are written before the database save so the stored path can be persisted. Failed database writes and transaction rollbacks are compensated automatically: newly uploaded files are removed while the previously committed file remains intact.
 
 Custom filenames must be plain relative filenames: path separators, hidden dotfiles, null bytes, control characters, and malformed extensions are rejected.
 
@@ -73,3 +73,49 @@ $url = URL::temporarySignedRoute(
 ```
 
 Private disks are never enabled implicitly. Add them to `allowed_disks` explicitly and keep signed URLs enabled.
+
+
+## Asset route authorization
+
+The built-in asset route supports three independent protections:
+
+1. signed URLs;
+2. route middleware such as `auth:sanctum`;
+3. optional Laravel Gate abilities per disk.
+
+Example:
+
+```php
+'assets' => [
+    'enabled' => true,
+    'prefix' => 'infrastructure/assets',
+    'signed' => true,
+
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+
+    'middleware' => [
+        'auth:sanctum',
+    ],
+
+    'disk_abilities' => [
+        'private' => 'view-private-assets',
+    ],
+],
+```
+
+Application authorization stays framework-native:
+
+```php
+Gate::define(
+    'view-private-assets',
+    function ($user, string $disk, string $path): bool {
+        return $user->hasRole('admin')
+            || $user->can('documents.view');
+    },
+);
+```
+
+The package does not require a particular RBAC library. The Gate may use Laravel policies, Spatie Permission, or custom role/permission logic.

@@ -571,20 +571,57 @@ Inject `TransactionManager` when several repository writes must succeed or fail 
 
 ### Why `run()`?
 
-`run()` is the package transaction boundary. It is a small wrapper around Laravel's database transaction API so Controllers and Actions use the same injectable transaction contract.
+`run()` is only the package wrapper around Laravel's normal database transaction.
 
-```text
-run(callback)
-    -> begin DB transaction
-    -> execute every repository write inside callback
-    -> callback succeeds: COMMIT
-    -> callback throws: ROLLBACK
-    -> attempts > 1: Laravel can retry deadlock/serialization failures
+You can always use Laravel directly:
+
+```php
+use Illuminate\Support\Facades\DB;
+
+$order = DB::transaction(function () use ($data) {
+    // repository writes...
+});
 ```
 
-Without a transaction, the first repository write may succeed while a later write fails. With `run()`, those writes are atomic.
+The package provides `$transactions->run(...)` so the same transaction behavior can be injected into Controllers/Actions and deadlock retry attempts can be configured consistently:
 
-You do **not** call `run()` for a single normal `find()` or simple one-record update. Use it when multiple writes belong to one business operation.
+```php
+$order = $this->transactions->run(
+    function () use ($data) {
+        // All writes below either COMMIT together
+        // or ROLLBACK together.
+
+        $product = $this->products->findOrFail(
+            $data['product_id'],
+        );
+
+        if ($product->stock < $data['quantity']) {
+            throw new BusinessLogicException(
+                'Insufficient product stock.',
+            );
+        }
+
+        $order = $this->orders->create([
+            'product_id' => $product->id,
+            'quantity' => $data['quantity'],
+            'total' => $product->price * $data['quantity'],
+        ]);
+
+        $this->products->update(
+            $product,
+            [
+                'stock' => $product->stock
+                    - $data['quantity'],
+            ],
+        );
+
+        return $order;
+    },
+    attempts: 3,
+);
+```
+
+Use `run()` only when multiple database changes belong to one operation. For normal reads or a standalone single write, call the repository directly.
 
 ```php
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
@@ -799,6 +836,25 @@ return ResourceResponse::make(
 ```
 
 Because the custom method uses the repository's protected `cacheRemember()`, it gets the same configured cache store, TTL, locking, model tags, and invalidation behavior as built-in repository reads.
+
+Real flow:
+
+```text
+first featured(12)
+    -> DB query
+    -> cache result
+
+next featured(12)
+    -> same cache key
+    -> return cached collection
+
+Product create/update/delete
+    -> model cache tags invalidated
+    -> next featured(12) queries DB again
+
+Product cacheOptions enabled=false
+    -> cacheRemember automatically bypasses cache for that model
+```
 
 If a custom method intentionally requires a fresh query, either do not wrap that method in `cacheRemember()` or expose a built-in operation through:
 
@@ -1083,34 +1139,22 @@ The package handles storage path assignment, replacement cleanup, failed-save cl
 
 ## Access uploaded files with the package AssetsController
 
-The package registers this route by default:
+The package registers:
 
 ```text
 GET /infrastructure/assets/{disk}/{path}
-route name: laravel-infrastructure.assets.show
-controller: AssetsController
+
+route name:
+laravel-infrastructure.assets.show
 ```
 
-The route is **signed by default** and only the `public` disk is allowed by default.
+### Public file example
 
-Create a temporary signed URL:
+Generate a signed URL from a Resource:
 
 ```php
 use Illuminate\Support\Facades\URL;
 
-$url = URL::temporarySignedRoute(
-    'laravel-infrastructure.assets.show',
-    now()->addMinutes(15),
-    [
-        'disk' => 'public',
-        'path' => $product->image_path,
-    ],
-);
-```
-
-Return it from a Resource:
-
-```php
 final class ProductResource extends JsonResource
 {
     public function toArray($request): array
@@ -1119,36 +1163,152 @@ final class ProductResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
 
-            'image_url' => URL::temporarySignedRoute(
-                'laravel-infrastructure.assets.show',
-                now()->addMinutes(15),
-                [
-                    'disk' => 'public',
-                    'path' => $this->image_path,
-                ],
-            ),
+            'image_url' => $this->image_path
+                ? URL::temporarySignedRoute(
+                    'laravel-infrastructure.assets.show',
+                    now()->addMinutes(15),
+                    [
+                        'disk' => 'public',
+                        'path' => $this->image_path,
+                    ],
+                )
+                : null,
         ];
     }
 }
 ```
 
-Asset route config:
+### Asset route configuration
 
 ```php
 'assets' => [
-    'enabled' => true, // default
-    'prefix' => 'infrastructure/assets', // default
-    'signed' => true, // default
+    'enabled' => true,
+    // default: true
+
+    'prefix' => 'infrastructure/assets',
+    // default: "infrastructure/assets"
+
+    'signed' => true,
+    // default: true
+
     'allowed_disks' => [
-        'public', // default
-        // 'private', // explicitly opt in when needed
+        'public',
+    ],
+    // default: ['public']
+
+    'middleware' => [],
+    // default: []
+    // example: ['auth:sanctum']
+
+    'disk_abilities' => [],
+    // default: []
+    // example:
+    // 'private' => 'view-private-assets'
+],
+```
+
+### Protect every asset route with authentication
+
+```php
+'assets' => [
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+
+    'middleware' => [
+        'auth:sanctum',
     ],
 ],
 ```
 
-For a private disk, add the disk to `allowed_disks` and keep signed URLs enabled. The controller validates the disk allow-list, signature, safe relative path, and file existence before serving the file.
+Now even a valid signed URL requires an authenticated user.
 
-Disable the package asset route completely:
+### Protect a private disk by role / permission
+
+The package does not depend on any RBAC package. Use a normal Laravel Gate so Spatie Permission, your own roles table, policies, or any custom authorization system can decide access.
+
+Config:
+
+```php
+'assets' => [
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+
+    'middleware' => [
+        'auth:sanctum',
+    ],
+
+    'disk_abilities' => [
+        'private' => 'view-private-assets',
+    ],
+],
+```
+
+Define the Gate in your application's `AppServiceProvider`:
+
+```php
+use Illuminate\Support\Facades\Gate;
+
+public function boot(): void
+{
+    Gate::define(
+        'view-private-assets',
+        function ($user, string $disk, string $path): bool {
+            return $user->hasRole('admin')
+                || $user->can('documents.view');
+        },
+    );
+}
+```
+
+With Spatie Permission the same Gate can simply use its role/permission helpers; the package itself stays independent of Spatie.
+
+### Real private-document use case
+
+Product stores invoice/document on the private disk:
+
+```php
+protected function fileAttributes(): array
+{
+    return [
+        'invoice_path' => [
+            'disk' => 'private',
+            'directory' => 'products/invoices',
+        ],
+    ];
+}
+```
+
+Resource returns a short-lived signed link:
+
+```php
+'invoice_url' => URL::temporarySignedRoute(
+    'laravel-infrastructure.assets.show',
+    now()->addMinutes(5),
+    [
+        'disk' => 'private',
+        'path' => $this->invoice_path,
+    ],
+),
+```
+
+Request flow:
+
+```text
+user opens signed URL
+    -> auth:sanctum checks login
+    -> signature checks URL expiry/tampering
+    -> allowed_disks checks "private"
+    -> Gate "view-private-assets" checks role/permission
+    -> safe path validation
+    -> file existence check
+    -> AssetsController streams file
+```
+
+Disable the built-in route completely when the host application wants its own controller:
 
 ```php
 'assets' => [

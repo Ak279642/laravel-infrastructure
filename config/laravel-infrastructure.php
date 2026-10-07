@@ -56,6 +56,13 @@ return [
         ),
         // Private disks must be explicitly added by the host application.
         'allowed_disks' => ['public'],
+
+        // Route middleware, e.g. ['auth:sanctum'].
+        'middleware' => [],
+
+        // Optional Laravel Gate ability per disk.
+        // Example: 'private' => 'view-private-assets'.
+        'disk_abilities' => [],
     ],
 
     'storage_audit' => [

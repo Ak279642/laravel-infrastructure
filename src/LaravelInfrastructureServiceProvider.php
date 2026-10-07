@@ -131,6 +131,18 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                 ->where('path', '.*')
                 ->name('laravel-infrastructure.assets.show');
 
+            $middleware = array_values(array_filter(
+                (array) config(
+                    'laravel-infrastructure.assets.middleware',
+                    [],
+                ),
+                'is_string',
+            ));
+
+            if ($middleware !== []) {
+                $route->middleware($middleware);
+            }
+
             if ((bool) config(
                 'laravel-infrastructure.assets.signed',
                 true,

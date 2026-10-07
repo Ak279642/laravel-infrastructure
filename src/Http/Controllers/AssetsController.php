@@ -7,6 +7,7 @@ namespace Ak279642\LaravelInfrastructure\Http\Controllers;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class AssetsController
@@ -42,6 +43,14 @@ final class AssetsController
             && ! $request->hasValidSignature()
         ) {
             abort(403);
+        }
+
+        $ability = config(
+            "laravel-infrastructure.assets.disk_abilities.{$disk}",
+        );
+
+        if (is_string($ability) && $ability !== '') {
+            Gate::authorize($ability, [$disk, $path]);
         }
 
         abort_unless(

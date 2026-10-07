@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Added per-model repository cache enable/disable through model `cacheOptions()`.
 - Added signed `AssetsController` file-serving route with configurable prefix and disk allow-list.
+- Added configurable asset-route middleware and per-disk Laravel Gate authorization for authentication/role/permission protection.
 - Added `infrastructure:database-backup` for MySQL/MariaDB and PostgreSQL logical backups with optional gzip compression, schema-only exclusions, Laravel filesystem storage, and retention pruning.
 - Added opt-in `SecurityHeaders` and `RejectSensitivePaths` middleware with package middleware aliases.
 
@@ -26,7 +27,7 @@ All notable changes to this project will be documented in this file.
 - Rejected unsafe storage-audit directories and referenced paths before any deletion scan is allowed to proceed.
 
 ### Notes
-- Newly uploaded files are still written before the database save so their paths can be persisted. If a surrounding database transaction later rolls back, the new file can remain orphaned; infrastructure:storage-audit is the supported cleanup path.
+- Newly uploaded files are written before the database save so their paths can be persisted; failed writes and transaction rollbacks now remove those new files automatically.
 
 ## [1.1.0] - 2026-10-07
 

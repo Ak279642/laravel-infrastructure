@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
@@ -73,6 +74,36 @@ final class AssetsRouteTest extends TestCase
                 ],
             ),
         )->assertForbidden();
+    }
+
+    public function test_asset_route_enforces_configured_disk_gate_ability(): void
+    {
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.disk_abilities.public',
+            'view-product-assets',
+        );
+
+        Gate::define(
+            'view-product-assets',
+            static fn (): bool => false,
+        );
+
+        Storage::disk('public')->put(
+            'products/documents/manual.txt',
+            'manual-content',
+        );
+
+        $url = URL::temporarySignedRoute(
+            'laravel-infrastructure.assets.show',
+            now()->addMinutes(5),
+            [
+                'disk' => 'public',
+                'path' => 'products/documents/manual.txt',
+            ],
+        );
+
+        $this->get($url)
+            ->assertForbidden();
     }
 
     public function test_asset_route_rejects_disk_not_in_allow_list(): void
