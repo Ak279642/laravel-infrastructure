@@ -8,6 +8,7 @@ use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 use Throwable;
 
@@ -20,7 +21,18 @@ trait InteractsWithCache
 {
     public static function bootInteractsWithCache(): void
     {
-        static::observe(app(CacheObserver::class));
+        // Register observer methods as class listeners instead of calling
+        // Model::observe() while the model is booting. This avoids recursive
+        // model construction on Laravel 13 while preserving the observer's
+        // ShouldHandleEventsAfterCommit behavior.
+        static::created(CacheObserver::class.'@created');
+        static::updated(CacheObserver::class.'@updated');
+        static::deleted(CacheObserver::class.'@deleted');
+
+        if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
+            static::restored(CacheObserver::class.'@restored');
+            static::forceDeleted(CacheObserver::class.'@forceDeleted');
+        }
     }
 
     public static function cacheTag(): string
@@ -65,6 +77,7 @@ trait InteractsWithCache
 
             if ($relationObject instanceof Relation) {
                 $related = $relationObject->getRelated();
+
                 if ($related instanceof CacheableModel) {
                     $tags[] = $related::cacheTag();
                 }
@@ -72,11 +85,16 @@ trait InteractsWithCache
 
             if ($this->relationLoaded($root)) {
                 $loaded = $this->getRelation($root);
-                $items = $loaded instanceof Collection ? $loaded : collect([$loaded]);
+                $items = $loaded instanceof Collection
+                    ? $loaded
+                    : collect([$loaded]);
 
                 foreach ($items as $item) {
                     if ($item instanceof CacheableModel) {
-                        $tags = CacheTag::merge($tags, $item->getCacheTags());
+                        $tags = CacheTag::merge(
+                            $tags,
+                            $item->getCacheTags(),
+                        );
                     }
                 }
             }
@@ -87,7 +105,10 @@ trait InteractsWithCache
 
     public function getCacheInvalidationTags(): array
     {
-        return CacheTag::merge([static::cacheTag()], $this->getCacheTags());
+        return CacheTag::merge(
+            [static::cacheTag()],
+            $this->getCacheTags(),
+        );
     }
 
     public function invalidateCache(): void
