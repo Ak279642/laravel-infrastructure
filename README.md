@@ -691,13 +691,13 @@ Unknown scopes are ignored.
 
 Repository caching is enabled by default.
 
-Default repository TTL:
+Default repository TTL is read from `laravel-infrastructure.cache.default_ttl`, which defaults to **300 seconds (5 minutes)** and is configurable with:
 
-```text
-5 minutes
+```dotenv
+LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 ```
 
-You can change cache behavior per repository call chain.
+A repository may still override the default with its protected `$cacheTtl` property, and you can change cache behavior per call chain.
 
 ### Change the TTL
 
@@ -1791,6 +1791,30 @@ LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
 
 Enable exception traces only when appropriate for the deployment environment because traces can contain operational details.
 
+## Service provider and long-running workers
+
+Laravel package discovery registers `LaravelInfrastructureServiceProvider` automatically.
+
+The provider intentionally uses these lifetimes:
+
+| Service | Lifetime | Reason |
+| --- | --- | --- |
+| `CacheManager` | singleton | cache store/configuration service with no request-specific state |
+| `CacheInvalidator` | singleton | stateless cache invalidation coordinator |
+| `CacheObserver` | singleton | stateless Eloquent observer |
+| `SchemaRegistry` | singleton | process-level schema metadata cache, isolated by connection + physical database identity |
+| `FileStorage` | singleton | stateless filesystem adapter |
+| `SlugGenerator` | singleton | stateless generator backed by cache/schema services |
+| `ApiExceptionRenderer` | singleton | stateless JSON exception mapper |
+| `ValidationContext` | scoped | request/job-specific resolved validation models must never leak between operations |
+| `TransactionManager` | transient binding | lightweight wrapper around Laravel's database manager |
+
+This makes the package safe for long-running workers such as Laravel Octane and queue workers as long as application repositories/services are not manually registered as unsafe global singletons.
+
+The schema registry includes driver, host, port, database, schema/search path, and table prefix in its in-memory identity. Reusing the same Laravel connection name for another tenant/database therefore does not reuse stale schema metadata.
+
+`ValidationContext` is a Laravel scoped binding, so Octane/request/job scope resets discard previously resolved models.
+
 ## Package boundaries
 
 This package intentionally does **not** provide application/domain features such as:
@@ -1823,7 +1847,13 @@ Validate the Composer package:
 composer validate --strict
 ```
 
-The GitHub Actions compatibility matrix tests supported PHP/Laravel combinations and includes an architecture test that prevents accidental application `App\` dependencies.
+The GitHub Actions compatibility matrix runs the complete test suite across PHP 8.2-8.4 and Laravel 10-13. It also includes an architecture suite that scans runtime package source/config for accidental host-application `App\` dependencies.
+
+Run only the architecture guard with:
+
+```bash
+composer test:architecture
+```
 
 ## License
 
