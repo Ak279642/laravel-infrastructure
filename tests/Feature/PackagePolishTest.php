@@ -93,13 +93,17 @@ final class PackagePolishTest extends TestCase
     }
 
     private function sqliteConnection(
-        string $databaseIdentity,
+        string $hostIdentity,
     ): SQLiteConnection {
         return new SQLiteConnection(
             new PDO('sqlite::memory:'),
-            $databaseIdentity,
+            'shared-database-name',
             '',
-            ['name' => 'tenant'],
+            [
+                'name' => 'tenant',
+                'driver' => 'sqlite',
+                'host' => $hostIdentity,
+            ],
         );
     }
 }
