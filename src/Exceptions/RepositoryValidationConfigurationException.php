@@ -15,4 +15,13 @@ final class RepositoryValidationConfigurationException extends LogicException
             "[Ak279642\\LaravelInfrastructure\\Database\\Repositories\\Contracts\\RepositoryValidationRepository].",
         );
     }
+
+    public static function invalidRule(mixed $rule): self
+    {
+        return new self(
+            'Repository validation rules must be instances of ['.
+            'Ak279642\\LaravelInfrastructure\\Validation\\RepositoryValidationRule]; received ['.
+            get_debug_type($rule).'].',
+        );
+    }
 }
