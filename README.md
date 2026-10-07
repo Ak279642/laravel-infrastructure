@@ -1329,6 +1329,16 @@ final class CustomerRepository extends BaseRepository
         'created_at',
     ];
 
+    // Dotted relation filters are opt-in separately.
+    protected array $allowedRelationFilters = [
+        'country.code',
+    ];
+
+    // Request-driven model scopes are also explicit.
+    protected array $allowedScopes = [
+        'active',
+    ];
+
     protected array $allowedSorts = [
         'name',
         'email',
@@ -1794,6 +1804,8 @@ null
 not_null
 ```
 
+Relation filters must be explicitly listed in `$allowedRelationFilters` (legacy dotted entries already present in `$allowedFilters` remain supported for backwards compatibility). The relation itself must also be present in `$allowedRelations`, and the related column must exist in the related model table.
+
 Nested relation filtering is also supported:
 
 ```php
@@ -1936,6 +1948,14 @@ public function scopeActive($query)
 {
     return $query->where('status', 'active');
 }
+```
+
+Only scopes listed in `$allowedScopes` can be invoked through repository input:
+
+```php
+protected array $allowedScopes = [
+    'active',
+];
 ```
 
 Use it through filters:
@@ -2701,6 +2721,20 @@ final class CreateInvoiceService
     }
 }
 ```
+
+### Automatic ValidationContext identity map
+
+Repository-backed validation and repository ID lookups share the scoped `ValidationContext` automatically.
+
+- If a matching model is already in context, the repository reuses the same instance.
+- If requested relations are missing, they are loaded onto that existing instance with `loadMissing()`.
+- `findWhereIn()` reuses matching context models and queries only missing values.
+- Newly queried validation models are remembered automatically even when no explicit alias is configured.
+- Create/update/restore refresh the context identity map.
+- Delete/force-delete evict removed models so a stale in-memory model cannot be returned later in the same request.
+- Failed validation restores the previous context and removes partially resolved data.
+
+This means a request can validate an ID, resolve/load its relations, pass through a Service, and later call the Repository without paying for the same lookup twice.
 
 ### Repository automatically reuses resolved models
 
