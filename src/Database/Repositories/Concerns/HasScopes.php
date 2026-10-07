@@ -1,0 +1,68 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
+
+use Illuminate\Database\Eloquent\Builder;
+
+trait HasScopes
+{
+    /**
+     * Apply model scopes to the query.
+     */
+    protected function applyScopes(Builder $query, array|string $scopes): Builder
+    {
+        $scopes = $this->normalizeScopes($scopes);
+
+        foreach ($scopes as $scope) {
+            if (! $this->hasScope($query, $scope)) {
+                continue;
+            }
+
+            $query->{$scope}();
+        }
+
+        return $query;
+    }
+
+    /**
+     * Apply a single scope with optional arguments.
+     */
+    public function scope(string $scope, mixed ...$args): static
+    {
+        if ($this->hasScope($this->query, $scope)) {
+            $this->query->{$scope}(...$args);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Normalize scopes.
+     */
+    protected function normalizeScopes(array|string $scopes): array
+    {
+        if (is_string($scopes)) {
+            $scopes = preg_split(
+                '/\s*,\s*/',
+                trim($scopes),
+                -1,
+                PREG_SPLIT_NO_EMPTY
+            );
+        }
+
+        return array_values(array_unique($scopes));
+    }
+
+    /**
+     * Check whether the model defines the given local scope.
+     */
+    protected function hasScope(Builder $query, string $scope): bool
+    {
+        return method_exists(
+            $query->getModel(),
+            'scope'.ucfirst($scope)
+        );
+    }
+}

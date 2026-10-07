@@ -1,0 +1,519 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Ak279642\LaravelInfrastructure\Cache;
+
+use DateInterval;
+use DateTimeInterface;
+use Illuminate\Cache\Repository;
+use Illuminate\Cache\TaggableStore;
+use Illuminate\Cache\TaggedCache;
+use Illuminate\Contracts\Cache\Factory;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\Store;
+use Throwable;
+
+final class CacheManager
+{
+    private Repository $store;
+
+    private bool $tagsSupported;
+
+    public function __construct(
+        private readonly Factory $cache,
+        private readonly ?string $storeName = null,
+    ) {
+        $this->store = $this->resolveStore();
+        $this->tagsSupported = $this->resolveTagsSupport();
+    }
+
+    public function get(
+        string $key,
+        mixed $default = null,
+        array $tags = [],
+    ): mixed {
+        $key = $this->normalizeKey($key);
+        $store = $this->store($tags);
+
+        $value = $store->get($key, $default);
+
+        // Log::info('Cache GET', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'hit' => $value !== $default,
+        // ]);
+
+        return $value;
+    }
+
+    /**
+     * @param  list<string>  $keys
+     * @return array<string, mixed>
+     */
+    public function many(
+        array $keys,
+        array $tags = [],
+    ): array {
+        $normalizedKeys = array_map(
+            fn (string $key) => $this->normalizeKey($key),
+            $keys,
+        );
+
+        $result = $this->store($tags)->many($normalizedKeys);
+
+        // Log::info('Cache MANY', [
+        //     'keys' => $normalizedKeys,
+        //     'tags' => $tags,
+        //     'count' => count($result),
+        // ]);
+
+        return $result;
+    }
+
+    public function put(
+        string $key,
+        mixed $value,
+        DateInterval|DateTimeInterface|int|null $ttl = null,
+        array $tags = [],
+    ): bool {
+        $key = $this->normalizeKey($key);
+
+        $result = $this->store($tags)->put(
+            $key,
+            $value,
+            $ttl,
+        );
+
+        // Log::info('Cache PUT', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'ttl' => $ttl,
+        //     'success' => $result,
+        // ]);
+
+        return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     */
+    public function putMany(
+        array $values,
+        DateInterval|DateTimeInterface|int|null $ttl = null,
+        array $tags = [],
+    ): bool {
+        $normalizedValues = [];
+
+        foreach ($values as $key => $value) {
+            $normalizedValues[$this->normalizeKey($key)] = $value;
+        }
+
+        $result = $this->store($tags)->putMany(
+            $normalizedValues,
+            $ttl,
+        );
+
+        // Log::info('Cache PUT MANY', [
+        //     'keys' => array_keys($normalizedValues),
+        //     'tags' => $tags,
+        //     'ttl' => $ttl,
+        //     'success' => $result,
+        // ]);
+
+        return $result;
+    }
+
+    public function forever(
+        string $key,
+        mixed $value,
+        array $tags = [],
+    ): bool {
+        return $this->put(
+            $key,
+            $value,
+            null,
+            $tags,
+        );
+    }
+
+    public function putForever(
+        string $key,
+        mixed $value,
+        array $tags = [],
+    ): bool {
+        return $this->forever(
+            $key,
+            $value,
+            $tags,
+        );
+    }
+
+    public function remember(
+        string $key,
+        DateInterval|DateTimeInterface|int|null $ttl,
+        callable $callback,
+        array $tags = [],
+    ): mixed {
+        $key = $this->normalizeKey($key);
+
+        // Log::info('Cache LOOKUP', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'ttl' => $ttl,
+        //     'mode' => 'standard',
+        // ]);
+
+        $store = $this->store($tags);
+
+        if ($store->has($key)) {
+            $cached = $store->get($key);
+            // Log::info('Cache HIT', [
+            //     'key' => $key,
+            //     'tags' => $tags,
+            //     'mode' => 'standard',
+            // ]);
+
+            return $cached;
+        }
+
+        // Log::info('Cache MISS', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'mode' => 'standard',
+        // ]);
+
+        $value = $callback();
+
+        $store->put(
+            $key,
+            $value,
+            $ttl,
+        );
+
+        // Log::info('Cache WRITE', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'mode' => 'standard',
+        // ]);
+
+        return $value;
+    }
+
+    public function rememberLocked(
+        string $key,
+        DateInterval|DateTimeInterface|int|null $ttl,
+        callable $callback,
+        array $tags = [],
+        int $lockSeconds = 10,
+        int $waitSeconds = 3,
+    ): mixed {
+        $key = $this->normalizeKey($key);
+        $store = $this->store($tags);
+
+        if ($store->has($key)) {
+            return $store->get($key);
+        }
+
+        $lock = $this->lock(
+            'cache-populate:'.hash('sha256', $key),
+            max(1, $lockSeconds),
+        );
+
+        if ($lock === null) {
+            $value = $callback();
+            $store->put($key, $value, $ttl);
+
+            return $value;
+        }
+
+        try {
+            return $lock->block(max(0, $waitSeconds), function () use ($store, $key, $ttl, $callback): mixed {
+                // Another worker may have populated the value while this worker
+                // waited for the lock, so always re-check before doing the work.
+                if ($store->has($key)) {
+                    return $store->get($key);
+                }
+
+                $value = $callback();
+                $store->put($key, $value, $ttl);
+
+                return $value;
+            });
+        } catch (LockTimeoutException) {
+            // A timed-out waiter gets one final cache read. If the lock holder
+            // failed before populating the value, preserve availability by
+            // performing the work rather than returning an empty/stale result.
+            if ($store->has($key)) {
+                return $store->get($key);
+            }
+
+            $value = $callback();
+            $store->put($key, $value, $ttl);
+
+            return $value;
+        }
+    }
+
+    public function rememberForever(
+        string $key,
+        callable $callback,
+        array $tags = [],
+    ): mixed {
+        return $this->remember(
+            $key,
+            null,
+            $callback,
+            $tags,
+        );
+    }
+
+    public function pull(
+        string $key,
+        mixed $default = null,
+        array $tags = [],
+    ): mixed {
+        $key = $this->normalizeKey($key);
+
+        $value = $this->store($tags)->pull(
+            $key,
+            $default,
+        );
+
+        // Log::info('Cache PULL', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'hit' => $value !== $default,
+        // ]);
+
+        return $value;
+    }
+
+    public function add(
+        string $key,
+        mixed $value,
+        DateInterval|DateTimeInterface|int|null $ttl = null,
+        array $tags = [],
+    ): bool {
+        $key = $this->normalizeKey($key);
+
+        $result = $this->store($tags)->add(
+            $key,
+            $value,
+            $ttl,
+        );
+
+        // Log::info('Cache ADD', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'ttl' => $ttl,
+        //     'success' => $result,
+        // ]);
+
+        return $result;
+    }
+
+    public function increment(
+        string $key,
+        int $amount = 1,
+        array $tags = [],
+    ): int|bool {
+        $key = $this->normalizeKey($key);
+
+        return $this->store($tags)->increment(
+            $key,
+            $amount,
+        );
+    }
+
+    public function decrement(
+        string $key,
+        int $amount = 1,
+        array $tags = [],
+    ): int|bool {
+        $key = $this->normalizeKey($key);
+
+        return $this->store($tags)->decrement(
+            $key,
+            $amount,
+        );
+    }
+
+    public function has(
+        string $key,
+        array $tags = [],
+    ): bool {
+        $key = $this->normalizeKey($key);
+
+        $result = $this->store($tags)->has($key);
+
+        // Log::info('Cache HAS', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'result' => $result,
+        // ]);
+
+        return $result;
+    }
+
+    public function missing(
+        string $key,
+        array $tags = [],
+    ): bool {
+        return ! $this->has($key, $tags);
+    }
+
+    public function forget(
+        string $key,
+        array $tags = [],
+    ): bool {
+        $key = $this->normalizeKey($key);
+
+        $result = $this->store($tags)->forget($key);
+
+        // Log::info('Cache FORGET', [
+        //     'key' => $key,
+        //     'tags' => $tags,
+        //     'success' => $result,
+        // ]);
+
+        return $result;
+    }
+
+    public function forgetMany(
+        array $keys,
+        array $tags = [],
+    ): bool {
+        $success = true;
+
+        foreach ($keys as $key) {
+            if (! $this->forget($key, $tags)) {
+                $success = false;
+            }
+        }
+
+        return $success;
+    }
+
+    public function refresh(
+        string $key,
+        DateInterval|DateTimeInterface|int|null $ttl,
+        callable $callback,
+        array $tags = [],
+    ): mixed {
+        $this->forget($key, $tags);
+
+        return $this->remember(
+            $key,
+            $ttl,
+            $callback,
+            $tags,
+        );
+    }
+
+    public function lock(
+        string $name,
+        int $seconds = 0,
+        ?string $owner = null,
+    ): ?Lock {
+        $store = $this->store->getStore();
+
+        if ($store instanceof LockProvider) {
+            return $store->lock(
+                $name,
+                $seconds,
+                $owner,
+            );
+        }
+
+        return null;
+    }
+
+    public function flushTags(array $tags): bool
+    {
+        if (! $this->supportsTags()) {
+            // Log::warning('Cache TAG FLUSH skipped - tags unsupported', [
+            //     'tags' => $tags,
+            // ]);
+
+            return false;
+        }
+
+        $normalizedTags = CacheTag::tags(...$tags);
+
+        if ($normalizedTags === []) {
+            return false;
+        }
+
+        try {
+            $result = $this->store($normalizedTags)->flush();
+
+            // Log::info('Cache TAG FLUSH', [
+            //     'tags' => $normalizedTags,
+            //     'success' => $result,
+            // ]);
+
+            return $result;
+        } catch (Throwable $e) {
+            // Log::error('Cache TAG FLUSH failed', [
+            //     'tags' => $normalizedTags,
+            //     'error' => $e->getMessage(),
+            // ]);
+
+            return false;
+        }
+    }
+
+    public function flushAll(): bool
+    {
+        $result = $this->store->flush();
+
+        // Log::info('Cache FLUSH ALL', [
+        //     'success' => $result,
+        // ]);
+
+        return $result;
+    }
+
+    public function supportsTags(): bool
+    {
+        return $this->tagsSupported;
+    }
+
+    public function getStore(): Store
+    {
+        return $this->store->getStore();
+    }
+
+    private function normalizeKey(string $key): string
+    {
+        return '_'.ltrim($key, '_');
+    }
+
+    private function resolveStore(): Repository
+    {
+        return $this->cache->store($this->storeName);
+    }
+
+    private function resolveTagsSupport(): bool
+    {
+        return $this->store->getStore() instanceof TaggableStore;
+    }
+
+    private function store(array $tags = []): Repository|TaggedCache
+    {
+        $normalizedTags = CacheTag::tags(...$tags);
+
+        if ($normalizedTags === []) {
+            return $this->store;
+        }
+
+        if (! $this->tagsSupported) {
+            return $this->store;
+        }
+
+        return $this->store->tags($normalizedTags);
+    }
+}

@@ -1,0 +1,69 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'cache' => [
+        // Null uses Laravel's default cache store.
+        'store' => env('LARAVEL_INFRASTRUCTURE_CACHE_STORE'),
+        'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
+    ],
+
+    'transactions' => [
+        // Deadlock/serialization retry attempts used by BaseAction by default.
+        'attempts' => max(1, (int) env('LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS', 1)),
+    ],
+
+    'slug' => [
+        // Disabled globally by default. Enable a legacy single slug with slugOptions(),
+        // or declare one/more fields explicitly with slugFields().
+        'enabled' => false,
+        'source' => 'name',
+        'column' => 'slug',
+        'unique' => true,
+        'regenerate_on_update' => false,
+        'separator' => '-',
+        // List of model attributes that scope uniqueness, e.g. ['organization_id'].
+        'scope' => [],
+    ],
+
+    'files' => [
+        'disk' => env('LARAVEL_INFRASTRUCTURE_FILE_DISK', 'public'),
+        'directory' => env('LARAVEL_INFRASTRUCTURE_FILE_DIRECTORY', 'uploads'),
+        'delete_on_replace' => true,
+        'delete_on_delete' => true,
+        'delete_on_soft_delete' => false,
+        'auto_upload' => true,
+    ],
+
+    'storage_audit' => [
+        // Explicit opt-in only. The command never discovers/scans App models.
+        'models' => [],
+        'chunk_size' => 500,
+    ],
+
+    'responses' => [
+        // Normalize exceptions only for requests that explicitly expect JSON.
+        'exception_renderer_enabled' => env(
+            'LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED',
+            true,
+        ),
+    ],
+
+    'logging' => [
+        'enabled' => env('LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED', true),
+        'channel' => env('LARAVEL_INFRASTRUCTURE_LOG_CHANNEL'),
+        'exception_trace_enabled' => env('LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE', false),
+        'log_client_exceptions' => env('LARAVEL_INFRASTRUCTURE_LOG_CLIENT_EXCEPTIONS', false),
+        'log_server_exceptions' => env('LARAVEL_INFRASTRUCTURE_LOG_SERVER_EXCEPTIONS', true),
+        'correlation_header' => env('LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER', 'X-Request-ID'),
+        'accept_incoming_correlation_id' => env('LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID', true),
+        'max_depth' => 6,
+        'max_string_length' => 4096,
+        'max_array_items' => 100,
+        'max_file_mb' => 100,
+        'retention_days' => 14,
+        'domain_enabled' => [],
+        'domain_channels' => [],
+    ],
+];
