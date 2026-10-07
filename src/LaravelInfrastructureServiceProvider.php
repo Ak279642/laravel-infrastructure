@@ -27,6 +27,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             return new CacheManager(
                 $app->make(CacheFactory::class),
                 config('laravel-infrastructure.cache.store'),
+                $app->make(\Illuminate\Contracts\Events\Dispatcher::class),
             );
         });
 
