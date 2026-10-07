@@ -84,3 +84,64 @@ jobs:
 
       - name: Static analysis
         run: composer analyse
+
+
+  database-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        driver:
+          - mysql
+          - pgsql
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: infrastructure
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: infrastructure
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d infrastructure"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      TEST_DB_DRIVER: ${{ matrix.driver }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: pdo_mysql, pdo_pgsql
+          tools: composer:v2
+
+      - name: Select framework version
+        run: |
+          composer require --dev --no-update             "laravel/framework:^13.0"             "orchestra/testbench:^11.0"
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Run database compatibility tests
+        run: vendor/bin/phpunit tests/Feature/FilterDriverCompatibilityTest.php
