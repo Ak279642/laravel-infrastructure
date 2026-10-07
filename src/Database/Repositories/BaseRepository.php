@@ -40,6 +40,7 @@ abstract class BaseRepository implements RepositoryInterface
     protected array $allowedRelations = [];
     protected array $defaultRelations = [];
     protected array $defaultOrder = [];
+    protected bool $strictFilters = false;
 
     public function __construct(
         protected Model $model,
@@ -395,7 +396,7 @@ abstract class BaseRepository implements RepositoryInterface
             $this->applyRelations($query, $filters['with']);
         }
         if (! empty($filters['with_count'])) {
-            $query->withCount($filters['with_count']);
+            $this->applyRelationCounts($query, $filters['with_count']);
         }
         if (! empty($filters['sort'])) {
             $query->reorder();
