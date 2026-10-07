@@ -563,6 +563,8 @@ This flushes the model tag used by that repository.
 
 ## Custom repository methods with cache
 
+A complete copyable example is available at [`examples/Repositories/CustomerRepository.php`](examples/Repositories/CustomerRepository.php).
+
 This is the recommended way to cache application-specific repository queries.
 
 **Do not use Laravel's `Cache` facade directly inside the repository unless you intentionally want to bypass the package's repository key/tag conventions.**
