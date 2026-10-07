@@ -41,6 +41,23 @@ final class ValidationContextTest extends TestCase
         self::assertCount(2, $context->requireCollection('customers', ValidationContextModel::class));
     }
 
+    public function test_replacing_alias_removes_old_model_from_repository_index(): void
+    {
+        $first = new ValidationContextModel();
+        $first->setRawAttributes(['id' => 1], true);
+
+        $second = new ValidationContextModel();
+        $second->setRawAttributes(['id' => 2], true);
+
+        $context = new ValidationContext();
+        $context->put('customer', $first);
+        $context->put('customer', $second);
+
+        self::assertNull($context->findModel(ValidationContextModel::class, 1));
+        self::assertSame($second, $context->findModel(ValidationContextModel::class, 2));
+        self::assertSame($second, $context->requireModel('customer'));
+    }
+
     public function test_missing_required_alias_is_rejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
