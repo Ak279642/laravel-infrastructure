@@ -16,6 +16,7 @@ use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Store;
+use Illuminate\Contracts\Events\Dispatcher;
 use Throwable;
 
 final class CacheManager
