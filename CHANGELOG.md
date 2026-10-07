@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Automatic request-scoped ValidationContext identity-map reuse for repository validation and ID lookups.
+- Explicit relation-filter and request-scope allow-lists.
+- Pint and Larastan quality gates in CI.
+- Focused docs for architecture, repositories, filtering/security, caching, validation, transactions, files, logging, responses, exceptions, slugs, testing, and security.
+- Transaction-manager regression coverage for commits, rollbacks, nested transactions, and null/false returns.
+- Slug regression coverage for Unicode, empty sources, and soft-deleted slug reservation.
+
+### Changed
+- Repository reads automatically bypass cache inside open database transactions to prevent rolled-back uncommitted data from being cached.
+- Repository selected/aggregate/validation helper columns are schema-validated before query construction.
+- Repository cache enablement and lock/wait durations are globally configurable while preserving existing defaults.
+- File storage rejects traversal/absolute/control-character paths and malformed upload extensions.
+- Slug uniqueness checks include soft-deleted records when the model uses SoftDeletes.
+- Context create/update/restore paths refresh remembered models; delete/force-delete evict them.
+
+### Fixed
+- Soft-deleted rows are now visible to bulkRestore() and bulkForceDelete().
+- Relation filters require explicit authorization and related-column existence.
+- Request-supplied model scopes cannot invoke arbitrary local scopes.
+- groupCount() no longer interpolates a column name into raw SQL.
+
 ### Maintenance
 - Repository history consolidated onto `main` after branch cleanup; all previously completed infrastructure features remain present.
 
