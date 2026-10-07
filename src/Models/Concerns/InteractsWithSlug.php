@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
 use Ak279642\LaravelInfrastructure\Slugs\SlugGenerator;
-use Illuminate\Database\Eloquent\Model;
 
 trait InteractsWithSlug
 {
     public static function bootInteractsWithSlug(): void
     {
-        static::creating(function (Model $model): void {
+        static::creating(function (self $model): void {
             foreach ($model->configuredSlugFields() as $options) {
                 $model->generateInfrastructureSlug(
                     options: $options,
@@ -20,7 +19,7 @@ trait InteractsWithSlug
             }
         });
 
-        static::updating(function (Model $model): void {
+        static::updating(function (self $model): void {
             foreach ($model->configuredSlugFields() as $options) {
                 if (! (bool) ($options['enabled'] ?? false)) {
                     continue;
