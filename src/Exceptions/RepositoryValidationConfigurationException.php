@@ -12,7 +12,7 @@ final class RepositoryValidationConfigurationException extends LogicException
     {
         return new self(
             "Repository validation requires [{$repository}] to implement ".
-            "[Ak279642\\LaravelInfrastructure\\Database\\Repositories\\Contracts\\RepositoryValidationRepository].",
+            '[Ak279642\\LaravelInfrastructure\\Database\\Repositories\\Contracts\\RepositoryValidationRepository].',
         );
     }
 

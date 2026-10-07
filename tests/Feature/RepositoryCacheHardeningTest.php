@@ -322,7 +322,7 @@ final class RepositoryCacheHardeningTest extends TestCase
     private function repository(): CacheHardeningUserRepository
     {
         return new CacheHardeningUserRepository(
-            new CacheHardeningUser(),
+            new CacheHardeningUser,
             $this->app->make(CacheManager::class),
         );
     }
@@ -331,7 +331,9 @@ final class RepositoryCacheHardeningTest extends TestCase
 final class CacheHardeningUserRepository extends BaseRepository
 {
     protected array $allowedFilters = ['status'];
+
     protected array $allowedSorts = ['name'];
+
     protected array $allowedRelations = ['account', 'account.region'];
 
     public function cacheKeyFor(array $filters): string
@@ -355,6 +357,7 @@ final class CacheHardeningUser extends Model implements CacheableModel
     use SoftDeletes;
 
     protected $table = 'cache_hardening_users';
+
     protected $guarded = [];
 
     public function account()
@@ -368,6 +371,7 @@ final class CacheHardeningAccount extends Model implements CacheableModel
     use InteractsWithCache;
 
     protected $table = 'cache_hardening_accounts';
+
     protected $guarded = [];
 
     public function region()
@@ -381,5 +385,6 @@ final class CacheHardeningRegion extends Model implements CacheableModel
     use InteractsWithCache;
 
     protected $table = 'cache_hardening_regions';
+
     protected $guarded = [];
 }

@@ -14,10 +14,10 @@ final class ValidationContextTest extends TestCase
 {
     public function test_aliases_and_model_index_are_available(): void
     {
-        $model = new ValidationContextModel();
+        $model = new ValidationContextModel;
         $model->setRawAttributes(['id' => 42, 'name' => 'Resolved'], true);
 
-        $context = new ValidationContext();
+        $context = new ValidationContext;
         $context->put('customer', $model);
 
         self::assertSame($model, $context->getModel('customer'));
@@ -28,13 +28,13 @@ final class ValidationContextTest extends TestCase
 
     public function test_collections_are_indexed_by_model_class_and_id(): void
     {
-        $first = new ValidationContextModel();
+        $first = new ValidationContextModel;
         $first->setRawAttributes(['id' => 1], true);
 
-        $second = new ValidationContextModel();
+        $second = new ValidationContextModel;
         $second->setRawAttributes(['id' => 2], true);
 
-        $context = new ValidationContext();
+        $context = new ValidationContext;
         $context->put('customers', new Collection([$first, $second]));
 
         self::assertSame($second, $context->findModel(ValidationContextModel::class, 2));
@@ -43,13 +43,13 @@ final class ValidationContextTest extends TestCase
 
     public function test_replacing_alias_removes_old_model_from_repository_index(): void
     {
-        $first = new ValidationContextModel();
+        $first = new ValidationContextModel;
         $first->setRawAttributes(['id' => 1], true);
 
-        $second = new ValidationContextModel();
+        $second = new ValidationContextModel;
         $second->setRawAttributes(['id' => 2], true);
 
-        $context = new ValidationContext();
+        $context = new ValidationContext;
         $context->put('customer', $first);
         $context->put('customer', $second);
 
@@ -62,7 +62,7 @@ final class ValidationContextTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
 
-        (new ValidationContext())->requireModel('customer');
+        (new ValidationContext)->requireModel('customer');
     }
 }
 

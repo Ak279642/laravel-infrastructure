@@ -16,7 +16,7 @@ final class DomainLoggerFactory
         $logger = new Logger($name);
 
         if (! (bool) ($config['enabled'] ?? true)) {
-            $logger->pushHandler(new NullHandler());
+            $logger->pushHandler(new NullHandler);
 
             return $logger;
         }

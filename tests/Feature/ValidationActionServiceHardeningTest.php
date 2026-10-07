@@ -14,6 +14,7 @@ use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Ak279642\LaravelInfrastructure\Validation\RepositoryValidationRule;
 use Ak279642\LaravelInfrastructure\Validation\RepositoryValidationService;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -151,7 +152,7 @@ final class ValidationActionServiceHardeningTest extends TestCase
         $third = Batch3Product::query()->create(['name' => 'Three']);
 
         $context = $this->app->make(ValidationContext::class);
-        $context->remember(new \Illuminate\Database\Eloquent\Collection([
+        $context->remember(new Collection([
             $first,
             $third,
         ]));
@@ -364,6 +365,7 @@ final class Batch3RecordRepository extends BaseRepository
 final class Batch3ProductRepository extends BaseRepository
 {
     protected array $allowedRelations = ['record'];
+
     public function __construct(
         Batch3Product $model,
         CacheManager $cache,
@@ -389,12 +391,14 @@ final class Batch3ItemRepository extends BaseRepository
 final class Batch3Record extends Model
 {
     protected $table = 'batch3_records';
+
     protected $guarded = [];
 }
 
 final class Batch3Product extends Model
 {
     protected $table = 'batch3_products';
+
     protected $guarded = [];
 
     public function record()
@@ -406,12 +410,11 @@ final class Batch3Product extends Model
 final class Batch3Item extends Model
 {
     protected $table = 'batch3_items';
+
     protected $guarded = [];
 }
 
-final class Batch3InvalidValidationRepository
-{
-}
+final class Batch3InvalidValidationRepository {}
 
 final class Batch3ItemService extends BaseService
 {

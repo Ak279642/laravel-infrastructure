@@ -214,7 +214,7 @@ final class RepositoryQuerySecurityTest extends TestCase
     public function test_unapproved_model_scope_cannot_be_invoked_from_filters(): void
     {
         $repository = (new QuerySecurityNoScopeRepository(
-            new QuerySecurityUser(),
+            new QuerySecurityUser,
             $this->app->make(CacheManager::class),
         ))->withoutCache();
 
@@ -227,7 +227,7 @@ final class RepositoryQuerySecurityTest extends TestCase
     private function repository(): QuerySecurityRepository
     {
         return (new QuerySecurityRepository(
-            new QuerySecurityUser(),
+            new QuerySecurityUser,
             $this->app->make(CacheManager::class),
         ))->withoutCache();
     }
@@ -235,7 +235,7 @@ final class RepositoryQuerySecurityTest extends TestCase
     private function strictRepository(): StrictQuerySecurityRepository
     {
         return (new StrictQuerySecurityRepository(
-            new QuerySecurityUser(),
+            new QuerySecurityUser,
             $this->app->make(CacheManager::class),
         ))->withoutCache();
     }
@@ -244,10 +244,15 @@ final class RepositoryQuerySecurityTest extends TestCase
 class QuerySecurityRepository extends BaseRepository
 {
     protected array $searchable = ['name', 'email'];
+
     protected array $allowedFilters = ['status', 'age'];
+
     protected array $allowedRelationFilters = ['account.name'];
+
     protected array $allowedSorts = ['name', 'created_at'];
+
     protected array $allowedRelations = ['account'];
+
     protected array $allowedScopes = ['adult'];
 }
 
@@ -264,6 +269,7 @@ final class StrictQuerySecurityRepository extends QuerySecurityRepository
 final class QuerySecurityUser extends Model
 {
     protected $table = 'query_security_users';
+
     protected $guarded = [];
 
     public function account()
@@ -280,6 +286,8 @@ final class QuerySecurityUser extends Model
 final class QuerySecurityAccount extends Model
 {
     protected $table = 'query_security_accounts';
+
     public $timestamps = false;
+
     protected $guarded = [];
 }

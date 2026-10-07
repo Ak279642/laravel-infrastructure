@@ -202,7 +202,7 @@ final class StorageAuditCommand extends Command
             }
 
             /** @var Model $model */
-            $model = new $modelClass();
+            $model = new $modelClass;
 
             if (! method_exists($model, 'auditableFileAttributes')) {
                 throw new \RuntimeException(

@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Ak279642\LaravelInfrastructure\Exceptions\RelationNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Throwable;
 
 trait HasRelations
@@ -114,7 +115,7 @@ trait HasRelations
         }
     }
 
-    protected function resolveRelatedModel(string $relation): ?\Illuminate\Database\Eloquent\Model
+    protected function resolveRelatedModel(string $relation): ?Model
     {
         $relation = $this->canonicalRelationName($relation);
 

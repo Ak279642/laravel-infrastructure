@@ -72,8 +72,7 @@ final class LogContextRedactor
         );
 
         foreach (
-            array_slice($value, 0, $limit, true)
-            as $itemKey => $itemValue
+            array_slice($value, 0, $limit, true) as $itemKey => $itemValue
         ) {
             $sanitized[$itemKey] = self::redact(
                 $itemValue,

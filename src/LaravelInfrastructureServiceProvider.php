@@ -52,7 +52,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             $app->make(SchemaRegistry::class),
         ));
 
-        $this->app->scoped(ValidationContext::class, fn (): ValidationContext => new ValidationContext());
+        $this->app->scoped(ValidationContext::class, fn (): ValidationContext => new ValidationContext);
 
         $this->app->bind(TransactionManager::class, LaravelTransactionManager::class);
         $this->app->singleton(ApiExceptionRenderer::class);

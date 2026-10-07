@@ -22,7 +22,7 @@ final class PackagePolishTest extends TestCase
         );
 
         $repository = new ConfiguredTtlRepository(
-            new PackagePolishModel(),
+            new PackagePolishModel,
             $this->app->make(CacheManager::class),
         );
 
@@ -37,7 +37,7 @@ final class PackagePolishTest extends TestCase
         );
 
         $repository = new ExplicitTtlRepository(
-            new PackagePolishModel(),
+            new PackagePolishModel,
             $this->app->make(CacheManager::class),
         );
 
@@ -59,7 +59,7 @@ final class PackagePolishTest extends TestCase
             '(id INTEGER PRIMARY KEY, email TEXT)',
         );
 
-        $registry = new SchemaRegistry();
+        $registry = new SchemaRegistry;
 
         self::assertTrue(
             $registry->has(

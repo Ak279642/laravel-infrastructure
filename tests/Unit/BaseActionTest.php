@@ -12,7 +12,7 @@ final class BaseActionTest extends TestCase
 {
     public function test_action_passes_configured_retry_attempts_to_transaction_manager(): void
     {
-        $transactions = new RecordingTransactionManager();
+        $transactions = new RecordingTransactionManager;
         $action = new RetryingTestAction($transactions);
 
         self::assertSame('done', $action->execute());
@@ -22,7 +22,7 @@ final class BaseActionTest extends TestCase
 
     public function test_explicit_attempt_override_wins_for_one_transaction(): void
     {
-        $transactions = new RecordingTransactionManager();
+        $transactions = new RecordingTransactionManager;
         $action = new RetryingTestAction($transactions);
 
         self::assertSame('done', $action->executeWithAttempts(2));
@@ -56,6 +56,7 @@ final class RetryingTestAction extends BaseAction
 final class RecordingTransactionManager implements TransactionManager
 {
     public int $attempts = 0;
+
     public int $runs = 0;
 
     public function run(callable $callback, int $attempts = 1): mixed

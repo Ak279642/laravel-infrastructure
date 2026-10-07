@@ -13,6 +13,7 @@ use Illuminate\Contracts\Cache\Lock;
 trait Cacheable
 {
     private ?CacheManager $cacheManagerInstance = null;
+
     private ?CacheInvalidator $cacheInvalidatorInstance = null;
 
     protected function cacheManager(): CacheManager

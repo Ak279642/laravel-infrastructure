@@ -11,8 +11,8 @@ use Illuminate\Cache\TaggableStore;
 use Illuminate\Cache\TaggedCache;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Lock;
-use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Store;
 use Throwable;
 

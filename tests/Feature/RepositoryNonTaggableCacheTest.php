@@ -46,7 +46,7 @@ final class RepositoryNonTaggableCacheTest extends TestCase
     public function test_repository_bypasses_cache_when_store_cannot_support_invalidation_tags(): void
     {
         $repository = new NonTaggableCacheRepository(
-            new NonTaggableCacheItem(),
+            new NonTaggableCacheItem,
             $this->app->make(CacheManager::class),
         );
 
@@ -61,12 +61,11 @@ final class RepositoryNonTaggableCacheTest extends TestCase
     }
 }
 
-final class NonTaggableCacheRepository extends BaseRepository
-{
-}
+final class NonTaggableCacheRepository extends BaseRepository {}
 
 final class NonTaggableCacheItem extends Model
 {
     protected $table = 'non_taggable_cache_items';
+
     protected $guarded = [];
 }

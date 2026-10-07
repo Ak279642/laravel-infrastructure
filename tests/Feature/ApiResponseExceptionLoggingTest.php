@@ -86,7 +86,7 @@ final class ApiResponseExceptionLoggingTest extends TestCase
         });
 
         $router->get('/batch4/not-found', static function () {
-            throw (new ModelNotFoundException())->setModel(
+            throw (new ModelNotFoundException)->setModel(
                 Batch4MissingModel::class,
                 [99],
             );
@@ -204,7 +204,7 @@ final class ApiResponseExceptionLoggingTest extends TestCase
 
     public function test_production_500_response_and_log_do_not_leak_exception_details(): void
     {
-        $logger = new Batch4RecordingLogger();
+        $logger = new Batch4RecordingLogger;
         $this->app->instance('log', $logger);
 
         $response = $this->getJson('/batch4/error');
@@ -266,7 +266,7 @@ final class ApiResponseExceptionLoggingTest extends TestCase
 
         $this->app->instance('request', $request);
 
-        $logger = new Batch4RecordingLogger();
+        $logger = new Batch4RecordingLogger;
         $this->app->instance('log', $logger);
 
         CustomLog::info(
@@ -303,9 +303,7 @@ final class Batch4Resource extends JsonResource
     }
 }
 
-final class Batch4MissingModel
-{
-}
+final class Batch4MissingModel {}
 
 final class Batch4RecordingLogger
 {

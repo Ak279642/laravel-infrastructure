@@ -164,7 +164,7 @@ final class ModelSlugFileAuditTest extends TestCase
 
     public function test_file_field_without_model_directory_is_not_auditable(): void
     {
-        $model = new ModelSlugFileAuditDocument();
+        $model = new ModelSlugFileAuditDocument;
 
         self::assertArrayHasKey(
             'avatar_path',
