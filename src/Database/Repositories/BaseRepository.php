@@ -37,8 +37,12 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     protected Builder $query;
     protected array $searchable = [];
     protected array $allowedFilters = [];
+    /** Explicit relation-filter allow-list. Dotted entries in allowedFilters remain supported for BC. */
+    protected array $allowedRelationFilters = [];
     protected array $allowedSorts = [];
     protected array $allowedRelations = [];
+    /** Request-driven model scopes must be explicitly allow-listed. */
+    protected array $allowedScopes = [];
     protected array $defaultRelations = [];
     protected array $defaultOrder = [];
     protected bool $strictFilters = false;
