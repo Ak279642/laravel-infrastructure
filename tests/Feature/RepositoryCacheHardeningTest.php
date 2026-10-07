@@ -222,6 +222,103 @@ final class RepositoryCacheHardeningTest extends TestCase
         );
     }
 
+    public function test_bulk_update_invalidates_cached_collections(): void
+    {
+        $repository = $this->repository();
+
+        $repository->create([
+            'account_id' => 1,
+            'name' => 'Alice',
+            'status' => 'active',
+        ]);
+        $repository->create([
+            'account_id' => 1,
+            'name' => 'Bob',
+            'status' => 'active',
+        ]);
+
+        self::assertCount(2, $repository->get(['status' => 'active']));
+
+        self::assertSame(
+            2,
+            $repository->bulkUpdate(
+                data: ['status' => 'inactive'],
+                filters: ['status' => 'active'],
+            ),
+        );
+
+        self::assertCount(0, $repository->get(['status' => 'active']));
+        self::assertCount(2, $repository->get(['status' => 'inactive']));
+    }
+
+    public function test_cache_refresh_and_forever_paths_remain_available(): void
+    {
+        $cache = $this->app->make(CacheManager::class);
+
+        self::assertSame(
+            'forever',
+            $cache->rememberForever(
+                'hardening.forever',
+                static fn (): string => 'forever',
+                ['hardening'],
+            ),
+        );
+
+        self::assertSame(
+            'refreshed',
+            $cache->refresh(
+                key: 'hardening.forever',
+                ttl: 60,
+                callback: static fn (): string => 'refreshed',
+                tags: ['hardening'],
+            ),
+        );
+
+        self::assertSame('refreshed', $cache->get('hardening.forever', tags: ['hardening']));
+    }
+
+    public function test_lock_timeout_path_preserves_availability_and_caches_fallback_result(): void
+    {
+        $cache = $this->app->make(CacheManager::class);
+        $lockName = 'cache-populate:'.hash('sha256', '_hardening.contended');
+        $heldLock = $cache->lock($lockName, 10);
+
+        self::assertNotNull($heldLock);
+        self::assertTrue($heldLock->get());
+
+        try {
+            $calls = 0;
+
+            $value = $cache->rememberLocked(
+                key: 'hardening.contended',
+                ttl: 60,
+                callback: function () use (&$calls): string {
+                    $calls++;
+
+                    return 'fallback';
+                },
+                tags: ['hardening'],
+                lockSeconds: 10,
+                waitSeconds: 0,
+            );
+
+            self::assertSame('fallback', $value);
+            self::assertSame(1, $calls);
+        } finally {
+            $heldLock->release();
+        }
+
+        self::assertSame(
+            'fallback',
+            $cache->rememberLocked(
+                key: 'hardening.contended',
+                ttl: 60,
+                callback: static fn (): string => 'should-not-run',
+                tags: ['hardening'],
+            ),
+        );
+    }
+
     private function repository(): CacheHardeningUserRepository
     {
         return new CacheHardeningUserRepository(
