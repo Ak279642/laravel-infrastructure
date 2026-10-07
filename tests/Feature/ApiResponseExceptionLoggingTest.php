@@ -217,6 +217,8 @@ final class ApiResponseExceptionLoggingTest extends TestCase
                 'debug' => true,
             ]);
 
+        self::assertArrayNotHasKey('debug', $response->json());
+
         $json = $response->getContent();
 
         self::assertIsString($json);
