@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Exceptions\FilterNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
 
 trait HasFilters
 {
-    /**
-     * Apply filters to query.
-     */
     protected function applyFilters(Builder $query, array $filters): Builder
     {
         foreach ($filters as $key => $value) {
@@ -29,7 +27,17 @@ trait HasFilters
                 continue;
             }
 
-            if (! $this->isFilterAllowed($key) && ! $this->isRelationFilter($key)) {
+            $allowed = $this->isFilterAllowed($key) || $this->isRelationFilterAllowed($key);
+
+            if (! $allowed) {
+                if ($this->strictFilters) {
+                    throw FilterNotAllowedException::forRepository(
+                        (string) $key,
+                        static::class,
+                        $this->allowedFilters,
+                    );
+                }
+
                 continue;
             }
 
@@ -40,9 +48,7 @@ trait HasFilters
             }
 
             if (is_array($value)) {
-                $operator = strtolower($value['operator'] ?? '=');
-                $filterValue = $value['value'] ?? null;
-
+                [$operator, $filterValue] = $this->normalizeOperatorInput($value);
                 $this->applyOperatorFilter($query, $key, $operator, $filterValue);
 
                 continue;
@@ -54,30 +60,26 @@ trait HasFilters
         return $query;
     }
 
-    /**
-     * Apply nested relation filter.
-     */
     protected function applyNestedFilter(Builder $query, string $key, mixed $value): Builder
     {
         $segments = explode('.', $key);
         $column = array_pop($segments);
         $relation = implode('.', $segments);
 
-        // Handle != and <> using whereDoesntHave
         if (
             is_array($value)
-            && in_array(strtolower($value['operator'] ?? ''), ['!=', '<>'], true)
+            && in_array(strtolower((string) ($value['operator'] ?? $value[0] ?? '')), ['!=', '<>'], true)
         ) {
-            return $query->whereDoesntHave($relation, function (Builder $q) use ($column, $value) {
-                $q->where($column, $value['value']);
+            [, $filterValue] = $this->normalizeOperatorInput($value);
+
+            return $query->whereDoesntHave($relation, function (Builder $q) use ($column, $filterValue): void {
+                $q->where($column, $filterValue);
             });
         }
 
-        return $query->whereHas($relation, function (Builder $q) use ($column, $value) {
+        return $query->whereHas($relation, function (Builder $q) use ($column, $value): void {
             if (is_array($value)) {
-                $operator = strtolower($value['operator'] ?? '=');
-                $filterValue = $value['value'] ?? null;
-
+                [$operator, $filterValue] = $this->normalizeOperatorInput($value);
                 $this->applyOperatorFilter($q, $column, $operator, $filterValue);
 
                 return;
@@ -87,9 +89,6 @@ trait HasFilters
         });
     }
 
-    /**
-     * Apply operator filter.
-     */
     protected function applyOperatorFilter(
         Builder $query,
         string $key,
@@ -100,63 +99,49 @@ trait HasFilters
 
         return match ($operator) {
             '=', '!=', '<>', '>', '>=', '<', '<=' => $query->where($key, $operator, $value),
-
-            'like' => $query->where(
-                $key,
-                $driver === 'pgsql' ? 'ILIKE' : 'LIKE',
-                "%{$value}%"
-            ),
-
-            'ilike' => $query->where($key, 'ILIKE', "%{$value}%"),
-
-            'in' => ! empty($value)
-                ? $query->whereIn($key, (array) $value)
-                : $query,
-
-            'in_or_null' => $query->where(function (Builder $q) use ($key, $value) {
+            'like' => $query->where($key, $driver === 'pgsql' ? 'ILIKE' : 'LIKE', "%{$value}%"),
+            'ilike' => $query->where($key, $driver === 'pgsql' ? 'ILIKE' : 'LIKE', "%{$value}%"),
+            'in' => ! empty($value) ? $query->whereIn($key, (array) $value) : $query,
+            'in_or_null' => $query->where(function (Builder $q) use ($key, $value): void {
                 $q->whereIn($key, (array) $value)->orWhereNull($key);
             }),
-
-            'not_in' => ! empty($value)
-                ? $query->whereNotIn($key, (array) $value)
-                : $query,
-
-            'between' => is_array($value) && count($value) === 2
-                ? $query->whereBetween($key, $value)
-                : $query,
-
-            'not_between' => is_array($value) && count($value) === 2
-                ? $query->whereNotBetween($key, $value)
-                : $query,
-
+            'not_in' => ! empty($value) ? $query->whereNotIn($key, (array) $value) : $query,
+            'between' => is_array($value) && count($value) === 2 ? $query->whereBetween($key, $value) : $query,
+            'not_between' => is_array($value) && count($value) === 2 ? $query->whereNotBetween($key, $value) : $query,
             'null' => $query->whereNull($key),
-
             'not_null' => $query->whereNotNull($key),
-
             default => $query->where($key, $value),
         };
     }
 
-    /**
-     * Check if filter is allowed.
-     */
     protected function isFilterAllowed(string $key): bool
     {
         return $this->allowedFilters === []
             || in_array($key, $this->allowedFilters, true);
     }
 
-    /**
-     * Check if key is a relation filter.
-     */
-    protected function isRelationFilter(string $key): bool
+    protected function isRelationFilterAllowed(string $key): bool
     {
-        return str_contains($key, '.');
+        if (! str_contains($key, '.')) {
+            return false;
+        }
+
+        $segments = explode('.', $key);
+        array_pop($segments);
+        $relation = implode('.', $segments);
+
+        if ($relation === '' || ! $this->relationExists($relation)) {
+            return false;
+        }
+
+        if ($this->allowedRelations === []) {
+            return true;
+        }
+
+        return in_array($relation, $this->allowedRelations, true)
+            || in_array(explode('.', $relation)[0], $this->allowedRelations, true);
     }
 
-    /**
-     * Apply search to query.
-     */
     protected function applySearch(Builder $query, string $search, ?array $searchColumns = null): Builder
     {
         $searchable = $searchColumns ?? $this->searchable;
@@ -165,9 +150,11 @@ trait HasFilters
             return $query;
         }
 
-        $terms = array_values(array_filter(
-            preg_split('/\s+/', trim($search))
-        ));
+        if ($searchColumns !== null) {
+            $searchable = array_values(array_intersect($searchColumns, $this->searchable));
+        }
+
+        $terms = array_values(array_filter(preg_split('/\s+/', trim($search))));
 
         if ($terms === []) {
             return $query;
@@ -176,9 +163,9 @@ trait HasFilters
         $driver = $query->getConnection()->getDriverName();
         $like = $driver === 'pgsql' ? 'ILIKE' : 'LIKE';
 
-        return $query->where(function (Builder $q) use ($terms, $like, $searchable) {
+        return $query->where(function (Builder $q) use ($terms, $like, $searchable): void {
             foreach ($terms as $term) {
-                $q->where(function (Builder $sub) use ($term, $like, $searchable) {
+                $q->where(function (Builder $sub) use ($term, $like, $searchable): void {
                     foreach ($searchable as $column) {
                         if (str_contains($column, '.')) {
                             $this->applyNestedSearch($sub, $column, $term, $like);
@@ -193,9 +180,6 @@ trait HasFilters
         });
     }
 
-    /**
-     * Apply nested search.
-     */
     protected function applyNestedSearch(
         Builder $query,
         string $column,
@@ -206,8 +190,23 @@ trait HasFilters
         $field = array_pop($segments);
         $relation = implode('.', $segments);
 
-        return $query->orWhereHas($relation, function (Builder $q) use ($field, $term, $like) {
+        return $query->orWhereHas($relation, function (Builder $q) use ($field, $term, $like): void {
             $q->where($field, $like, "%{$term}%");
         });
+    }
+
+    private function normalizeOperatorInput(array $value): array
+    {
+        if (array_is_list($value)) {
+            return [
+                strtolower((string) ($value[0] ?? '=')),
+                $value[1] ?? null,
+            ];
+        }
+
+        return [
+            strtolower((string) ($value['operator'] ?? '=')),
+            $value['value'] ?? null,
+        ];
     }
 }
