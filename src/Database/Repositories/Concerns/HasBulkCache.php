@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 trait HasBulkCache
 {
@@ -58,7 +59,19 @@ trait HasBulkCache
      */
     public function bulkRestore(array $filters = []): int
     {
-        $models = $this->buildQuery($filters)->get();
+        $query = $this->buildQuery($filters);
+
+        if (
+            in_array(
+                SoftDeletes::class,
+                class_uses_recursive($query->getModel()::class),
+                true,
+            )
+        ) {
+            $query->withTrashed();
+        }
+
+        $models = $query->get();
         $affected = 0;
 
         foreach ($models as $model) {
@@ -77,7 +90,19 @@ trait HasBulkCache
      */
     public function bulkForceDelete(array $filters = []): int
     {
-        $models = $this->buildQuery($filters)->get();
+        $query = $this->buildQuery($filters);
+
+        if (
+            in_array(
+                SoftDeletes::class,
+                class_uses_recursive($query->getModel()::class),
+                true,
+            )
+        ) {
+            $query->withTrashed();
+        }
+
+        $models = $query->get();
         $affected = 0;
 
         foreach ($models as $model) {
