@@ -168,8 +168,10 @@ final class CacheManager
 
         $store = $this->store($tags);
 
-        if ($store->has($key)) {
-            $cached = $store->get($key);
+        $missing = new \stdClass;
+        $cached = $store->get($key, $missing);
+
+        if ($cached !== $missing) {
             // Log::info('Cache HIT', [
             //     'key' => $key,
             //     'tags' => $tags,
@@ -213,8 +215,11 @@ final class CacheManager
         $key = $this->normalizeKey($key);
         $store = $this->store($tags);
 
-        if ($store->has($key)) {
-            return $store->get($key);
+        $missing = new \stdClass;
+        $cached = $store->get($key, $missing);
+
+        if ($cached !== $missing) {
+            return $cached;
         }
 
         $lock = $this->lock(
@@ -233,8 +238,11 @@ final class CacheManager
             return $lock->block(max(0, $waitSeconds), function () use ($store, $key, $ttl, $callback): mixed {
                 // Another worker may have populated the value while this worker
                 // waited for the lock, so always re-check before doing the work.
-                if ($store->has($key)) {
-                    return $store->get($key);
+                $missing = new \stdClass;
+                $cached = $store->get($key, $missing);
+
+                if ($cached !== $missing) {
+                    return $cached;
                 }
 
                 $value = $callback();
@@ -246,8 +254,11 @@ final class CacheManager
             // A timed-out waiter gets one final cache read. If the lock holder
             // failed before populating the value, preserve availability by
             // performing the work rather than returning an empty/stale result.
-            if ($store->has($key)) {
-                return $store->get($key);
+            $missing = new \stdClass;
+            $cached = $store->get($key, $missing);
+
+            if ($cached !== $missing) {
+                return $cached;
             }
 
             $value = $callback();
@@ -494,7 +505,15 @@ final class CacheManager
 
     private function resolveStore(): Repository
     {
-        return $this->cache->store($this->storeName);
+        $store = $this->cache->store($this->storeName);
+
+        if (! $store instanceof Repository) {
+            throw new \LogicException(
+                'Laravel infrastructure requires Illuminate\\Cache\\Repository.',
+            );
+        }
+
+        return $store;
     }
 
     private function resolveTagsSupport(): bool
