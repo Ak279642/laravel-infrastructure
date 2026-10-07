@@ -36,23 +36,8 @@ final class ApiExceptionRenderer
     ): JsonResponse {
         $mapped = $this->map($exception);
 
-        if ($this->shouldLog($mapped['status'])) {
-            CustomLog::exception(
-                $exception,
-                [
-                    'http_status' => $mapped['status'],
-                    'error_code' => $mapped['error_code'],
-                ],
-                $mapped['status'] >= 500
-                    ? 'Unhandled API exception.'
-                    : 'API request rejected.',
-                $mapped['status'] >= 500 ? 'error' : 'warning',
-                $mapped['status'] >= 500
-                    ? LogDomain::ERRORS
-                    : LogDomain::API,
-            );
-
-            $request->attributes->set('api_exception_logged', true);
+        if (! $request->attributes->get('api_exception_logged', false)) {
+            $this->reportMapped($exception, $request, $mapped);
         }
 
         return ApiResponse::error(
@@ -63,6 +48,54 @@ final class ApiExceptionRenderer
             debug: $mapped['debug'],
             headers: $mapped['headers'],
         );
+    }
+
+    public function report(
+        Throwable $exception,
+        Request $request,
+    ): void {
+        $this->reportMapped(
+            $exception,
+            $request,
+            $this->map($exception),
+        );
+    }
+
+    /**
+     * @param  array{
+     *     status:int,
+     *     message:string,
+     *     error_code:string,
+     *     errors:array,
+     *     debug:array,
+     *     headers:array
+     * }  $mapped
+     */
+    private function reportMapped(
+        Throwable $exception,
+        Request $request,
+        array $mapped,
+    ): void {
+        if (! $this->shouldLog($mapped['status'])) {
+            return;
+        }
+
+        CustomLog::exception(
+            $exception,
+            [
+                'http_status' => $mapped['status'],
+                'error_code' => $mapped['error_code'],
+            ],
+            $mapped['status'] >= 500
+                ? 'Unhandled API exception.'
+                : 'API request rejected.',
+            $mapped['status'] >= 500 ? 'error' : 'warning',
+            $mapped['status'] >= 500
+                ? LogDomain::ERRORS
+                : LogDomain::API,
+        );
+
+        $request->attributes->set('api_exception_logged', true);
     }
 
     /**
