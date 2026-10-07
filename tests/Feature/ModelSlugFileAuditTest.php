@@ -317,6 +317,41 @@ final class ModelSlugFileAuditTest extends TestCase
         );
     }
 
+    public function test_transaction_rollback_after_create_removes_uploaded_file(): void
+    {
+        $path = null;
+
+        DB::beginTransaction();
+
+        try {
+            $model = ModelSlugFileAuditDocument::query()->create([
+                'title' => 'Rolled Back Create',
+                'seo_title' => 'Rolled Back Create SEO',
+                'avatar_path' => UploadedFile::fake()->create(
+                    'rollback-create.jpg',
+                    5,
+                    'image/jpeg',
+                ),
+            ]);
+
+            $path = $model->avatar_path;
+
+            self::assertIsString($path);
+            Storage::disk('public')->assertExists($path);
+        } finally {
+            DB::rollBack();
+        }
+
+        self::assertIsString($path);
+        Storage::disk('public')->assertMissing($path);
+        self::assertSame(
+            0,
+            ModelSlugFileAuditDocument::query()
+                ->where('title', 'Rolled Back Create')
+                ->count(),
+        );
+    }
+
     public function test_failed_create_removes_newly_uploaded_file(): void
     {
         ModelSlugFileAuditDocument::query()->create([
