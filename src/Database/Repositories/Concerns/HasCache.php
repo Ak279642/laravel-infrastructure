@@ -108,7 +108,10 @@ trait HasCache
     {
         return CacheKey::make(
             'repository:'.strtolower(str_replace('\\', '.', static::class)).':'.$operation,
-            $params,
+            [
+                'model' => strtolower(str_replace('\\', '.', $this->getModel()::class)),
+                'params' => $params,
+            ],
         );
     }
 
