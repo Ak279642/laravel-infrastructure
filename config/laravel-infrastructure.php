@@ -32,6 +32,13 @@ return [
         'delete_on_replace' => true,
         'delete_on_delete' => true,
         'delete_on_soft_delete' => false,
+        'auto_upload' => true,
+    ],
+
+    'storage_audit' => [
+        // Explicit opt-in only. The command never discovers/scans App models.
+        'models' => [],
+        'chunk_size' => 500,
     ],
 
     'responses' => [
