@@ -76,10 +76,7 @@ trait HasBulkCache
         $affected = 0;
 
         foreach ($models as $model) {
-            if (
-                is_callable([$model, 'restore'])
-                && call_user_func([$model, 'restore'])
-            ) {
+            if (call_user_func([$model, 'restore'])) {
                 $affected++;
             }
         }
@@ -110,10 +107,7 @@ trait HasBulkCache
         $affected = 0;
 
         foreach ($models as $model) {
-            if (
-                is_callable([$model, 'forceDelete'])
-                && call_user_func([$model, 'forceDelete'])
-            ) {
+            if (call_user_func([$model, 'forceDelete'])) {
                 $affected++;
             }
         }
