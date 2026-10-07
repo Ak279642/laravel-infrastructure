@@ -264,6 +264,38 @@ class ValidationContext
     }
 
     /**
+     * Capture the complete scoped validation identity map so temporary
+     * validation work can be rolled back without losing remembered models.
+     *
+     * @return array{
+     *     resolved: array<string, Model|Collection>,
+     *     remembered: array<class-string<Model>, array<string, Model>>
+     * }
+     */
+    public function snapshot(): array
+    {
+        return [
+            'resolved' => $this->resolved,
+            'remembered' => $this->remembered,
+        ];
+    }
+
+    /**
+     * Restore a previously captured validation context snapshot.
+     *
+     * @param  array{
+     *     resolved?: array<string, Model|Collection>,
+     *     remembered?: array<class-string<Model>, array<string, Model>>
+     * }  $snapshot
+     */
+    public function restore(array $snapshot): void
+    {
+        $this->resolved = $snapshot['resolved'] ?? [];
+        $this->remembered = $snapshot['remembered'] ?? [];
+        $this->rebuildModelIndex();
+    }
+
+    /**
      * @return array<string, Model|Collection>
      */
     public function all(): array
