@@ -6,7 +6,6 @@ namespace Ak279642\LaravelInfrastructure\Tests\Unit;
 
 use Ak279642\LaravelInfrastructure\Logging\CorrelationId;
 use Ak279642\LaravelInfrastructure\Logging\LogContextRedactor;
-use Illuminate\Config\Repository;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 
 final class LogContextRedactorTest extends TestCase
@@ -15,18 +14,22 @@ final class LogContextRedactorTest extends TestCase
     {
         parent::setUp();
 
-        $config = new Repository([
-            'laravel-infrastructure' => [
-                'logging' => [
-                    'max_depth' => 6,
-                    'max_string_length' => 4096,
-                    'max_array_items' => 100,
-                    'correlation_header' => 'X-Request-ID',
-                ],
-            ],
-        ]);
-
-        app()->instance('config', $config);
+        $this->app['config']->set(
+            'laravel-infrastructure.logging.max_depth',
+            6,
+        );
+        $this->app['config']->set(
+            'laravel-infrastructure.logging.max_string_length',
+            4096,
+        );
+        $this->app['config']->set(
+            'laravel-infrastructure.logging.max_array_items',
+            100,
+        );
+        $this->app['config']->set(
+            'laravel-infrastructure.logging.correlation_header',
+            'X-Request-ID',
+        );
     }
 
     public function test_sensitive_keys_and_inline_credentials_are_redacted_recursively(): void
