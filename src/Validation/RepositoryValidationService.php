@@ -45,8 +45,8 @@ final class RepositoryValidationService
         bool $resetContext = true,
     ): array {
         $previousContext = $resetContext
-            ? []
-            : $this->context->all();
+            ? null
+            : $this->context->snapshot();
 
         if ($resetContext) {
             $this->context->clear();
@@ -288,15 +288,20 @@ final class RepositoryValidationService
     }
 
     /**
-     * @param  array<string, Model|Collection>  $values
+     * @param  array{
+     *     resolved: array<string, Model|Collection>,
+     *     remembered: array<class-string<Model>, array<string, Model>>
+     * }|null  $snapshot
      */
-    private function restoreContext(array $values): void
+    private function restoreContext(?array $snapshot): void
     {
-        $this->context->clear();
+        if ($snapshot === null) {
+            $this->context->clear();
 
-        foreach ($values as $key => $value) {
-            $this->context->put($key, $value);
+            return;
         }
+
+        $this->context->restore($snapshot);
     }
 
     private function resolveWhere(array $where, array $input): array
