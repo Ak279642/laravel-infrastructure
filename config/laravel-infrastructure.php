@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 return [
     'cache' => [
+        // Preserve historical behavior: repository caching is enabled by default.
+        'enabled' => env('LARAVEL_INFRASTRUCTURE_CACHE_ENABLED', true),
         // Null uses Laravel's default cache store.
         'store' => env('LARAVEL_INFRASTRUCTURE_CACHE_STORE'),
         'default_ttl' => (int) env('LARAVEL_INFRASTRUCTURE_CACHE_TTL', 300),
+        'lock_seconds' => max(1, (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS', 10)),
+        'lock_wait_seconds' => max(0, (int) env('LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS', 3)),
     ],
 
     'transactions' => [
