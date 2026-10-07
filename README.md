@@ -301,9 +301,9 @@ $repo->bulkRestore($filters);
 $repo->bulkForceDelete($filters);
 ```
 
-## ValidationContext
+## Automatic validation model reuse
 
-Validate and resolve once:
+Validate through the repository:
 
 ```php
 new RepositoryValidationRule(
@@ -312,23 +312,35 @@ new RepositoryValidationRule(
     resolve: [
         [
             'field' => 'product_id',
-            'as' => 'product',
             'with' => ['category'],
         ],
     ],
 );
 ```
 
-Reuse later:
+Then just use the repository normally:
 
 ```php
-$product = $validationContext->requireModel(
-    'product',
-    Product::class,
+$product = $products->findOrFail(
+    $data['product_id'],
+    ['category'],
 );
 ```
 
-Normal repository lookups automatically reuse a matching resolved model when available.
+Resolution is automatic:
+
+```text
+model already loaded in ValidationContext
+    -> reuse same model
+    -> load only missing requested relations
+
+model not loaded
+    -> query repository
+    -> remember model automatically
+    -> reuse on later find/findOrFail calls
+```
+
+Direct `ValidationContext` access is optional and only needed when you explicitly want a named alias such as `billing_address` / `shipping_address`.
 
 ## Transaction / Action
 
@@ -378,7 +390,9 @@ Route::middleware([
 });
 ```
 
-## Cache config
+## Cache enable / disable
+
+Enable repository cache:
 
 ```dotenv
 LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
@@ -387,6 +401,14 @@ LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS=10
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS=3
 ```
+
+Disable repository cache completely:
+
+```dotenv
+LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=false
+```
+
+When disabled, repository reads go directly to the database while write invalidation remains safe.
 
 ## Logging
 
