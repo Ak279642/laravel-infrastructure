@@ -156,6 +156,10 @@ trait HasFilters
 
         if ($searchColumns !== null) {
             $searchable = array_values(array_intersect($searchColumns, $this->searchable));
+
+            if ($searchable === []) {
+                return $query;
+            }
         }
 
         $terms = array_values(array_filter(preg_split('/\s+/', trim($search))));
