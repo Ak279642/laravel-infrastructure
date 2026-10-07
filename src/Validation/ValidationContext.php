@@ -123,6 +123,44 @@ class ValidationContext
         return new Collection(array_values($this->models[$class] ?? []));
     }
 
+    public function forgetModel(Model|string $model, int|string|null $id = null): void
+    {
+        $class = $model instanceof Model ? $model::class : $model;
+        $key = $model instanceof Model ? $model->getKey() : $id;
+
+        if ($key === null) {
+            return;
+        }
+
+        unset($this->remembered[$class][(string) $key]);
+
+        foreach ($this->resolved as $alias => $value) {
+            if (
+                $value instanceof Model
+                && $value::class === $class
+                && (string) $value->getKey() === (string) $key
+            ) {
+                unset($this->resolved[$alias]);
+
+                continue;
+            }
+
+            if ($value instanceof Collection) {
+                $remaining = $value->reject(
+                    static fn ($item): bool => $item instanceof Model
+                        && $item::class === $class
+                        && (string) $item->getKey() === (string) $key,
+                )->values();
+
+                if ($remaining->count() !== $value->count()) {
+                    $this->resolved[$alias] = $remaining;
+                }
+            }
+        }
+
+        $this->rebuildModelIndex();
+    }
+
     /**
      * Find one indexed model whose attributes match all supplied conditions.
      *
