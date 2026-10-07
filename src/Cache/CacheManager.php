@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Cache;
 
-use Ak279642\\LaravelInfrastructure\\Cache\\Events\\CacheHit;
-use Ak279642\\LaravelInfrastructure\\Cache\\Events\\CacheInvalidated;
-use Ak279642\\LaravelInfrastructure\\Cache\\Events\\CacheMiss;
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheHit;
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheInvalidated;
+use Ak279642\LaravelInfrastructure\Cache\Events\CacheMiss;
 use DateInterval;
 use DateTimeInterface;
 use Illuminate\Cache\Repository;
