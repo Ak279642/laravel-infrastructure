@@ -271,6 +271,40 @@ final class ValidationActionServiceHardeningTest extends TestCase
         self::assertSame([], $this->app->make(ValidationContext::class)->all());
     }
 
+    public function test_repository_writes_keep_automatic_context_coherent(): void
+    {
+        $repository = $this->app->make(Batch3ProductRepository::class);
+        $context = $this->app->make(ValidationContext::class);
+
+        $product = $repository->create(['name' => 'Created']);
+
+        self::assertSame(
+            $product,
+            $context->findModel(Batch3Product::class, $product->getKey()),
+        );
+
+        $updated = $repository->update(
+            $product,
+            ['name' => 'Updated'],
+        );
+
+        self::assertSame(
+            'Updated',
+            $context->findModel(
+                Batch3Product::class,
+                $updated->getKey(),
+            )?->name,
+        );
+
+        self::assertTrue($repository->delete($updated));
+        self::assertNull(
+            $context->findModel(
+                Batch3Product::class,
+                $updated->getKey(),
+            ),
+        );
+    }
+
     public function test_base_service_helpers_keep_business_logic_out_of_repository(): void
     {
         $repository = $this->app->make(Batch3ItemRepository::class);
