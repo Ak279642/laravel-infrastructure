@@ -16,7 +16,10 @@ trait HasScopes
         $scopes = $this->normalizeScopes($scopes);
 
         foreach ($scopes as $scope) {
-            if (! $this->hasScope($query, $scope)) {
+            if (
+                ! $this->isScopeAllowed($scope)
+                || ! $this->hasScope($query, $scope)
+            ) {
                 continue;
             }
 
@@ -31,7 +34,10 @@ trait HasScopes
      */
     public function scope(string $scope, mixed ...$args): static
     {
-        if ($this->hasScope($this->query, $scope)) {
+        if (
+            $this->isScopeAllowed($scope)
+            && $this->hasScope($this->query, $scope)
+        ) {
             $this->query->{$scope}(...$args);
         }
 
@@ -53,6 +59,12 @@ trait HasScopes
         }
 
         return array_values(array_unique($scopes));
+    }
+
+    protected function isScopeAllowed(string $scope): bool
+    {
+        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $scope) === 1
+            && in_array($scope, $this->allowedScopes, true);
     }
 
     /**
