@@ -108,6 +108,12 @@ trait HasCache
             return $callback();
         }
 
+        // Never cache data read from an open transaction. The query may observe
+        // uncommitted state that disappears on rollback.
+        if ($this->getModel()->getConnection()->transactionLevel() > 0) {
+            return $callback();
+        }
+
         $tags = $this->resolveCacheTags($params);
         $keyParams = $this->normalizeRepositoryCacheParams($params);
         $key = $this->getCacheKey($operation, $keyParams);
