@@ -276,9 +276,51 @@ $documentUrl = $product->fileAssetUrl(
 );
 ```
 
-The URL contains model + record + field identity. `AssetsController` checks that the requested disk/path still belongs to that exact field before serving it.
+The model URL contains only a short resource alias + record key + field. `AssetsController` resolves the model class, disk and stored path internally before serving it.
 
 > If you use a `private` disk here, add `private` to `assets.allowed_disks` in package config.
+
+Register a short alias once in published config:
+
+```php
+'assets' => [
+    'resources' => [
+        'product' => Product::class,
+    ],
+
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+],
+```
+
+Then:
+
+```php
+$url = $product->fileAssetUrl(
+    'document_path',
+    now()->addMinutes(5),
+);
+```
+
+produces:
+
+```text
+/infrastructure/assets/model/product/10/document_path
+?expires=...
+&signature=...
+```
+
+Laravel creates the `signature` HMAC hash from the URL and expiry. Changing the resource alias, record key, field, expiry, or signature invalidates the signed link.
+
+The model-aware URL never exposes:
+
+```text
+App\Models\Product
+private
+products/documents/...
+```
 
 ## 2. ProductRepository
 
@@ -874,6 +916,21 @@ Custom repository reads use protected `cacheRemember()`, as shown in `ProductRep
 
 # Asset access
 
+Register aliases for model-owned files:
+
+```php
+'assets' => [
+    'resources' => [
+        'product' => Product::class,
+    ],
+
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+],
+```
+
 Normal model field:
 
 ```php
@@ -924,7 +981,7 @@ For generic files not linked to a model field, folder fallback is available:
 ],
 ```
 
-Model field `access` overrides folder fallback.
+Model field `access` overrides folder fallback. Model-aware URLs never expose the PHP model namespace, filesystem disk, or stored path.
 
 # Commands
 

@@ -127,7 +127,16 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                 '/',
             );
 
-            $route = $router
+            $router
+                ->get(
+                    $prefix.'/model/{resource}/{key}/{field}',
+                    [AssetsController::class, 'model'],
+                )
+                ->where('resource', '[A-Za-z0-9_-]+')
+                ->where('field', '[A-Za-z0-9_]+')
+                ->name('laravel-infrastructure.assets.model');
+
+            $router
                 ->get(
                     $prefix.'/{disk}/{path}',
                     AssetsController::class,

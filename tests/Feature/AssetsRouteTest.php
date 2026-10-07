@@ -32,6 +32,13 @@ final class AssetsRouteTest extends TestCase
             'provider' => 'asset_users',
         ]);
 
+        $app['config']->set(
+            'laravel-infrastructure.assets.resources',
+            [
+                'document' => AssetRouteDocument::class,
+            ],
+        );
+
         $app['config']->set('filesystems.disks.public', [
             'driver' => 'local',
             'root' => storage_path(
@@ -58,6 +65,14 @@ final class AssetsRouteTest extends TestCase
 
         Schema::create(
             'asset_route_documents',
+            function (Blueprint $table): void {
+                $table->id();
+                $table->string('file_path')->nullable();
+            },
+        );
+
+        Schema::create(
+            'signed_asset_route_documents',
             function (Blueprint $table): void {
                 $table->id();
                 $table->string('file_path')->nullable();
@@ -190,6 +205,22 @@ final class AssetsRouteTest extends TestCase
         $url = $document->fileAssetUrl('file_path');
 
         self::assertIsString($url);
+        self::assertStringContainsString(
+            '/infrastructure/assets/model/document/'.
+            $document->getKey().
+            '/file_path',
+            $url,
+        );
+        self::assertStringNotContainsString(
+            AssetRouteDocument::class,
+            $url,
+        );
+        self::assertStringNotContainsString(
+            'products/private/manual.txt',
+            $url,
+        );
+        self::assertStringNotContainsString('disk=', $url);
+        self::assertStringNotContainsString('path=', $url);
 
         $this->get($url)->assertUnauthorized();
 
@@ -202,39 +233,77 @@ final class AssetsRouteTest extends TestCase
         $this->get($url)->assertOk();
     }
 
-    public function test_model_file_url_cannot_be_retargeted_to_another_path(): void
+    public function test_signed_model_asset_url_uses_hash_and_hides_storage_details(): void
     {
-        $admin = AssetGuardUser::query()->create([
-            'name' => 'Admin',
-        ]);
-
-        $this->actingAs($admin, 'admin');
-
         Storage::disk('public')->put(
-            'products/private/manual.txt',
+            'products/secure/manual.txt',
             'manual-content',
         );
-        Storage::disk('public')->put(
-            'products/private/other.txt',
-            'other-content',
+
+        $document = SignedAssetRouteDocument::query()->create([
+            'file_path' => 'products/secure/manual.txt',
+        ]);
+
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.resources.signed-document',
+            SignedAssetRouteDocument::class,
+        );
+
+        $url = $document->fileAssetUrl(
+            'file_path',
+            now()->addMinutes(5),
+        );
+
+        self::assertIsString($url);
+        self::assertStringContainsString(
+            '/infrastructure/assets/model/signed-document/'.
+            $document->getKey().
+            '/file_path',
+            $url,
+        );
+        self::assertStringContainsString('expires=', $url);
+        self::assertStringContainsString('signature=', $url);
+        self::assertStringNotContainsString(
+            SignedAssetRouteDocument::class,
+            $url,
+        );
+        self::assertStringNotContainsString(
+            'products/secure/manual.txt',
+            $url,
+        );
+        self::assertStringNotContainsString('disk=', $url);
+        self::assertStringNotContainsString('path=', $url);
+
+        $this->get($url)->assertOk();
+
+        $tampered = str_replace(
+            '/file_path?',
+            '/other_path?',
+            $url,
+        );
+
+        self::assertNotSame($url, $tampered);
+
+        $this->get($tampered)->assertForbidden();
+    }
+
+    public function test_model_asset_url_requires_configured_resource_alias(): void
+    {
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.resources',
+            [],
         );
 
         $document = AssetRouteDocument::query()->create([
             'file_path' => 'products/private/manual.txt',
         ]);
 
-        $this->get(
-            route(
-                'laravel-infrastructure.assets.show',
-                [
-                    'disk' => 'public',
-                    'path' => 'products/private/other.txt',
-                    'model' => AssetRouteDocument::class,
-                    'key' => (string) $document->getKey(),
-                    'field' => 'file_path',
-                ],
-            ),
-        )->assertNotFound();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            'No valid asset resource alias is configured',
+        );
+
+        $document->fileAssetUrl('file_path');
     }
 
     public function test_asset_route_rejects_disk_not_in_allow_list(): void
@@ -275,6 +344,30 @@ final class AssetRouteDocument extends BaseModel
                 'access' => [
                     'signed' => false,
                     'guard' => 'admin',
+                ],
+            ],
+        ];
+    }
+}
+
+final class SignedAssetRouteDocument extends BaseModel
+{
+    public $timestamps = false;
+
+    protected $table = 'signed_asset_route_documents';
+
+    protected $guarded = [];
+
+    protected function fileAttributes(): array
+    {
+        return [
+            'file_path' => [
+                'disk' => 'public',
+                'directory' => 'products/secure',
+
+                'access' => [
+                    'signed' => true,
+                    'guard' => null,
                 ],
             ],
         ];

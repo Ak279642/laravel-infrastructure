@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use DateTimeInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\URL;
+use RuntimeException;
 use Throwable;
 
 trait InteractsWithFiles
@@ -140,10 +141,6 @@ trait InteractsWithFiles
             return null;
         }
 
-        $disk = (string) (
-            $options['disk']
-            ?? config('laravel-infrastructure.files.disk', 'public')
-        );
         $access = is_array($options['access'] ?? null)
             ? $options['access']
             : [];
@@ -155,22 +152,20 @@ trait InteractsWithFiles
             );
 
         $parameters = [
-            'disk' => $disk,
-            'path' => $path,
-            'model' => static::class,
+            'resource' => $this->infrastructureAssetResourceAlias(),
             'key' => (string) $this->getKey(),
             'field' => $column,
         ];
 
         if (! $signed) {
             return route(
-                'laravel-infrastructure.assets.show',
+                'laravel-infrastructure.assets.model',
                 $parameters,
             );
         }
 
         return URL::temporarySignedRoute(
-            'laravel-infrastructure.assets.show',
+            'laravel-infrastructure.assets.model',
             $expiration
                 ?? now()->addMinutes(
                     max(
@@ -182,6 +177,32 @@ trait InteractsWithFiles
                     ),
                 ),
             $parameters,
+        );
+    }
+
+    private function infrastructureAssetResourceAlias(): string
+    {
+        $resources = (array) config(
+            'laravel-infrastructure.assets.resources',
+            [],
+        );
+
+        foreach ($resources as $alias => $modelClass) {
+            if (
+                ! is_string($alias)
+                || preg_match('/^[A-Za-z0-9_-]+$/', $alias) !== 1
+                || $modelClass !== static::class
+            ) {
+                continue;
+            }
+
+            return $alias;
+        }
+
+        throw new RuntimeException(
+            'No valid asset resource alias is configured for model ['.
+            static::class.
+            ']. Add it to laravel-infrastructure.assets.resources.',
         );
     }
 

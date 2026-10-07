@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Added opt-in `SecurityHeaders` and `RejectSensitivePaths` middleware with package middleware aliases.
 
 ### Fixed
+- Model-owned asset URLs now use short configured resource aliases and a dedicated signed route; PHP model namespaces, filesystem disks, and stored paths are no longer exposed in generated URLs.
 - Added compensating cleanup for model uploads when a create/update database write fails.
 - Added transaction rollback cleanup for newly uploaded model files while preserving the previously committed file until successful replacement commit.
 - Fixed `bulkRestore()` on non-`SoftDeletes` models so it returns `0` instead of calling an unavailable `restore()` method.

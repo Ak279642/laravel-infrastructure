@@ -37,6 +37,23 @@ There is no role/permission/RBAC logic in asset access.
 
 ## Asset URL
 
+Register a short alias:
+
+```php
+'assets' => [
+    'resources' => [
+        'product' => Product::class,
+    ],
+
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+],
+```
+
+Generate the URL:
+
 ```php
 $url = $product->fileAssetUrl(
     'document_path',
@@ -44,7 +61,17 @@ $url = $product->fileAssetUrl(
 );
 ```
 
-The generated URL includes the model class, record key and file field. `AssetsController` verifies that the requested disk/path still matches that exact field before serving the file.
+A signed model URL looks like:
+
+```text
+/infrastructure/assets/model/product/10/document_path
+?expires=...
+&signature=...
+```
+
+Laravel's `signature` is an HMAC hash over the signed URL and expiry. Tampering with the resource alias, record key, field, expiry or signature invalidates the link.
+
+The URL never contains the PHP model namespace, filesystem disk or stored path. `AssetsController` resolves those values internally from the configured alias, record and file field.
 
 ## Folder fallback
 

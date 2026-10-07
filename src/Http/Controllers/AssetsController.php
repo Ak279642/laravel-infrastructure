@@ -23,28 +23,89 @@ final class AssetsController
         string $disk,
         string $path,
     ): StreamedResponse {
-        $allowedDisks = array_values(array_filter(
-            (array) config(
-                'laravel-infrastructure.assets.allowed_disks',
-                ['public'],
-            ),
-            'is_string',
-        ));
+        $this->assertDiskAllowed($disk);
+
+        $this->authorizeAccess(
+            $request,
+            $this->resolveFolderRule($disk, $path),
+        );
+
+        return $this->stream($disk, $path);
+    }
+
+    public function model(
+        Request $request,
+        string $resource,
+        string $key,
+        string $field,
+    ): StreamedResponse {
+        $resources = (array) config(
+            'laravel-infrastructure.assets.resources',
+            [],
+        );
+        $modelClass = $resources[$resource] ?? null;
 
         abort_unless(
-            in_array($disk, $allowedDisks, true),
+            is_string($modelClass)
+            && class_exists($modelClass)
+            && is_subclass_of($modelClass, Model::class),
             404,
         );
 
-        $rule = array_replace(
-            $this->resolveFolderRule($disk, $path),
-            $this->resolveModelFileRule(
-                $request,
-                $disk,
-                $path,
-            ),
+        /** @var Model $prototype */
+        $prototype = new $modelClass;
+
+        abort_unless(
+            method_exists($prototype, 'configuredFileAttributes'),
+            404,
         );
 
+        /** @var Model|null $model */
+        $model = $prototype->newQuery()->find($key);
+
+        abort_unless($model instanceof Model, 404);
+
+        $configured = $model->configuredFileAttributes();
+        $options = $configured[$field] ?? null;
+
+        abort_unless(is_array($options), 404);
+
+        $disk = (string) (
+            $options['disk']
+            ?? config(
+                'laravel-infrastructure.files.disk',
+                'public',
+            )
+        );
+        $path = $model->getAttribute($field);
+
+        abort_unless(
+            is_string($path)
+            && trim($path) !== '',
+            404,
+        );
+
+        $this->assertDiskAllowed($disk);
+
+        $rule = array_replace(
+            $this->resolveFolderRule($disk, $path),
+            is_array($options['access'] ?? null)
+                ? $options['access']
+                : [],
+        );
+
+        $this->authorizeAccess($request, $rule);
+
+        return $this->stream($disk, $path);
+    }
+
+    /**
+     * @param  array<string, mixed>  $rule
+     */
+    private function authorizeAccess(
+        Request $request,
+        array $rule,
+    ): void {
         abort_if(
             (bool) ($rule['enabled'] ?? true) === false,
             404,
@@ -69,7 +130,28 @@ final class AssetsController
                 401,
             );
         }
+    }
 
+    private function assertDiskAllowed(string $disk): void
+    {
+        $allowedDisks = array_values(array_filter(
+            (array) config(
+                'laravel-infrastructure.assets.allowed_disks',
+                ['public'],
+            ),
+            'is_string',
+        ));
+
+        abort_unless(
+            in_array($disk, $allowedDisks, true),
+            404,
+        );
+    }
+
+    private function stream(
+        string $disk,
+        string $path,
+    ): StreamedResponse {
         abort_unless(
             $this->files->exists($path, $disk),
             404,
@@ -78,71 +160,6 @@ final class AssetsController
         return $this->filesystems
             ->disk($disk)
             ->response($path);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function resolveModelFileRule(
-        Request $request,
-        string $disk,
-        string $path,
-    ): array {
-        $modelClass = $request->query('model');
-        $key = $request->query('key');
-        $field = $request->query('field');
-
-        if (
-            ! is_string($modelClass)
-            || ! is_string($key)
-            || ! is_string($field)
-            || $modelClass === ''
-            || $key === ''
-            || $field === ''
-        ) {
-            return [];
-        }
-
-        abort_unless(
-            class_exists($modelClass)
-            && is_subclass_of($modelClass, Model::class),
-            404,
-        );
-
-        /** @var Model $prototype */
-        $prototype = new $modelClass;
-
-        abort_unless(
-            method_exists($prototype, 'configuredFileAttributes'),
-            404,
-        );
-
-        /** @var Model|null $model */
-        $model = $prototype->newQuery()->find($key);
-
-        abort_unless($model instanceof Model, 404);
-
-        $configured = $model->configuredFileAttributes();
-        $options = $configured[$field] ?? null;
-
-        abort_unless(is_array($options), 404);
-
-        $configuredDisk = (string) (
-            $options['disk']
-            ?? config('laravel-infrastructure.files.disk', 'public')
-        );
-        $configuredPath = $model->getAttribute($field);
-
-        abort_unless(
-            $configuredDisk === $disk
-            && is_string($configuredPath)
-            && $configuredPath === $path,
-            404,
-        );
-
-        return is_array($options['access'] ?? null)
-            ? $options['access']
-            : [];
     }
 
     /**

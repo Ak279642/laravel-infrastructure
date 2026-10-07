@@ -76,6 +76,17 @@ return [
             ),
         ),
 
+        // Short model aliases used by model-aware asset URLs.
+        // Configure in the host app after publishing config:
+        //
+        // 'resources' => [
+        //     'product' => App\\Models\\Product::class,
+        // ],
+        //
+        // Generated model-asset URLs never expose PHP namespaces,
+        // filesystem disks, or stored file paths.
+        'resources' => [],
+
         // Only these filesystem disks can ever be served.
         'allowed_disks' => ['public'],
 
