@@ -7,8 +7,10 @@ namespace Ak279642\LaravelInfrastructure;
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
+use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
 use Ak279642\LaravelInfrastructure\Transactions\LaravelTransactionManager;
+use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Support\ServiceProvider;
 
@@ -32,6 +34,9 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->app->singleton(CacheObserver::class, fn ($app): CacheObserver => new CacheObserver(
             $app->make(CacheInvalidator::class),
         ));
+
+        $this->app->singleton(SchemaRegistry::class);
+        $this->app->scoped(ValidationContext::class, fn (): ValidationContext => new ValidationContext());
 
         $this->app->bind(TransactionManager::class, LaravelTransactionManager::class);
     }
