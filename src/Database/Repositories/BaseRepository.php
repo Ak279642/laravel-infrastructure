@@ -217,26 +217,37 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function sum(string $column, array $filters = []): float|int|null
     {
+        $column = $this->safeModelColumn($column);
+
         return $this->cacheRemember('sum', fn () => $this->buildQuery($filters)->sum($column), ['column' => $column, 'filters' => $filters]);
     }
 
     public function avg(string $column, array $filters = []): float|int|null
     {
+        $column = $this->safeModelColumn($column);
+
         return $this->cacheRemember('avg', fn () => $this->buildQuery($filters)->avg($column), ['column' => $column, 'filters' => $filters]);
     }
 
     public function min(string $column, array $filters = []): mixed
     {
+        $column = $this->safeModelColumn($column);
+
         return $this->cacheRemember('min', fn () => $this->buildQuery($filters)->min($column), ['column' => $column, 'filters' => $filters]);
     }
 
     public function max(string $column, array $filters = []): mixed
     {
+        $column = $this->safeModelColumn($column);
+
         return $this->cacheRemember('max', fn () => $this->buildQuery($filters)->max($column), ['column' => $column, 'filters' => $filters]);
     }
 
     public function pluck(string $column, ?string $key = null, array $filters = []): BaseCollection
     {
+        $column = $this->safeModelColumn($column);
+        $key = $key === null ? null : $this->safeModelColumn($key);
+
         return $this->cacheRemember('pluck', fn () => $this->buildQuery($filters)->pluck($column, $key), [
             'column' => $column, 'key' => $key, 'filters' => $filters,
         ]);
@@ -244,8 +255,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function groupCount(string $column, array $filters = []): BaseCollection
     {
+        $column = $this->safeModelColumn($column);
+
         return $this->cacheRemember('groupCount', fn () => $this->buildQuery($filters)
-            ->selectRaw($column.', COUNT(*) as aggregate')
+            ->select($column)
+            ->selectRaw('COUNT(*) as aggregate')
             ->groupBy($column)
             ->pluck('aggregate', $column), ['column' => $column, 'filters' => $filters]);
     }
@@ -498,6 +512,22 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         }
 
         return $query;
+    }
+
+    protected function safeModelColumn(string $column): string
+    {
+        if (
+            preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1
+            || ! $this->model->getConnection()
+                ->getSchemaBuilder()
+                ->hasColumn($this->model->getTable(), $column)
+        ) {
+            throw new \InvalidArgumentException(
+                "Unsafe or unknown model column [{$column}].",
+            );
+        }
+
+        return $column;
     }
 
     protected function findFromContext(int|string $id, array $with = []): ?Model
