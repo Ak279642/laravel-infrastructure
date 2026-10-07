@@ -43,9 +43,11 @@ trait InteractsWithFiles
             $model->deleteInfrastructureModelFiles();
         });
 
-        static::forceDeleted(function (Model $model): void {
-            $model->deleteInfrastructureModelFiles();
-        });
+        if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
+            static::forceDeleted(function (Model $model): void {
+                $model->deleteInfrastructureModelFiles();
+            });
+        }
     }
 
     /**
