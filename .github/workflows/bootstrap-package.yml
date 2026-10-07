@@ -1,0 +1,40 @@
+name: Bootstrap package
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat .bootstrap/part* | base64 --decode > /tmp/laravel-infrastructure.zip
+          rm -rf /tmp/laravel-infrastructure-package
+          mkdir -p /tmp/laravel-infrastructure-package
+          unzip -q /tmp/laravel-infrastructure.zip -d /tmp/laravel-infrastructure-package
+
+          cp -a /tmp/laravel-infrastructure-package/laravel-infrastructure/. .
+
+          rm -rf .bootstrap
+          rm -f .github/workflows/bootstrap-package.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Initial Laravel infrastructure package"
+          git push origin HEAD:main
