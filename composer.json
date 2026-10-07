@@ -47,6 +47,9 @@
             "providers": [
                 "Ak279642\\LaravelInfrastructure\\LaravelInfrastructureServiceProvider"
             ]
+        },
+        "branch-alias": {
+            "dev-main": "1.x-dev"
         }
     },
     "scripts": {
