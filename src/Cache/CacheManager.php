@@ -11,6 +11,7 @@ use Illuminate\Cache\TaggableStore;
 use Illuminate\Cache\TaggedCache;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Store;
 use Throwable;
@@ -199,6 +200,61 @@ final class CacheManager
         // ]);
 
         return $value;
+    }
+
+    public function rememberLocked(
+        string $key,
+        DateInterval|DateTimeInterface|int|null $ttl,
+        callable $callback,
+        array $tags = [],
+        int $lockSeconds = 10,
+        int $waitSeconds = 3,
+    ): mixed {
+        $key = $this->normalizeKey($key);
+        $store = $this->store($tags);
+
+        if ($store->has($key)) {
+            return $store->get($key);
+        }
+
+        $lock = $this->lock(
+            'cache-populate:'.hash('sha256', $key),
+            max(1, $lockSeconds),
+        );
+
+        if ($lock === null) {
+            $value = $callback();
+            $store->put($key, $value, $ttl);
+
+            return $value;
+        }
+
+        try {
+            return $lock->block(max(0, $waitSeconds), function () use ($store, $key, $ttl, $callback): mixed {
+                // Another worker may have populated the value while this worker
+                // waited for the lock, so always re-check before doing the work.
+                if ($store->has($key)) {
+                    return $store->get($key);
+                }
+
+                $value = $callback();
+                $store->put($key, $value, $ttl);
+
+                return $value;
+            });
+        } catch (LockTimeoutException) {
+            // A timed-out waiter gets one final cache read. If the lock holder
+            // failed before populating the value, preserve availability by
+            // performing the work rather than returning an empty/stale result.
+            if ($store->has($key)) {
+                return $store->get($key);
+            }
+
+            $value = $callback();
+            $store->put($key, $value, $ttl);
+
+            return $value;
+        }
     }
 
     public function rememberForever(
