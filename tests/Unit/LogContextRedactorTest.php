@@ -7,7 +7,7 @@ namespace Ak279642\LaravelInfrastructure\Tests\Unit;
 use Ak279642\LaravelInfrastructure\Logging\CorrelationId;
 use Ak279642\LaravelInfrastructure\Logging\LogContextRedactor;
 use Illuminate\Config\Repository;
-use PHPUnit\Framework\TestCase;
+use Ak279642\LaravelInfrastructure\Tests\TestCase;
 
 final class LogContextRedactorTest extends TestCase
 {
