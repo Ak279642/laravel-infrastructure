@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Exceptions;
 
-use Ak279642\LaravelInfrastructure\Logging\LogDomain;
 use Ak279642\LaravelInfrastructure\Logging\CustomLog;
+use Ak279642\LaravelInfrastructure\Logging\LogDomain;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Throwable;
