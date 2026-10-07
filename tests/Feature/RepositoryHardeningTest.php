@@ -109,7 +109,7 @@ final class RepositoryHardeningTest extends TestCase
     private function repository(): HardeningUserRepository
     {
         return new HardeningUserRepository(
-            new HardeningUser(),
+            new HardeningUser,
             $this->app->make(CacheManager::class),
             $this->app->make(ValidationContext::class),
         );
@@ -128,10 +128,16 @@ final class HardeningUser extends Model
 final class HardeningUserRepository extends BaseRepository
 {
     protected array $allowedFilters = ['email'];
+
     protected array $allowedSorts = ['name'];
+
     protected array $allowedRelations = [];
+
     protected array $searchable = ['name', 'email'];
+
     protected bool $strictFilters = true;
+
     protected bool $strictSorts = true;
+
     protected bool $strictRelations = true;
 }
