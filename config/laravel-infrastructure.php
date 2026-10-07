@@ -46,6 +46,32 @@ return [
         'chunk_size' => 500,
     ],
 
+    'database_backup' => [
+        'disk' => env('LARAVEL_INFRASTRUCTURE_BACKUP_DISK', 'local'),
+        'path' => env(
+            'LARAVEL_INFRASTRUCTURE_BACKUP_PATH',
+            'backups/database',
+        ),
+        'keep' => max(
+            1,
+            (int) env('LARAVEL_INFRASTRUCTURE_BACKUP_KEEP', 3),
+        ),
+        'compress' => (bool) env(
+            'LARAVEL_INFRASTRUCTURE_BACKUP_COMPRESS',
+            true,
+        ),
+        // Tables listed here keep their schema but omit row data.
+        'exclude_data' => [],
+        'mysql_dump_binary' => env(
+            'LARAVEL_INFRASTRUCTURE_MYSQLDUMP_BINARY',
+            '',
+        ),
+        'pgsql_dump_binary' => env(
+            'LARAVEL_INFRASTRUCTURE_PG_DUMP_BINARY',
+            '',
+        ),
+    ],
+
     'responses' => [
         // Normalize exceptions only for requests that explicitly expect JSON.
         'exception_renderer_enabled' => env(

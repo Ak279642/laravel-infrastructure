@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added `infrastructure:database-backup` for MySQL/MariaDB and PostgreSQL logical backups with optional gzip compression, schema-only exclusions, Laravel filesystem storage, and retention pruning.
+- Added opt-in `SecurityHeaders` and `RejectSensitivePaths` middleware with package middleware aliases.
+
 ### Fixed
+- Added compensating cleanup for model uploads when a create/update database write fails.
+- Added transaction rollback cleanup for newly uploaded model files while preserving the previously committed file until successful replacement commit.
 - Fixed `bulkRestore()` on non-`SoftDeletes` models so it returns `0` instead of calling an unavailable `restore()` method.
 - Fixed `bulkForceDelete()` on non-`SoftDeletes` models so it falls back to normal model deletion, matching the single-record API.
 - Bulk mutations now invalidate repository cache state even when the model does not use the cache observer concern.

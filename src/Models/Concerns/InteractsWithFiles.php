@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
+use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\UploadedFile;
+use Throwable;
 
 trait InteractsWithFiles
 {
@@ -16,6 +18,40 @@ trait InteractsWithFiles
      * @var list<array{path:string,disk:string}>
      */
     private array $infrastructurePendingFileDeletes = [];
+
+    /**
+     * Files created during the current save attempt.
+     *
+     * @var list<array{column:string,path:string,disk:string}>
+     */
+    private array $infrastructureUploadedDuringSave = [];
+
+    private bool $infrastructureExistedBeforeSave = false;
+
+    public function save(array $options = [])
+    {
+        $this->infrastructureUploadedDuringSave = [];
+        $this->infrastructurePendingFileDeletes = [];
+        $this->infrastructureExistedBeforeSave = $this->exists;
+
+        try {
+            $saved = parent::save($options);
+        } catch (Throwable $exception) {
+            $this->discardInfrastructureUnpersistedUploads();
+
+            throw $exception;
+        }
+
+        if (! $saved) {
+            $this->discardInfrastructureUnpersistedUploads();
+
+            return false;
+        }
+
+        $this->infrastructureUploadedDuringSave = [];
+
+        return true;
+    }
 
     public static function bootInteractsWithFiles(): void
     {
@@ -200,15 +236,94 @@ trait InteractsWithFiles
                 $filename = null;
             }
 
-            $this->setAttribute(
-                $column,
-                $storage->store(
-                    file: $file,
-                    directory: $directory,
-                    disk: $disk,
-                    filename: $filename,
-                ),
+            $path = $storage->store(
+                file: $file,
+                directory: $directory,
+                disk: $disk,
+                filename: $filename,
             );
+
+            $upload = [
+                'column' => $column,
+                'path' => $path,
+                'disk' => $disk,
+            ];
+
+            $this->infrastructureUploadedDuringSave[] = $upload;
+
+            $connection = $this->getConnection();
+
+            if ($connection->transactionLevel() > 0) {
+                app(PendingFileUploads::class)->track(
+                    (string) $connection->getName(),
+                    $connection->transactionLevel(),
+                    $path,
+                    $disk,
+                );
+            }
+
+            $this->setAttribute($column, $path);
+        }
+    }
+
+    private function discardInfrastructureUnpersistedUploads(): void
+    {
+        if ($this->infrastructureUploadedDuringSave === []) {
+            $this->infrastructurePendingFileDeletes = [];
+
+            return;
+        }
+
+        $discard = [];
+
+        foreach ($this->infrastructureUploadedDuringSave as $upload) {
+            if ($this->infrastructureUploadWasPersisted($upload)) {
+                continue;
+            }
+
+            $discard[] = [
+                'path' => $upload['path'],
+                'disk' => $upload['disk'],
+            ];
+        }
+
+        if ($discard !== []) {
+            $connection = $this->getConnection();
+
+            app(PendingFileUploads::class)->discard(
+                $discard,
+                (string) $connection->getName(),
+            );
+        }
+
+        $this->infrastructureUploadedDuringSave = [];
+        $this->infrastructurePendingFileDeletes = [];
+    }
+
+    /**
+     * @param  array{column:string,path:string,disk:string}  $upload
+     */
+    private function infrastructureUploadWasPersisted(array $upload): bool
+    {
+        if (! $this->infrastructureExistedBeforeSave) {
+            return $this->exists;
+        }
+
+        $key = $this->getKey();
+
+        if ($key === null) {
+            return false;
+        }
+
+        try {
+            return (string) $this->newQueryWithoutRelationships()
+                ->whereKey($key)
+                ->value($upload['column']) === $upload['path'];
+        } catch (Throwable) {
+            // If the connection is already in a failed transactional state,
+            // rollback tracking remains responsible for cleanup. Avoid deleting
+            // a file that may already be referenced by a successful DB write.
+            return $this->getConnection()->transactionLevel() > 0;
         }
     }
 

@@ -13,6 +13,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\QueryException;
 use RuntimeException;
 
 final class ModelSlugFileAuditTest extends TestCase
@@ -52,8 +53,14 @@ final class ModelSlugFileAuditTest extends TestCase
             $table->string('avatar_path')->nullable();
             $table->string('document_path')->nullable();
             $table->string('legacy_path')->nullable();
+            $table->string('failure_key')->nullable()->unique();
             $table->timestamps();
             $table->softDeletes();
+        });
+
+        Schema::create('model_slug_file_plain_documents', function (Blueprint $table): void {
+            $table->id();
+            $table->string('file_path')->nullable();
         });
 
         Storage::fake('public');
@@ -310,6 +317,161 @@ final class ModelSlugFileAuditTest extends TestCase
         );
     }
 
+    public function test_failed_create_removes_newly_uploaded_file(): void
+    {
+        ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Existing',
+            'seo_title' => 'Existing SEO',
+            'failure_key' => 'duplicate',
+        ]);
+
+        try {
+            ModelSlugFileAuditDocument::query()->create([
+                'title' => 'Failing Create',
+                'seo_title' => 'Failing Create SEO',
+                'failure_key' => 'duplicate',
+                'avatar_path' => UploadedFile::fake()->create(
+                    'orphan.jpg',
+                    5,
+                    'image/jpeg',
+                ),
+            ]);
+
+            self::fail('Expected duplicate-key create failure.');
+        } catch (QueryException) {
+            self::assertTrue(true);
+        }
+
+        self::assertSame(
+            [],
+            Storage::disk('public')->allFiles(
+                'models/documents/avatars',
+            ),
+        );
+    }
+
+    public function test_failed_update_removes_new_file_and_preserves_old_file(): void
+    {
+        $model = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Update Target',
+            'seo_title' => 'Update Target SEO',
+            'failure_key' => 'first',
+            'avatar_path' => UploadedFile::fake()->create(
+                'original.jpg',
+                5,
+                'image/jpeg',
+            ),
+        ]);
+
+        ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Conflict',
+            'seo_title' => 'Conflict SEO',
+            'failure_key' => 'second',
+        ]);
+
+        $original = $model->avatar_path;
+
+        try {
+            $model->failure_key = 'second';
+            $model->avatar_path = UploadedFile::fake()->create(
+                'replacement.jpg',
+                5,
+                'image/jpeg',
+            );
+            $model->save();
+
+            self::fail('Expected duplicate-key update failure.');
+        } catch (QueryException) {
+            self::assertTrue(true);
+        }
+
+        Storage::disk('public')->assertExists($original);
+        self::assertSame(
+            [$original],
+            Storage::disk('public')->allFiles(
+                'models/documents/avatars',
+            ),
+        );
+    }
+
+    public function test_transaction_rollback_removes_new_file_and_keeps_old_file(): void
+    {
+        $model = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Rollback Replacement',
+            'seo_title' => 'Rollback Replacement SEO',
+            'avatar_path' => UploadedFile::fake()->create(
+                'original.jpg',
+                5,
+                'image/jpeg',
+            ),
+        ]);
+
+        $original = $model->avatar_path;
+        $replacement = null;
+
+        DB::beginTransaction();
+
+        try {
+            $model->avatar_path = UploadedFile::fake()->create(
+                'replacement.jpg',
+                5,
+                'image/jpeg',
+            );
+            $model->save();
+            $replacement = $model->avatar_path;
+
+            Storage::disk('public')->assertExists($replacement);
+        } finally {
+            DB::rollBack();
+        }
+
+        self::assertIsString($replacement);
+        Storage::disk('public')->assertExists($original);
+        Storage::disk('public')->assertMissing($replacement);
+
+        $model->refresh();
+
+        self::assertSame($original, $model->avatar_path);
+    }
+
+    public function test_successful_non_soft_delete_removes_file(): void
+    {
+        $model = ModelSlugFilePlainDocument::query()->create([
+            'file_path' => UploadedFile::fake()->create(
+                'plain.jpg',
+                5,
+                'image/jpeg',
+            ),
+        ]);
+
+        $path = $model->file_path;
+
+        Storage::disk('public')->assertExists($path);
+        self::assertTrue((bool) $model->delete());
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_successful_soft_delete_preserves_file_and_force_delete_removes_it(): void
+    {
+        $model = ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Delete Lifecycle',
+            'seo_title' => 'Delete Lifecycle SEO',
+            'avatar_path' => UploadedFile::fake()->create(
+                'lifecycle.jpg',
+                5,
+                'image/jpeg',
+            ),
+        ]);
+
+        $path = $model->avatar_path;
+
+        $model->delete();
+        Storage::disk('public')->assertExists($path);
+
+        $model->forceDelete();
+        Storage::disk('public')->assertMissing($path);
+    }
+
     public function test_custom_filenames_reject_paths_and_hidden_dotfiles(): void
     {
         $storage = $this->app->make(FileStorage::class);
@@ -383,6 +545,7 @@ final class ModelSlugFileAuditDocument extends BaseModel
         'avatar_path',
         'document_path',
         'legacy_path',
+        'failure_key',
     ];
 
     protected function slugFields(): array
@@ -440,6 +603,27 @@ final class UnsafeStorageAuditDocument extends BaseModel
                 'disk' => 'public',
                 'directory' => '../outside',
                 'audit' => true,
+            ],
+        ];
+    }
+}
+
+
+final class ModelSlugFilePlainDocument extends BaseModel
+{
+    public $timestamps = false;
+
+    protected $table = 'model_slug_file_plain_documents';
+
+    protected $fillable = ['file_path'];
+
+    protected function fileAttributes(): array
+    {
+        return [
+            'file_path' => [
+                'disk' => 'public',
+                'directory' => 'models/plain-documents',
+                'auto_upload' => true,
             ],
         ];
     }

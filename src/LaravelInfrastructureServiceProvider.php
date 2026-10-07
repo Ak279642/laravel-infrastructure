@@ -6,19 +6,27 @@ namespace Ak279642\LaravelInfrastructure;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Console\Commands\DatabaseBackupCommand;
 use Ak279642\LaravelInfrastructure\Console\Commands\StorageAuditCommand;
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
 use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Exceptions\ApiExceptionRenderer;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
+use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
+use Ak279642\LaravelInfrastructure\Http\Middleware\RejectSensitivePaths;
+use Ak279642\LaravelInfrastructure\Http\Middleware\SecurityHeaders;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
 use Ak279642\LaravelInfrastructure\Slugs\SlugGenerator;
 use Ak279642\LaravelInfrastructure\Transactions\LaravelTransactionManager;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
+use Illuminate\Contracts\Events\Dispatcher as EventDispatcher;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
+use Illuminate\Database\Events\TransactionCommitted;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 
@@ -47,6 +55,9 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->app->singleton(FileStorage::class, fn ($app): FileStorage => new FileStorage(
             $app->make(FilesystemFactory::class),
         ));
+        $this->app->scoped(PendingFileUploads::class, fn ($app): PendingFileUploads => new PendingFileUploads(
+            $app->make(FilesystemFactory::class),
+        ));
         $this->app->singleton(SlugGenerator::class, fn ($app): SlugGenerator => new SlugGenerator(
             $app->make(CacheManager::class),
             $app->make(SchemaRegistry::class),
@@ -64,8 +75,44 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             __DIR__.'/../config/laravel-infrastructure.php' => config_path('laravel-infrastructure.php'),
         ], 'laravel-infrastructure-config');
 
+        $events = $this->app->make(EventDispatcher::class);
+
+        $events->listen(
+            TransactionRolledBack::class,
+            function (TransactionRolledBack $event): void {
+                app(PendingFileUploads::class)->rolledBack(
+                    (string) $event->connection->getName(),
+                    $event->connection->transactionLevel(),
+                );
+            },
+        );
+
+        $events->listen(
+            TransactionCommitted::class,
+            function (TransactionCommitted $event): void {
+                if ($event->connection->transactionLevel() !== 0) {
+                    return;
+                }
+
+                app(PendingFileUploads::class)->committed(
+                    (string) $event->connection->getName(),
+                );
+            },
+        );
+
+        $router = $this->app->make(Router::class);
+        $router->aliasMiddleware(
+            'infrastructure.security-headers',
+            SecurityHeaders::class,
+        );
+        $router->aliasMiddleware(
+            'infrastructure.reject-sensitive-paths',
+            RejectSensitivePaths::class,
+        );
+
         if ($this->app->runningInConsole()) {
             $this->commands([
+                DatabaseBackupCommand::class,
                 StorageAuditCommand::class,
             ]);
         }

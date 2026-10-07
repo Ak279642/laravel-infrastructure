@@ -4,7 +4,6 @@ Reusable Laravel infrastructure for repository-driven applications.
 
 The package provides a reusable repository layer, deterministic and tag-aware caching, automatic Eloquent cache invalidation, query filtering/search/sorting, relation loading, repository-backed validation, operation contexts, generic API responses/exceptions, logging helpers, and transaction boundaries.
 
-[![Tests](https://github.com/Ak279642/laravel-infrastructure/actions/workflows/tests.yml/badge.svg)](https://github.com/Ak279642/laravel-infrastructure/actions/workflows/tests.yml)
 
 ## Requirements
 
@@ -41,6 +40,11 @@ LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS=10
 LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS=3
 LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
+
+LARAVEL_INFRASTRUCTURE_BACKUP_DISK=local
+LARAVEL_INFRASTRUCTURE_BACKUP_PATH=backups/database
+LARAVEL_INFRASTRUCTURE_BACKUP_KEEP=3
+LARAVEL_INFRASTRUCTURE_BACKUP_COMPRESS=true
 
 LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
 
@@ -3124,6 +3128,7 @@ The provider intentionally uses these lifetimes:
 | `CacheObserver` | singleton | stateless Eloquent observer |
 | `SchemaRegistry` | singleton | process-level schema metadata cache, isolated by connection + physical database identity |
 | `FileStorage` | singleton | stateless filesystem adapter |
+| `PendingFileUploads` | scoped | transaction-level upload rollback tracking must not leak between requests/jobs |
 | `SlugGenerator` | singleton | stateless generator backed by cache/schema services |
 | `ApiExceptionRenderer` | singleton | stateless JSON exception mapper |
 | `ValidationContext` | scoped | request/job-specific resolved validation models must never leak between operations |
@@ -3152,6 +3157,28 @@ This package intentionally does **not** provide application/domain features such
 It also has no dependency on the host application's `App\` namespace.
 
 The goal is reusable infrastructure, not a starter application.
+
+## Database backup command
+
+Create logical MySQL/MariaDB or PostgreSQL backups with retention and optional gzip compression:
+
+```bash
+php artisan infrastructure:database-backup
+php artisan infrastructure:database-backup --connection=mysql
+```
+
+See [docs/database-backups.md](docs/database-backups.md) for dump-tool requirements, schema-only table exclusions, filesystem disks, retention, and configuration.
+
+## Optional security middleware
+
+The package provides `SecurityHeaders` and `RejectSensitivePaths` middleware. They are intentionally opt-in and can be registered by class or through these aliases:
+
+```text
+infrastructure.security-headers
+infrastructure.reject-sensitive-paths
+```
+
+See [docs/security.md](docs/security.md).
 
 ## Testing
 
