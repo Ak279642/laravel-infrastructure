@@ -41,7 +41,6 @@ return [
     ],
 
     'assets' => [
-        // Signed package route for serving storage files.
         'enabled' => env(
             'LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED',
             true,
@@ -61,30 +60,19 @@ return [
                 15,
             ),
         ),
-        // Private disks must be explicitly added by the host application.
+
+        // Only these filesystem disks can ever be served.
         'allowed_disks' => ['public'],
 
-        // Route middleware, e.g. ['auth:sanctum'].
-        'middleware' => [],
-
-        // Legacy disk-wide Gate ability. Folder rules below are preferred.
-        'disk_abilities' => [],
-
-        // Disk + folder access rules.
-        // Rules inherit from "*" -> parent folder -> most specific folder.
-        //
-        // roles: any configured role may pass.
-        // permissions: every configured permission must pass.
-        // ability: optional Laravel Gate ability receiving ($disk, $path).
+        // Optional disk/folder fallback rules.
+        // Rules merge "*" -> parent folder -> most-specific folder.
+        // Model fileAttributes()['field']['access'] overrides these values.
         'folder_access' => [
             'public' => [
                 '*' => [
                     'enabled' => true,
                     'signed' => true,
                     'guard' => null,
-                    'roles' => [],
-                    'permissions' => [],
-                    'ability' => null,
                 ],
             ],
         ],

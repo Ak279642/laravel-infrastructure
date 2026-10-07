@@ -1,10 +1,8 @@
 # Files
 
-`FileStorage` provides safe Laravel filesystem storage, deletion, existence checks and URLs.
+Models extending `BaseModel` can configure automatic uploads through `fileAttributes()`.
 
-Models extending `BaseModel` can configure automatic `UploadedFile` handling through `fileAttributes()`.
-
-## Model file definition
+## File definition
 
 ```php
 protected function fileAttributes(): array
@@ -23,20 +21,21 @@ protected function fileAttributes(): array
                 'enabled' => true,
                 'signed' => true,
                 'guard' => 'admin',
-                'roles' => ['admin', 'manager'],
-                'permissions' => ['documents.view'],
-                'ability' => null,
             ],
         ],
     ];
 }
 ```
 
-The `access` block is field-specific. It overrides matching global disk/folder access rules.
+Access supports only:
+
+- `enabled`: false returns 404.
+- `signed`: require a signed URL.
+- `guard`: require authentication on that Laravel guard.
+
+There is no role/permission/RBAC logic in asset access.
 
 ## Asset URL
-
-Generate the route directly from the model field:
 
 ```php
 $url = $product->fileAssetUrl(
@@ -45,31 +44,43 @@ $url = $product->fileAssetUrl(
 );
 ```
 
-The generated URL carries model, record and field identity. `AssetsController` verifies that the requested disk/path still matches that exact model field before serving it.
-
-## Access options
-
-- `enabled`: false returns 404.
-- `signed`: require a signed URL.
-- `guard`: Laravel auth guard, e.g. `admin` or `web`.
-- `roles`: any listed role may pass.
-- `permissions`: all listed permissions must pass through Laravel Gate.
-- `ability`: optional custom Gate ability receiving `($disk, $path)`.
-
-Role checks use `hasAnyRole()` / `hasRole()` when available, so Spatie Permission works without becoming a package dependency. A simple `role` attribute is also supported.
+The generated URL includes the model class, record key and file field. `AssetsController` verifies that the requested disk/path still matches that exact field before serving the file.
 
 ## Folder fallback
 
-Generic assets that are not tied to a model field may use `assets.folder_access`.
+Generic files that are not tied to a model field can use `assets.folder_access`.
 
-Rules merge from `*` through parent folders to the most-specific folder. Model field `access` wins over folder fallback.
+```php
+'assets' => [
+    'allowed_disks' => [
+        'public',
+        'private',
+    ],
+
+    'folder_access' => [
+        'private' => [
+            '*' => [
+                'enabled' => false,
+            ],
+
+            'shared/manuals' => [
+                'enabled' => true,
+                'signed' => true,
+                'guard' => 'web',
+            ],
+        ],
+    ],
+],
+```
+
+Rules merge from `*` through parent folders to the most-specific folder. Model field `access` overrides folder fallback.
 
 ## File lifecycle
 
 - successful create/update keeps the new file;
-- replaced old files are deleted only after DB commit;
+- replaced old files are deleted after DB commit;
 - failed DB writes remove newly uploaded files;
-- transaction rollback removes newly uploaded files and keeps the previously committed file;
+- transaction rollback removes newly uploaded files and keeps the previous committed file;
 - delete/force-delete cleanup follows the field options.
 
 ## Storage audit
@@ -79,6 +90,4 @@ php artisan infrastructure:storage-audit
 php artisan infrastructure:storage-audit --delete
 ```
 
-The audit only scans directories explicitly owned by configured models. It does not globally scan arbitrary storage folders.
-
-Storage paths reject absolute paths, traversal segments, null bytes and control characters.
+Only explicitly model-owned directories are scanned.

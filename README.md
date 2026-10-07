@@ -19,43 +19,45 @@ php artisan vendor:publish --tag=laravel-infrastructure-config
 ## Features
 
 ```text
-Repository CRUD + filters + search + sort + scopes
-Relations + counts + sum + avg
-Pagination + chunk + lazy + cursor
+Repository CRUD, filters, search, sorting, scopes
+Relations, counts, sum, average
+Pagination, chunk, lazy, cursor
 Bulk update/delete/restore/force-delete
-Repository cache + model cache toggle + per-query cache controls
-Repository validation + automatic resolved-model reuse
+Repository cache + model cache switch + per-operation cache
+Repository validation + automatic model reuse + named resolvers
 BaseService + BaseAction + transaction retries
 Multiple slugs per model
 Automatic file upload + rollback/failure cleanup
-Per-file guard/role/permission visibility
+Per-file guard visibility
 Signed AssetsController URLs
 Storage orphan audit
 Database backup
 Structured logging + redaction
 API response helpers + exception normalization
-Security middleware + request correlation ID
+Security middleware + request correlation
 ```
 
 # Complete example
 
-This example shows the normal package flow once:
+One real flow:
 
 ```text
-Model
-  ↓
-Repository
-  ↓
-Service
-  ↓
-Action when a transaction is needed
-  ↓
-Controller
-  ↓
-ResourceResponse
+Product Model
+    ↓
+ProductRepository
+    ↓
+ProductService
+    ↓
+CreateProductAction
+    ↓
+StoreProductRequest
+    ↓
+ProductController
+    ↓
+ProductResource / ResourceResponse
 ```
 
-## 1. Model
+## 1. Product model
 
 ```php
 use Ak279642\LaravelInfrastructure\Models\BaseModel;
@@ -78,7 +80,7 @@ final class Product extends BaseModel
         'document_path',
     ];
 
-    // Repository cache for this model.
+    // Cache is enabled for this model by default.
     protected function cacheOptions(): array
     {
         return [
@@ -86,7 +88,7 @@ final class Product extends BaseModel
         ];
     }
 
-    // Multiple independent slug columns.
+    // Multiple slug columns can use different sources.
     protected function slugFields(): array
     {
         return [
@@ -102,7 +104,7 @@ final class Product extends BaseModel
         ];
     }
 
-    // UploadedFile fields + access rules live together.
+    // File storage + visibility are defined on the same field.
     protected function fileAttributes(): array
     {
         return [
@@ -129,7 +131,7 @@ final class Product extends BaseModel
                 // default: true
 
                 // 'filename' => null,
-                // default: generated UUID + uploaded extension
+                // default: UUID + uploaded extension
                 // may also be a string/callable
 
                 'access' => [
@@ -138,22 +140,10 @@ final class Product extends BaseModel
 
                     'signed' => false,
                     // default: assets.signed -> true
-                    // false means normal route URL is allowed
 
                     'guard' => null,
-                    // default: null -> current request user/no forced guard
-
-                    'roles' => [],
-                    // default: []
-                    // ANY listed role may pass
-
-                    'permissions' => [],
-                    // default: []
-                    // ALL listed permissions must pass
-
-                    'ability' => null,
                     // default: null
-                    // optional Laravel Gate ability
+                    // no specific guard required
                 ],
             ],
 
@@ -161,19 +151,13 @@ final class Product extends BaseModel
                 'disk' => 'private',
                 'directory' => 'products/documents',
 
-                // Only authenticated admin-guard users with an allowed role
-                // and documents.view permission can access this field.
                 'access' => [
                     'enabled' => true,
                     'signed' => true,
+
+                    // Only a user authenticated on the "admin" guard
+                    // can access this file field.
                     'guard' => 'admin',
-                    'roles' => [
-                        'admin',
-                        'manager',
-                    ],
-                    'permissions' => [
-                        'documents.view',
-                    ],
                 ],
             ],
         ];
@@ -196,7 +180,7 @@ final class Product extends BaseModel
 }
 ```
 
-Upload normally:
+Upload:
 
 ```php
 $product->image_path = $request->file('image');
@@ -204,16 +188,17 @@ $product->document_path = $request->file('document');
 $product->save();
 ```
 
-File lifecycle is automatic:
+Automatic file lifecycle:
 
 ```text
-save succeeds       -> keep new file; old replaced file deleted after commit
-save fails          -> remove newly uploaded file
-transaction rollback-> remove newly uploaded file; keep previous committed file
-delete/force-delete -> delete file according to field options
+save success        -> keep new file
+replace success     -> delete old file after commit
+DB save failure     -> delete new uploaded file
+transaction rollback-> delete new uploaded file, keep old committed file
+delete/force-delete -> cleanup according to file options
 ```
 
-Generate the correct asset URL from the model field:
+Generate asset URLs from the model field:
 
 ```php
 $imageUrl = $product->fileAssetUrl('image_path');
@@ -224,9 +209,11 @@ $documentUrl = $product->fileAssetUrl(
 );
 ```
 
-`fileAssetUrl()` includes model + record + field identity. `AssetsController` verifies that the requested path is still the value stored in that field before serving it, then applies that field's `access` rules.
+The URL contains model + record + field identity. `AssetsController` checks that the requested disk/path still belongs to that exact field before serving it.
 
-## 2. Repository
+> If you use a `private` disk here, add `private` to `assets.allowed_disks` in package config.
+
+## 2. ProductRepository
 
 ```php
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
@@ -234,7 +221,6 @@ use Illuminate\Database\Eloquent\Collection;
 
 final class ProductRepository extends BaseRepository
 {
-    // Direct model filters accepted from callers.
     protected array $allowedFilters = [
         'id',
         'category_id',
@@ -243,12 +229,10 @@ final class ProductRepository extends BaseRepository
         'created_at',
     ];
 
-    // Explicit dotted relation filters.
     protected array $allowedRelationFilters = [
         'category.slug',
     ];
 
-    // Search model + relation columns.
     protected array $searchable = [
         'name',
         'seo_title',
@@ -278,10 +262,10 @@ final class ProductRepository extends BaseRepository
         'created_at' => 'desc',
     ];
 
-    // Unknown filters/sorts/relations throw instead of being ignored.
+    // Unknown filter/sort/relation input throws.
     protected bool $strictFilters = true;
 
-    // Example custom repository method with the same package cache behavior.
+    // Real custom method using the same repository cache layer.
     public function featured(int $limit = 10): Collection
     {
         $limit = max(1, min($limit, 100));
@@ -296,7 +280,7 @@ final class ProductRepository extends BaseRepository
                 ->limit($limit)
                 ->get(),
 
-            // Params are part of the deterministic cache key.
+            // Included in the cache key.
             params: [
                 'limit' => $limit,
             ],
@@ -305,9 +289,9 @@ final class ProductRepository extends BaseRepository
 }
 ```
 
-## 3. Service
+## 3. ProductService
 
-Use a Service for reusable business rules. It does not need to own the transaction.
+Use a Service for reusable business rules.
 
 ```php
 use Ak279642\LaravelInfrastructure\Services\BaseService;
@@ -352,9 +336,9 @@ final class ProductService extends BaseService
         return $this->deleteRecord($product);
     }
 
-    // BaseService hook: normalize data before create.
     protected function beforeCreate(array $data): array
     {
+        // Example business normalization.
         $data['name'] = trim($data['name']);
 
         return $data;
@@ -370,9 +354,9 @@ beforeUpdate / afterUpdate
 beforeDelete / afterDelete
 ```
 
-## 4. Action
+## 4. CreateProductAction
 
-Use an Action when one use case performs multiple writes that must commit/rollback together.
+Use an Action when one use case contains multiple writes that must commit or roll back together.
 
 ```php
 use Ak279642\LaravelInfrastructure\Actions\BaseAction;
@@ -388,28 +372,36 @@ final class CreateProductAction extends BaseAction
         parent::__construct($transactions);
     }
 
-    public function execute(array $data): Product
-    {
-        return $this->transactional(function () use ($data): Product {
-            // Write 1
-            $product = $this->products->createProduct($data);
+    public function execute(
+        array $data,
+        Category $category,
+    ): Product {
+        return $this->transactional(function () use (
+            $data,
+            $category,
+        ): Product {
+            // Write 1.
+            $product = $this->products->createProduct([
+                ...$data,
+                'category_id' => $category->id,
+            ]);
 
-            // Write 2
+            // Write 2.
             $this->inventory->create([
                 'product_id' => $product->id,
                 'stock' => $data['opening_stock'] ?? 0,
             ]);
 
-            // If write 2 throws, write 1 is rolled back too.
+            // If write 2 fails, write 1 rolls back too.
             return $product;
         });
     }
 }
 ```
 
-For a simple one-record write, call the Service/Repository directly. Use an Action transaction only when the whole operation must be atomic.
+For one independent write, call the Service/Repository directly.
 
-You can also use Laravel directly:
+Laravel's normal transaction API also remains available:
 
 ```php
 DB::transaction(function (): void {
@@ -417,9 +409,7 @@ DB::transaction(function (): void {
 });
 ```
 
-## 5. Request validation
-
-Repository validation runs after normal Laravel rules and can preload models.
+## 5. StoreProductRequest + resolver
 
 ```php
 use Ak279642\LaravelInfrastructure\Http\Requests\RepositoryFormRequest;
@@ -448,10 +438,14 @@ final class StoreProductRequest extends RepositoryFormRequest
                     'category_id',
                 ],
 
-                // Resolve it once so later repository find/findOrFail can reuse it.
+                // Resolver example:
+                // load Category once, store it as "category",
+                // and preload its parent relation.
                 resolve: [
                     [
                         'field' => 'category_id',
+                        'as' => 'category',
+                        'with' => ['parent'],
                     ],
                 ],
             ),
@@ -460,11 +454,38 @@ final class StoreProductRequest extends RepositoryFormRequest
 }
 ```
 
-Normal repository lookups reuse matching resolved models automatically. No separate `ValidationContext` call is required.
+Use the named resolved model when you want it directly:
 
-## 6. Controller
+```php
+$category = $request->resolvedModel(
+    'category',
+    Category::class,
+);
+```
 
-One controller shows where each layer belongs.
+Or just use the repository normally:
+
+```php
+$category = $categories->findOrFail(
+    $request->validated('category_id'),
+);
+```
+
+The second call automatically reuses the already-resolved Category when it matches, so a separate context lookup is not required.
+
+Resolver entries support:
+
+```php
+[
+    'field' => 'category_id', // validated input field
+    'as' => 'category',       // optional alias
+    'with' => ['parent'],     // optional allowed relations
+]
+```
+
+## 6. ProductController
+
+Everything is now used in one Controller.
 
 ```php
 use Ak279642\LaravelInfrastructure\Http\Responses\MessageResponse;
@@ -474,15 +495,34 @@ use Illuminate\Http\Request;
 final class ProductController
 {
     public function __construct(
+        // This is where $this->products comes from in all examples below.
         private ProductRepository $products,
+
         private ProductService $service,
     ) {}
 
     public function index(Request $request)
     {
         $paginator = $this->products->paginate(
-            // Request may contain only allow-listed filters/search/sort/etc.
-            filters: $request->all(),
+            filters: [
+                'status' => $request->string('status')->toString(),
+
+                'category.slug' => $request
+                    ->string('category')
+                    ->toString(),
+
+                'search' => $request
+                    ->string('search')
+                    ->toString(),
+
+                'sort' => [
+                    '-created_at',
+                ],
+
+                'with' => [
+                    'category',
+                ],
+            ],
             perPage: 20,
         );
 
@@ -509,9 +549,16 @@ final class ProductController
         StoreProductRequest $request,
         CreateProductAction $action,
     ) {
-        // Action returns the Product model, not an HTTP response.
+        // Optional named resolver access.
+        $category = $request->resolvedModel(
+            'category',
+            Category::class,
+        );
+
+        // Action returns Product, not an HTTP Resource/Response.
         $product = $action->execute(
             $request->validated(),
+            $category,
         );
 
         return ResourceResponse::make(
@@ -527,7 +574,7 @@ final class ProductController
     ) {
         $product = $this->products->findOrFail($id);
 
-        // Single write: Service is enough; no Action required.
+        // One write: Service is enough.
         $product = $this->service->updateProduct(
             $product,
             $request->validated(),
@@ -549,10 +596,21 @@ final class ProductController
             'Product deleted.',
         );
     }
+
+    public function featured()
+    {
+        // Custom repository method from ProductRepository.
+        $products = $this->products->featured(12);
+
+        return ResourceResponse::make(
+            ProductResource::collection($products),
+            'Featured products loaded.',
+        );
+    }
 }
 ```
 
-## 7. Resource with file URLs
+## 7. ProductResource
 
 ```php
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -567,11 +625,11 @@ final class ProductResource extends JsonResource
             'slug' => $this->slug,
             'price' => $this->price,
 
-            // Uses image_path access rules from Product::fileAttributes().
+            // Public/no forced guard from image_path config.
             'image_url' => $this->resource
                 ->fileAssetUrl('image_path'),
 
-            // Uses admin guard/role/permission rules from document_path.
+            // Requires the "admin" guard from document_path config.
             'document_url' => $this->resource
                 ->fileAssetUrl(
                     'document_path',
@@ -584,10 +642,17 @@ final class ProductResource extends JsonResource
 
 # Repository query examples
 
-## Filter + search + relation + sort
+The variable below is the injected `ProductRepository`:
 
 ```php
-$products = $products->get([
+/** @var ProductRepository $products */
+$products = $this->products;
+```
+
+## Filters + search + relation + scope + sort
+
+```php
+$result = $products->get([
     'status' => 'published',
 
     'price' => [
@@ -634,25 +699,10 @@ between not_between
 null not_null
 ```
 
-## Pagination with filters
+## Aggregates
 
 ```php
-$paginator = $products->paginate(
-    filters: [
-        'status' => 'published',
-        'category.slug' => 'electronics',
-        'search' => 'iphone',
-        'sort' => ['-created_at'],
-        'with' => ['category'],
-    ],
-    perPage: 20,
-);
-```
-
-## Relations / aggregates
-
-```php
-$products = $products
+$result = $products
     ->with(['category', 'orders'])
     ->withCount('orders')
     ->withSum('orders', 'total')
@@ -692,7 +742,7 @@ $products->bulkForceDelete([
 $products->chunk(
     500,
     function ($chunk) use ($csvExporter): void {
-        // $chunk is the Collection loaded by this repository batch.
+        // $chunk is loaded by ProductRepository for this batch.
         foreach ($chunk as $product) {
             $csvExporter->write([
                 $product->id,
@@ -712,7 +762,7 @@ foreach ($products->cursor() as $product) {
 }
 ```
 
-# Cache controls
+# Cache usage
 
 Global:
 
@@ -722,40 +772,42 @@ LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
 LARAVEL_INFRASTRUCTURE_CACHE_TTL=300
 ```
 
-Disable one model:
+Model-specific:
 
 ```php
 protected function cacheOptions(): array
 {
     return [
-        'enabled' => false,
+        'enabled' => false, // disable repository cache only for this model
     ];
 }
 ```
 
-Per operation:
+Per operation, using the injected `ProductRepository` from the Controller above:
 
 ```php
-$fresh = $products
+// $this->products is ProductRepository.
+
+$fresh = $this->products
     ->withoutCache()
     ->findOrFail($id);
 
-$cached = $products
+$cachedFor60Seconds = $this->products
     ->withCache(60)
     ->findOrFail($id);
 
-$forever = $products
+$cachedForever = $this->products
     ->rememberForever()
     ->findOrFail($id);
 
-$products->clearCache();
+$this->products->clearCache();
 ```
 
-Custom repository methods should use protected `cacheRemember()` as shown in `featured()`.
+Custom repository reads use protected `cacheRemember()`, as shown in `ProductRepository::featured()`.
 
 # Asset access
 
-Normal case: define access directly inside the model file field.
+Normal model field:
 
 ```php
 'document_path' => [
@@ -763,30 +815,24 @@ Normal case: define access directly inside the model file field.
     'directory' => 'products/documents',
 
     'access' => [
+        'enabled' => true,
         'signed' => true,
         'guard' => 'admin',
-        'roles' => ['admin', 'manager'],
-        'permissions' => ['documents.view'],
     ],
 ],
 ```
 
-Rules:
+Only three access controls exist:
 
 ```text
-enabled=false   -> 404
-signed=true     -> signed URL required
-guard=admin     -> authenticate with admin guard
-roles=[...]     -> ANY listed role may pass
-permissions=[...] -> ALL listed permissions must pass
-ability=...     -> optional Laravel Gate ability
+enabled=false -> return 404
+signed=true   -> require signed URL
+guard=admin   -> require authenticated user on the admin guard
 ```
 
-Role detection supports `hasAnyRole()` / `hasRole()` (including Spatie Permission) and a simple `role` attribute.
+No role/permission/RBAC logic is built into asset access.
 
-Permissions use Laravel Gate.
-
-Global disk/folder rules remain available as fallback for generic assets that are not generated from a model field:
+For generic files not linked to a model field, folder fallback is available:
 
 ```php
 'assets' => [
@@ -805,14 +851,13 @@ Global disk/folder rules remain available as fallback for generic assets that ar
                 'enabled' => true,
                 'signed' => true,
                 'guard' => 'web',
-                'roles' => ['staff'],
             ],
         ],
     ],
 ],
 ```
 
-Model field `access` overrides matching folder fallback rules.
+Model field `access` overrides folder fallback.
 
 # Commands
 
@@ -830,7 +875,7 @@ php artisan infrastructure:database-backup
 php artisan infrastructure:database-backup --connection=mysql
 ```
 
-Backup supports MySQL/MariaDB, PostgreSQL, gzip compression, excluded table data, Laravel filesystem disks, and retention cleanup.
+Backup supports MySQL/MariaDB, PostgreSQL, gzip, excluded table data, Laravel filesystem disks, and retention cleanup.
 
 # Middleware
 
@@ -870,20 +915,14 @@ CustomLog::info(
 );
 ```
 
-Sensitive passwords, tokens, authorization headers, cookies, API keys, secrets, sessions, signatures, and nested sensitive values are redacted.
+Sensitive credentials/tokens/headers/cookies/secrets are redacted.
 
-Throw a package business exception:
+Business exception:
 
 ```php
 throw new BusinessLogicException(
     'Insufficient product stock.',
 );
-```
-
-JSON exception normalization is enabled by default:
-
-```dotenv
-LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
 ```
 
 # Main environment options
@@ -905,7 +944,7 @@ LARAVEL_INFRASTRUCTURE_ASSETS_PREFIX=infrastructure/assets
 LARAVEL_INFRASTRUCTURE_ASSETS_SIGNED=true
 LARAVEL_INFRASTRUCTURE_ASSETS_URL_TTL=15
 
-# Database backup
+# Backup
 LARAVEL_INFRASTRUCTURE_BACKUP_DISK=local
 LARAVEL_INFRASTRUCTURE_BACKUP_PATH=backups/database
 LARAVEL_INFRASTRUCTURE_BACKUP_KEEP=3
@@ -916,12 +955,12 @@ LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
 LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
 LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
 
-# Request correlation
+# Correlation
 LARAVEL_INFRASTRUCTURE_CORRELATION_HEADER=X-Request-ID
 LARAVEL_INFRASTRUCTURE_ACCEPT_CORRELATION_ID=true
 ```
 
-# Documentation
+# Docs
 
 - [Repositories](docs/repositories.md)
 - [Filtering](docs/filtering.md)
@@ -948,7 +987,7 @@ composer analyse
 
 # Scope
 
-Reusable infrastructure only. No application-specific models, RBAC package dependency, authentication implementation, UI, business migrations, or domain logic.
+Reusable infrastructure only. No application-specific models, RBAC dependency, authentication implementation, UI, business migrations, or domain logic.
 
 No dependency on the host application's `App\` namespace.
 

@@ -8,7 +8,6 @@ use Ak279642\LaravelInfrastructure\Models\BaseModel;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
@@ -26,7 +25,7 @@ final class AssetsRouteTest extends TestCase
 
         $app['config']->set('auth.providers.asset_users', [
             'driver' => 'eloquent',
-            'model' => AssetAdminUser::class,
+            'model' => AssetGuardUser::class,
         ]);
         $app['config']->set('auth.guards.admin', [
             'driver' => 'session',
@@ -66,11 +65,10 @@ final class AssetsRouteTest extends TestCase
         );
 
         Schema::create(
-            'asset_admin_users',
+            'asset_guard_users',
             function (Blueprint $table): void {
                 $table->id();
                 $table->string('name');
-                $table->string('role')->nullable();
                 $table->string('password')->nullable();
                 $table->rememberToken();
             },
@@ -93,11 +91,10 @@ final class AssetsRouteTest extends TestCase
             ],
         );
 
-        $this->get($url)
-            ->assertOk();
+        $this->get($url)->assertOk();
     }
 
-    public function test_asset_route_rejects_unsigned_request_by_default(): void
+    public function test_unsigned_request_is_rejected_when_signature_is_required(): void
     {
         Storage::disk('public')->put(
             'products/documents/manual.txt',
@@ -115,16 +112,18 @@ final class AssetsRouteTest extends TestCase
         )->assertForbidden();
     }
 
-    public function test_folder_rule_can_make_one_folder_unsigned_without_affecting_siblings(): void
+    public function test_same_disk_can_have_public_and_guard_protected_folders(): void
     {
         $this->app['config']->set(
             'laravel-infrastructure.assets.folder_access.public',
             [
                 '*' => [
-                    'signed' => true,
-                ],
-                'products/images' => [
                     'signed' => false,
+                    'guard' => null,
+                ],
+
+                'products/admin' => [
+                    'guard' => 'admin',
                 ],
             ],
         );
@@ -134,8 +133,8 @@ final class AssetsRouteTest extends TestCase
             'photo',
         );
         Storage::disk('public')->put(
-            'products/documents/manual.txt',
-            'manual',
+            'products/admin/report.txt',
+            'report',
         );
 
         $this->get(
@@ -148,133 +147,80 @@ final class AssetsRouteTest extends TestCase
             ),
         )->assertOk();
 
-        $this->get(
-            route(
-                'laravel-infrastructure.assets.show',
-                [
-                    'disk' => 'public',
-                    'path' => 'products/documents/manual.txt',
-                ],
-            ),
-        )->assertForbidden();
-    }
-
-    public function test_most_specific_folder_rule_enforces_its_own_gate_ability(): void
-    {
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.folder_access.public',
+        $protectedUrl = route(
+            'laravel-infrastructure.assets.show',
             [
-                '*' => [
-                    'signed' => false,
-                ],
-                'products' => [
-                    'ability' => 'view-products',
-                ],
-                'products/admin' => [
-                    'ability' => 'view-admin-products',
-                ],
+                'disk' => 'public',
+                'path' => 'products/admin/report.txt',
             ],
         );
 
-        Gate::define(
-            'view-products',
-            static fn (): bool => true,
-        );
-        Gate::define(
-            'view-admin-products',
-            static fn (): bool => false,
-        );
+        $this->get($protectedUrl)->assertUnauthorized();
 
-        Storage::disk('public')->put(
-            'products/catalog.txt',
-            'catalog',
-        );
-        Storage::disk('public')->put(
-            'products/admin/report.txt',
-            'report',
-        );
+        $admin = AssetGuardUser::query()->create([
+            'name' => 'Admin',
+        ]);
 
-        $this->get(
-            route(
-                'laravel-infrastructure.assets.show',
-                [
-                    'disk' => 'public',
-                    'path' => 'products/catalog.txt',
-                ],
-            ),
-        )->assertOk();
+        $this->actingAs($admin, 'admin');
 
-        $this->get(
-            route(
-                'laravel-infrastructure.assets.show',
-                [
-                    'disk' => 'public',
-                    'path' => 'products/admin/report.txt',
-                ],
-            ),
-        )->assertForbidden();
+        $this->get($protectedUrl)->assertOk();
     }
 
-    public function test_model_file_access_can_define_guard_role_and_signed_behavior(): void
+    public function test_model_file_access_can_require_only_a_guard(): void
     {
         $this->app['config']->set(
             'laravel-infrastructure.assets.folder_access.public',
             [
                 '*' => [
                     'signed' => true,
+                    'guard' => null,
                 ],
             ],
         );
 
         Storage::disk('public')->put(
-            'products/public/manual.txt',
+            'products/private/manual.txt',
             'manual-content',
         );
 
         $document = AssetRouteDocument::query()->create([
-            'file_path' => 'products/public/manual.txt',
+            'file_path' => 'products/private/manual.txt',
         ]);
 
         $url = $document->fileAssetUrl('file_path');
 
         self::assertIsString($url);
 
-        // Model field requires the admin guard + admin role.
-        $this->get($url)
-            ->assertUnauthorized();
+        $this->get($url)->assertUnauthorized();
 
-        $admin = AssetAdminUser::query()->create([
+        $admin = AssetGuardUser::query()->create([
             'name' => 'Admin',
-            'role' => 'admin',
         ]);
 
         $this->actingAs($admin, 'admin');
 
-        // Model field also overrides the folder fallback signed=true.
-        $this->get($url)
-            ->assertOk();
+        $this->get($url)->assertOk();
     }
 
     public function test_model_file_url_cannot_be_retargeted_to_another_path(): void
     {
-        $admin = AssetAdminUser::query()->create([
+        $admin = AssetGuardUser::query()->create([
             'name' => 'Admin',
-            'role' => 'admin',
         ]);
 
         $this->actingAs($admin, 'admin');
 
         Storage::disk('public')->put(
-            'products/public/manual.txt',
+            'products/private/manual.txt',
             'manual-content',
         );
         Storage::disk('public')->put(
-            'products/public/other.txt',
+            'products/private/other.txt',
             'other-content',
         );
 
         $document = AssetRouteDocument::query()->create([
-            'file_path' => 'products/public/manual.txt',
+            'file_path' => 'products/private/manual.txt',
         ]);
 
         $this->get(
@@ -282,7 +228,7 @@ final class AssetsRouteTest extends TestCase
                 'laravel-infrastructure.assets.show',
                 [
                     'disk' => 'public',
-                    'path' => 'products/public/other.txt',
+                    'path' => 'products/private/other.txt',
                     'model' => AssetRouteDocument::class,
                     'key' => (string) $document->getKey(),
                     'field' => 'file_path',
@@ -307,8 +253,7 @@ final class AssetsRouteTest extends TestCase
             ],
         );
 
-        $this->get($url)
-            ->assertNotFound();
+        $this->get($url)->assertNotFound();
     }
 }
 
@@ -325,23 +270,22 @@ final class AssetRouteDocument extends BaseModel
         return [
             'file_path' => [
                 'disk' => 'public',
-                'directory' => 'products/public',
+                'directory' => 'products/private',
 
                 'access' => [
                     'signed' => false,
                     'guard' => 'admin',
-                    'roles' => ['admin'],
                 ],
             ],
         ];
     }
 }
 
-final class AssetAdminUser extends Authenticatable
+final class AssetGuardUser extends Authenticatable
 {
     public $timestamps = false;
 
-    protected $table = 'asset_admin_users';
+    protected $table = 'asset_guard_users';
 
     protected $guarded = [];
 }

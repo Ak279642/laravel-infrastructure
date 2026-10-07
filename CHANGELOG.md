@@ -5,10 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Added model file-field access rules (`guard`, roles, permissions, Gate ability, signed visibility) plus `fileAssetUrl()` for model-aware asset URLs.
+- Added model file-field access rules (`enabled`, `signed`, `guard`) plus `fileAssetUrl()` for model-aware asset URLs.
 - Added per-model repository cache enable/disable through model `cacheOptions()`.
 - Added signed `AssetsController` file-serving route with configurable prefix and disk allow-list.
-- Added hierarchical disk + folder asset access rules with per-folder signed-link, guard, role, permission, and Gate ability controls.
+- Added hierarchical disk + folder asset access rules with per-folder enabled/signed/guard controls.
 - Added `infrastructure:database-backup` for MySQL/MariaDB and PostgreSQL logical backups with optional gzip compression, schema-only exclusions, Laravel filesystem storage, and retention pruning.
 - Added opt-in `SecurityHeaders` and `RejectSensitivePaths` middleware with package middleware aliases.
 
