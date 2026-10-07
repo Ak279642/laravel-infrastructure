@@ -15,7 +15,8 @@ return [
     ],
 
     'slug' => [
-        // Disabled globally by default. Enable per model with slugOptions().
+        // Disabled globally by default. Enable a legacy single slug with slugOptions(),
+        // or declare one/more fields explicitly with slugFields().
         'enabled' => false,
         'source' => 'name',
         'column' => 'slug',
