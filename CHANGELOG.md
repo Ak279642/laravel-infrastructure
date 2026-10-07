@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Fixed `bulkRestore()` on non-`SoftDeletes` models so it returns `0` instead of calling an unavailable `restore()` method.
+- Fixed `bulkForceDelete()` on non-`SoftDeletes` models so it falls back to normal model deletion, matching the single-record API.
+- Bulk mutations now invalidate repository cache state even when the model does not use the cache observer concern.
+- Relation sum/average helpers now reject unknown aggregate columns explicitly and reuse `SchemaRegistry` metadata instead of repeatedly introspecting table schemas.
+- Nested dotted relation aggregates now fail early with an actionable exception instead of falling through to framework-specific runtime behavior.
+- `findWhereIn()` now normalizes primary-key identifiers before deduplication and ordering so integer/string aliases, duplicates, missing IDs, UUIDs, and requested order behave deterministically.
 - Deferred validation-context create/update/delete/restore mutations until transaction commit so rollbacks cannot leave phantom or stale identity-map models.
 - Made bulk update/delete/restore/force-delete keep ValidationContext coherent using the same transaction-aware rules as single-record repository writes.
 - Deferred model file replacement/delete cleanup until database commit so rolled-back writes never restore rows that reference already-deleted files.

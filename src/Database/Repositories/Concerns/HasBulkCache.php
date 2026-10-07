@@ -18,6 +18,8 @@ trait HasBulkCache
 
     abstract protected function forgetValidationModel(Model $model): void;
 
+    abstract public function clearCache(): void;
+
     /**
      * Bulk update records and invalidate all affected cache dependencies.
      *
@@ -36,6 +38,10 @@ trait HasBulkCache
                 $affected++;
                 $this->rememberValidationValue($model);
             }
+        }
+
+        if ($affected > 0) {
+            $this->clearCache();
         }
 
         return $affected;
@@ -58,6 +64,10 @@ trait HasBulkCache
             }
         }
 
+        if ($affected > 0) {
+            $this->clearCache();
+        }
+
         return $affected;
     }
 
@@ -70,15 +80,11 @@ trait HasBulkCache
     {
         $query = $this->buildQuery($filters);
 
-        if (
-            in_array(
-                SoftDeletes::class,
-                class_uses_recursive($query->getModel()::class),
-                true,
-            )
-        ) {
-            $query->withoutGlobalScope(SoftDeletingScope::class);
+        if (! $this->usesSoftDeletes($query)) {
+            return 0;
         }
+
+        $query->withoutGlobalScope(SoftDeletingScope::class);
 
         $models = $query->get();
         $affected = 0;
@@ -88,6 +94,10 @@ trait HasBulkCache
                 $affected++;
                 $this->rememberValidationValue($model);
             }
+        }
+
+        if ($affected > 0) {
+            $this->clearCache();
         }
 
         return $affected;
@@ -101,14 +111,9 @@ trait HasBulkCache
     public function bulkForceDelete(array $filters = []): int
     {
         $query = $this->buildQuery($filters);
+        $usesSoftDeletes = $this->usesSoftDeletes($query);
 
-        if (
-            in_array(
-                SoftDeletes::class,
-                class_uses_recursive($query->getModel()::class),
-                true,
-            )
-        ) {
+        if ($usesSoftDeletes) {
             $query->withoutGlobalScope(SoftDeletingScope::class);
         }
 
@@ -116,12 +121,29 @@ trait HasBulkCache
         $affected = 0;
 
         foreach ($models as $model) {
-            if (call_user_func([$model, 'forceDelete'])) {
+            $deleted = $usesSoftDeletes
+                ? (bool) call_user_func([$model, 'forceDelete'])
+                : (bool) $model->delete();
+
+            if ($deleted) {
                 $affected++;
                 $this->forgetValidationModel($model);
             }
         }
 
+        if ($affected > 0) {
+            $this->clearCache();
+        }
+
         return $affected;
+    }
+
+    private function usesSoftDeletes(Builder $query): bool
+    {
+        return in_array(
+            SoftDeletes::class,
+            class_uses_recursive($query->getModel()::class),
+            true,
+        );
     }
 }

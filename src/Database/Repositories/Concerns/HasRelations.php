@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Exceptions\RelationNotAllowedException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -107,9 +108,11 @@ trait HasRelations
         }
 
         try {
-            return $model->getConnection()
-                ->getSchemaBuilder()
-                ->hasColumn($model->getTable(), $column);
+            return app(SchemaRegistry::class)->has(
+                $model->getConnection(),
+                $model->getTable(),
+                $column,
+            );
         } catch (Throwable) {
             return false;
         }
@@ -174,14 +177,12 @@ trait HasRelations
         foreach ($relations as $key => $value) {
             $relation = is_string($key) ? $key : $value;
 
-            if (
-                is_string($relation)
-                && $this->relationColumnExists(
-                    $this->canonicalRelationName($relation).'.'.$column,
-                )
-            ) {
-                $this->query->withSum($relation, $column);
+            if (! is_string($relation)) {
+                continue;
             }
+
+            $this->assertRelationAggregateColumn($relation, $column);
+            $this->query->withSum($relation, $column);
         }
 
         return $this;
@@ -194,17 +195,36 @@ trait HasRelations
         foreach ($relations as $key => $value) {
             $relation = is_string($key) ? $key : $value;
 
-            if (
-                is_string($relation)
-                && $this->relationColumnExists(
-                    $this->canonicalRelationName($relation).'.'.$column,
-                )
-            ) {
-                $this->query->withAvg($relation, $column);
+            if (! is_string($relation)) {
+                continue;
             }
+
+            $this->assertRelationAggregateColumn($relation, $column);
+            $this->query->withAvg($relation, $column);
         }
 
         return $this;
+    }
+
+    protected function assertRelationAggregateColumn(
+        string $relation,
+        string $column,
+    ): void {
+        $relation = $this->canonicalRelationName($relation);
+
+        if (str_contains($relation, '.')) {
+            throw new \InvalidArgumentException(
+                "Nested relation aggregate [{$relation}] is not supported.",
+            );
+        }
+
+        $path = $relation.'.'.$column;
+
+        if (! $this->relationColumnExists($path)) {
+            throw new \InvalidArgumentException(
+                "Unsafe or unknown relation aggregate column [{$path}].",
+            );
+        }
     }
 
     protected function canonicalRelationName(string $relation): string

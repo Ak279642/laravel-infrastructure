@@ -453,7 +453,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
         $field = $this->safeModelColumn($field);
         $where = $this->safeWhere($where);
-        $values = array_values(array_unique($values));
+        $values = $this->normalizeWhereInValues($field, $values);
         $context = $this->validationContextInstance();
         $resolved = $this->hasOpenTransaction()
             ? new Collection
@@ -464,17 +464,21 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
                 $where,
             );
 
-        $resolvedValues = $resolved
-            ->pluck($field)
-            ->map(static fn ($value): string => (string) $value)
-            ->all();
+        $resolvedValues = [];
+
+        foreach ($resolved as $model) {
+            $resolvedValues[
+                $this->whereInValueKey(
+                    $field,
+                    $model->getAttribute($field),
+                )
+            ] = true;
+        }
 
         $missing = array_values(array_filter(
             $values,
-            static fn ($value): bool => ! in_array(
-                (string) $value,
-                $resolvedValues,
-                true,
+            fn ($value): bool => ! isset(
+                $resolvedValues[$this->whereInValueKey($field, $value)],
             ),
         ));
 
@@ -504,15 +508,93 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             ]);
         }
 
-        $order = array_flip(array_map('strval', $values));
+        $order = [];
+
+        foreach ($values as $index => $value) {
+            $order[$this->whereInValueKey($field, $value)] = $index;
+        }
 
         return $resolved
             ->sortBy(
-                static fn (Model $model): int => $order[
-                    (string) $model->getAttribute($field)
+                fn (Model $model): int => $order[
+                    $this->whereInValueKey(
+                        $field,
+                        $model->getAttribute($field),
+                    )
                 ] ?? PHP_INT_MAX,
             )
             ->values();
+    }
+
+    /**
+     * @param  list<mixed>  $values
+     * @return list<mixed>
+     */
+    protected function normalizeWhereInValues(
+        string $field,
+        array $values,
+    ): array {
+        $normalized = [];
+        $seen = [];
+
+        foreach ($values as $value) {
+            if ($value !== null && ! is_scalar($value)) {
+                throw new \InvalidArgumentException(
+                    'Where-in values must be scalar identifiers.',
+                );
+            }
+
+            $value = $this->normalizeWhereInValue($field, $value);
+            $key = $this->whereInValueKey($field, $value);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $normalized[] = $value;
+        }
+
+        return $normalized;
+    }
+
+    protected function normalizeWhereInValue(
+        string $field,
+        mixed $value,
+    ): mixed {
+        if ($value === null || $field !== $this->model->getKeyName()) {
+            return $value;
+        }
+
+        if ($this->model->getKeyType() === 'int') {
+            if (is_int($value)) {
+                return $value;
+            }
+
+            if (
+                is_string($value)
+                && preg_match('/^[+-]?\d+$/D', $value) === 1
+            ) {
+                return (int) $value;
+            }
+
+            return $value;
+        }
+
+        return is_scalar($value)
+            ? (string) $value
+            : $value;
+    }
+
+    protected function whereInValueKey(
+        string $field,
+        mixed $value,
+    ): string {
+        $value = $this->normalizeWhereInValue($field, $value);
+
+        return $value === null
+            ? 'null'
+            : 'value:'.(string) $value;
     }
 
     public function findWhere(mixed $id, array $where = [], array $with = []): ?Model
