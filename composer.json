@@ -53,5 +53,7 @@
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
-    "sort-packages": true
+    "config": {
+        "sort-packages": true
+    }
 }
