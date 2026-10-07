@@ -4,17 +4,49 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Validation;
 
-use Ak279642\LaravelInfrastructure\Validation\RepositoryValidationRule;
 use Ak279642\LaravelInfrastructure\Exceptions\ValidationException;
-use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 
 final class RepositoryValidationService
 {
-    public function __construct(private readonly ValidationContext $context) {}
+    public function __construct(
+        private readonly ValidationContext $context,
+    ) {}
 
-    /** @param list<RepositoryValidationRule> $rules */
-    public function validate(array $rules, array $input): void
-    {
+    /**
+     * @param  list<RepositoryValidationRule>  $rules
+     */
+    public function validate(
+        array $rules,
+        array $input,
+        bool $resetContext = true,
+    ): void {
+        $errors = $this->errors($rules, $input, $resetContext);
+
+        if ($errors !== []) {
+            throw new ValidationException(errors: $errors);
+        }
+    }
+
+    /**
+     * Validate repository-backed rules without throwing.
+     *
+     * This is used by RepositoryFormRequest so repository errors become normal
+     * Laravel FormRequest validation errors.
+     *
+     * @param  list<RepositoryValidationRule>  $rules
+     * @return array<string, list<string>>
+     */
+    public function errors(
+        array $rules,
+        array $input,
+        bool $resetContext = true,
+    ): array {
+        if ($resetContext) {
+            $this->context->clear();
+        }
+
         $errors = [];
 
         foreach ($rules as $rule) {
@@ -22,7 +54,9 @@ final class RepositoryValidationService
 
             if ($rule->unique !== []) {
                 $fields = collect($rule->unique)
-                    ->mapWithKeys(fn (string $field) => [$field => data_get($input, $field)])
+                    ->mapWithKeys(fn (string $field) => [
+                        $field => data_get($input, $field),
+                    ])
                     ->filter(fn ($value) => $value !== null && $value !== '')
                     ->all();
 
@@ -36,8 +70,17 @@ final class RepositoryValidationService
                     if ($duplicate) {
                         foreach ($fields as $field => $value) {
                             $duplicateValue = data_get($duplicate, $field);
-                            if (is_scalar($value) && is_scalar($duplicateValue) && (string) $duplicateValue === (string) $value) {
-                                $errors[$field][] = str($field)->replace('_', ' ')->title()->append(' already exists.')->toString();
+
+                            if (
+                                is_scalar($value)
+                                && is_scalar($duplicateValue)
+                                && (string) $duplicateValue === (string) $value
+                            ) {
+                                $errors[$field][] = str($field)
+                                    ->replace('_', ' ')
+                                    ->title()
+                                    ->append(' already exists.')
+                                    ->toString();
                             }
                         }
                     }
@@ -46,8 +89,18 @@ final class RepositoryValidationService
 
             foreach ($rule->exists as $key => $configuration) {
                 $field = is_int($key) ? $configuration : $key;
-                $config = is_int($key) || ! is_array($configuration) ? [] : $configuration;
-                $value = data_get($input, $field);
+                $config = is_int($key) || ! is_array($configuration)
+                    ? []
+                    : $configuration;
+
+                if (! is_string($field) || $field === '') {
+                    continue;
+                }
+
+                $value = data_get(
+                    $input,
+                    (string) ($config['input'] ?? $field),
+                );
 
                 if ($value === null || $value === '') {
                     continue;
@@ -55,58 +108,155 @@ final class RepositoryValidationService
 
                 $model = $repository->findWhere(
                     $value,
-                    $this->resolveWhere($config['where'] ?? [], $input),
+                    $this->resolveWhere(
+                        (array) ($config['where'] ?? []),
+                        $input,
+                    ),
                 );
 
                 if (! $model) {
-                    $errors[$field][] = str($field)->replace('_', ' ')->title()->append(' does not exist.')->toString();
+                    $errors[$field][] = str($field)
+                        ->replace('_', ' ')
+                        ->title()
+                        ->append(' does not exist.')
+                        ->toString();
+
                     continue;
                 }
 
-                foreach ($rule->resolve as $resolve) {
-                    if (($resolve['field'] ?? null) !== $field) {
-                        continue;
-                    }
-                    if (! empty($resolve['with'])) {
-                        $repository->loadMissing($model, $resolve['with']);
-                    }
-                    $this->context->put($repository->getModel()::class, $model);
-                }
+                $this->resolveModel(
+                    $repository,
+                    $rule,
+                    $field,
+                    $model,
+                );
             }
 
             if ($rule->existsIn !== []) {
-                $field = (string) ($rule->existsIn['field'] ?? '');
-                $values = array_values(array_unique($rule->existsIn['values'] ?? []));
-                $where = $rule->existsIn['where'] ?? [];
+                $inputField = (string) ($rule->existsIn['field'] ?? '');
+                $column = (string) ($rule->existsIn['column'] ?? 'id');
 
-                if ($field !== '' && $values !== []) {
-                    $models = $repository->findWhereIn($field, $values, $where);
-                    $existing = $models->pluck($field)->map(fn ($value) => (string) $value)->all();
-                    $missing = array_diff(array_map('strval', $values), $existing);
+                if ($inputField === '') {
+                    continue;
+                }
 
-                    if ($missing !== []) {
-                        $errors[$field][] = 'Invalid values: '.implode(', ', $missing);
-                    }
+                $configuredValues = $rule->existsIn['values'] ?? $inputField;
 
-                    if ($rule->resolve !== []) {
-                        $this->context->put($repository->getModel()::class, $models);
-                    }
+                if (is_string($configuredValues)) {
+                    $values = data_get($input, $configuredValues, []);
+                } else {
+                    $values = $configuredValues;
+                }
+
+                $values = array_values(array_unique((array) $values));
+
+                if ($values === []) {
+                    continue;
+                }
+
+                $models = $repository->findWhereIn(
+                    $column,
+                    $values,
+                    $this->resolveWhere(
+                        (array) ($rule->existsIn['where'] ?? []),
+                        $input,
+                    ),
+                );
+
+                $existing = $models
+                    ->pluck($column)
+                    ->map(fn ($value) => (string) $value)
+                    ->all();
+
+                $missing = array_diff(
+                    array_map('strval', $values),
+                    $existing,
+                );
+
+                if ($missing !== []) {
+                    $errors[$inputField][] = 'Invalid values: '.implode(', ', $missing);
+                }
+
+                if ($missing === []) {
+                    $this->resolveCollection(
+                        $repository,
+                        $rule,
+                        $inputField,
+                        $models,
+                    );
                 }
             }
         }
 
-        if ($errors !== []) {
-            throw new ValidationException(errors: $errors);
+        return $errors;
+    }
+
+    private function resolveModel(
+        mixed $repository,
+        RepositoryValidationRule $rule,
+        string $field,
+        Model $model,
+    ): void {
+        foreach ($this->matchingResolveConfigurations($rule, $field) as $resolve) {
+            $with = (array) ($resolve['with'] ?? []);
+
+            if ($with !== []) {
+                $repository->loadMissing($model, $with);
+            }
+
+            $this->context->put(
+                (string) ($resolve['as'] ?? $repository->getModel()::class),
+                $model,
+            );
         }
+    }
+
+    private function resolveCollection(
+        mixed $repository,
+        RepositoryValidationRule $rule,
+        string $field,
+        Collection $models,
+    ): void {
+        foreach ($this->matchingResolveConfigurations($rule, $field) as $resolve) {
+            $with = (array) ($resolve['with'] ?? []);
+
+            if ($with !== []) {
+                foreach ($models as $model) {
+                    $repository->loadMissing($model, $with);
+                }
+            }
+
+            $this->context->put(
+                (string) ($resolve['as'] ?? $repository->getModel()::class),
+                $models,
+            );
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function matchingResolveConfigurations(
+        RepositoryValidationRule $rule,
+        string $field,
+    ): array {
+        return array_values(array_filter(
+            $rule->resolve,
+            static fn ($resolve): bool => is_array($resolve)
+                && ($resolve['field'] ?? null) === $field,
+        ));
     }
 
     private function resolveWhere(array $where, array $input): array
     {
-        return collect($where)->mapWithKeys(function ($value, $field) use ($input): array {
-            if (is_string($value) && data_get($input, $value) !== null) {
-                return [$field => data_get($input, $value)];
-            }
-            return [$field => $value];
-        })->all();
+        return collect($where)
+            ->mapWithKeys(function ($value, $field) use ($input): array {
+                if (is_string($value) && data_get($input, $value) !== null) {
+                    return [$field => data_get($input, $value)];
+                }
+
+                return [$field => $value];
+            })
+            ->all();
     }
 }
