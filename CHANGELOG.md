@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-07
+
 ### Added
 - Explicit repository query allow-lists with optional strict filter/sort/relation exceptions.
 - Reusable `BaseAction` and `BaseService` application infrastructure.
