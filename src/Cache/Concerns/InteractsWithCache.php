@@ -21,24 +21,49 @@ trait InteractsWithCache
 {
     public static function bootInteractsWithCache(): void
     {
-        // Register observer methods as class listeners instead of calling
-        // Model::observe() while the model is booting. This avoids recursive
-        // model construction on Laravel 13 while preserving the observer's
-        // ShouldHandleEventsAfterCommit behavior.
-        static::created(CacheObserver::class.'@created');
-        static::updated(CacheObserver::class.'@updated');
-        static::deleted(CacheObserver::class.'@deleted');
+        static::created(function (self $model): void {
+            $model->runInfrastructureCacheObserverAfterCommit('created');
+        });
+        static::updated(function (self $model): void {
+            $model->runInfrastructureCacheObserverAfterCommit('updated');
+        });
+        static::deleted(function (self $model): void {
+            $model->runInfrastructureCacheObserverAfterCommit('deleted');
+        });
 
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
             static::registerModelEvent(
                 'restored',
-                CacheObserver::class.'@restored',
+                function (self $model): void {
+                    $model->runInfrastructureCacheObserverAfterCommit('restored');
+                },
             );
             static::registerModelEvent(
                 'forceDeleted',
-                CacheObserver::class.'@forceDeleted',
+                function (self $model): void {
+                    $model->runInfrastructureCacheObserverAfterCommit('forceDeleted');
+                },
             );
         }
+    }
+
+    private function runInfrastructureCacheObserverAfterCommit(
+        string $method,
+    ): void {
+        $callback = function () use ($method): void {
+            $observer = app(CacheObserver::class);
+            $observer->{$method}($this);
+        };
+
+        $connection = $this->getConnection();
+
+        if ($connection->transactionLevel() > 0) {
+            $connection->afterCommit($callback);
+
+            return;
+        }
+
+        $callback();
     }
 
     public static function cacheTag(): string
