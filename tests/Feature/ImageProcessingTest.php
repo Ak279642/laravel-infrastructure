@@ -11,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\ImageManager;
 
 final class ImageProcessingTest extends TestCase
@@ -76,7 +77,7 @@ final class ImageProcessingTest extends TestCase
             $model->image_path,
         );
 
-        $image = ImageManager::gd()->read(
+        $image = $this->decodeStoredImage(
             Storage::disk('public')->get(
                 $model->image_path,
             ),
@@ -102,7 +103,7 @@ final class ImageProcessingTest extends TestCase
             $model->thumbnail_path,
         );
 
-        $image = ImageManager::gd()->read(
+        $image = $this->decodeStoredImage(
             Storage::disk('public')->get(
                 $model->thumbnail_path,
             ),
@@ -110,6 +111,21 @@ final class ImageProcessingTest extends TestCase
 
         self::assertSame(300, $image->width());
         self::assertSame(300, $image->height());
+    }
+
+    private function decodeStoredImage(
+        string $contents,
+    ): object {
+        $manager = new ImageManager(
+            GdDriver::class,
+        );
+
+        return method_exists(
+            $manager,
+            'decodeBinary',
+        )
+            ? $manager->decodeBinary($contents)
+            : $manager->read($contents);
     }
 
     public function test_processed_image_is_removed_when_transaction_rolls_back(): void

@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Files;
 
 use Illuminate\Http\UploadedFile;
+use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Encoders\AutoEncoder;
+use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Interfaces\ImageInterface;
 use RuntimeException;
@@ -78,7 +81,12 @@ final class ImageProcessor
                 );
             }
 
-            $image = $manager->read($contents);
+            $image = method_exists(
+                $manager,
+                'decodeBinary',
+            )
+                ? $manager->decodeBinary($contents)
+                : $manager->read($contents);
 
             $this->resize(
                 $image,
@@ -90,7 +98,11 @@ final class ImageProcessor
 
             [$encoded, $extension] = match ($format) {
                 'webp' => [
-                    $image->toWebp($quality),
+                    $image->encode(
+                        new WebpEncoder(
+                            quality: $quality,
+                        ),
+                    ),
                     'webp',
                 ],
                 'original' => [
@@ -148,7 +160,9 @@ final class ImageProcessor
             );
         }
 
-        return ImageManager::gd();
+        return new ImageManager(
+            GdDriver::class,
+        );
     }
 
     private function imagickManager(): ImageManager
@@ -159,7 +173,9 @@ final class ImageProcessor
             );
         }
 
-        return ImageManager::imagick();
+        return new ImageManager(
+            ImagickDriver::class,
+        );
     }
 
     private function resize(

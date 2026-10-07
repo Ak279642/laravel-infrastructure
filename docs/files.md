@@ -122,6 +122,8 @@ Only explicitly model-owned directories are scanned.
 
 ## Image processing
 
+The package supports Intervention Image v3 and v4. PHP 8.2 resolves v3; PHP 8.3+ applications may use v4.
+
 Image fields can opt into Intervention Image v3 processing directly from `fileAttributes()`.
 
 ```php

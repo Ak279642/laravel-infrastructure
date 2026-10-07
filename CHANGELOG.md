@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-07
+
+### Fixed
+- Relaxed the Intervention Image dependency to support both v3 and v4, so applications already using `intervention/image:^4.1` no longer conflict with the package.
+- Updated image decoding and WebP encoding to use a v3/v4-compatible code path while preserving PHP 8.2 support through Intervention Image v3.
+
+
 ## [1.2.0] - 2026-10-07
 
 ### Added

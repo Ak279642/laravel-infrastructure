@@ -4,7 +4,7 @@ Reusable Laravel infrastructure for repository-driven Laravel applications.
 
 **Requires:** PHP 8.2+ · Laravel 10–13
 
-For image processing, enable either PHP `ext-gd` or `ext-imagick`.
+For image processing, enable either PHP `ext-gd` or `ext-imagick`. The package supports Intervention Image v3 and v4; PHP 8.2 resolves v3, while PHP 8.3+ projects can use v4.
 
 ## Install
 
