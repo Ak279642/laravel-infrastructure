@@ -1,0 +1,80 @@
+name: Verify Packagist stable install
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+
+      - name: Verify fresh stable install from Packagist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf /tmp/laravel-infrastructure-consumer
+          mkdir -p /tmp/laravel-infrastructure-consumer
+          cd /tmp/laravel-infrastructure-consumer
+
+          composer init \
+            --name="ak279642/laravel-infrastructure-consumer-test" \
+            --description="Temporary Packagist consumer verification" \
+            --no-interaction
+
+          success=0
+
+          for attempt in $(seq 1 18); do
+            echo "Packagist install attempt $attempt/18"
+
+            composer clear-cache >/dev/null 2>&1 || true
+
+            if composer require "ak279642/laravel-infrastructure:^1.0" \
+              --no-interaction \
+              --prefer-dist \
+              --no-progress; then
+              success=1
+              break
+            fi
+
+            rm -f composer.lock
+            rm -rf vendor
+            sleep 10
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo "Packagist did not expose a stable ^1.0 release."
+            exit 1
+          fi
+
+          composer show ak279642/laravel-infrastructure
+
+      - name: Remove one-time verification workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -f .github/workflows/verify-packagist.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Remove one-time Packagist verification workflow"
+          git push origin HEAD:main
