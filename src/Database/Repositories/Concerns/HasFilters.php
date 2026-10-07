@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
 use Ak279642\LaravelInfrastructure\Exceptions\FilterNotAllowedException;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 
 trait HasFilters
@@ -90,7 +91,7 @@ trait HasFilters
         string $operator,
         mixed $value
     ): Builder {
-        $driver = $query->getConnection()->getDriverName();
+        $driver = $this->connectionDriver($query);
 
         return match ($operator) {
             '=', '!=', '<>', '>', '>=', '<', '<=' => $query->where($key, $operator, $value),
@@ -131,6 +132,19 @@ trait HasFilters
 
             default => $query->where($key, $value),
         };
+    }
+
+    protected function connectionDriver(Builder $query): string
+    {
+        $connection = $query->getConnection();
+
+        if (! $connection instanceof Connection) {
+            throw new \LogicException(
+                'Repository queries require an Illuminate database connection.',
+            );
+        }
+
+        return $connection->getDriverName();
     }
 
     protected function isFilterAllowed(string $key): bool
@@ -199,7 +213,7 @@ trait HasFilters
             return $query;
         }
 
-        $driver = $query->getConnection()->getDriverName();
+        $driver = $this->connectionDriver($query);
         $like = $driver === 'pgsql' ? 'ILIKE' : 'LIKE';
 
         return $query->where(function (Builder $q) use ($terms, $like, $searchable): void {
