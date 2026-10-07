@@ -114,6 +114,61 @@ final class ValidationActionServiceHardeningTest extends TestCase
         );
     }
 
+    public function test_string_ignore_identifier_is_supported_by_unique_validation(): void
+    {
+        $record = Batch3Record::query()->create([
+            'organization_id' => null,
+            'code' => 'ABC',
+        ]);
+
+        $errors = $this->app->make(RepositoryValidationService::class)->errors([
+            new RepositoryValidationRule(
+                repository: Batch3RecordRepository::class,
+                unique: ['code'],
+                where: ['organization_id' => 'organization_id'],
+                ignore: (string) $record->getKey(),
+            ),
+        ], [
+            'organization_id' => null,
+            'code' => 'ABC',
+        ]);
+
+        self::assertSame([], $errors);
+    }
+
+    public function test_additive_validation_failure_preserves_preexisting_context_only(): void
+    {
+        $existing = Batch3Product::query()->create(['name' => 'Existing']);
+        $candidate = Batch3Product::query()->create(['name' => 'Candidate']);
+
+        $context = $this->app->make(ValidationContext::class);
+        $context->put('existing', $existing);
+
+        $errors = $this->app->make(RepositoryValidationService::class)->errors([
+            new RepositoryValidationRule(
+                repository: Batch3ProductRepository::class,
+                exists: ['product_id'],
+                resolve: [
+                    [
+                        'field' => 'product_id',
+                        'as' => 'candidate',
+                    ],
+                ],
+            ),
+            new RepositoryValidationRule(
+                repository: Batch3RecordRepository::class,
+                exists: ['missing_record_id'],
+            ),
+        ], [
+            'product_id' => $candidate->getKey(),
+            'missing_record_id' => 999,
+        ], resetContext: false);
+
+        self::assertArrayHasKey('missing_record_id', $errors);
+        self::assertSame($existing, $context->requireModel('existing'));
+        self::assertFalse($context->has('candidate'));
+    }
+
     public function test_validation_configuration_failure_clears_partially_resolved_context(): void
     {
         $product = Batch3Product::query()->create(['name' => 'One']);
@@ -197,15 +252,37 @@ final class ValidationActionServiceHardeningTest extends TestCase
 
 final class Batch3RecordRepository extends BaseRepository
 {
+    public function __construct(
+        Batch3Record $model,
+        CacheManager $cache,
+        ?ValidationContext $validationContext = null,
+    ) {
+        parent::__construct($model, $cache, $validationContext);
+    }
 }
 
 final class Batch3ProductRepository extends BaseRepository
 {
+    public function __construct(
+        Batch3Product $model,
+        CacheManager $cache,
+        ?ValidationContext $validationContext = null,
+    ) {
+        parent::__construct($model, $cache, $validationContext);
+    }
 }
 
 final class Batch3ItemRepository extends BaseRepository
 {
     protected array $allowedFilters = ['name'];
+
+    public function __construct(
+        Batch3Item $model,
+        CacheManager $cache,
+        ?ValidationContext $validationContext = null,
+    ) {
+        parent::__construct($model, $cache, $validationContext);
+    }
 }
 
 final class Batch3Record extends Model
