@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Logging;
 
-use Illuminate\Http\Request;
 use Throwable;
 
 final class CustomLog
@@ -178,10 +177,6 @@ final class CustomLog
         }
 
         $request = request();
-
-        if (! $request instanceof Request) {
-            return $context;
-        }
 
         $context['request'] = [
             'request_id' => CorrelationId::resolve($request),
