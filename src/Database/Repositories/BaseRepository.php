@@ -274,7 +274,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         return $this->cacheRemember('sum', fn () => $this->buildQuery($filters)->sum($column), ['column' => $column, 'filters' => $filters]);
     }
 
-    public function avg(string $column, array $filters = []): float|int|null
+    public function avg(string $column, array $filters = []): float|int|string|null
     {
         $column = $this->safeModelColumn($column);
 
