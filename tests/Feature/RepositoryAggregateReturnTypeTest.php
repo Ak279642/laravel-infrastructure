@@ -53,6 +53,24 @@ final class RepositoryAggregateReturnTypeTest extends TestCase
 
         self::assertSame($expected, $repository->sum('amount'));
     }
+
+    public function test_avg_returns_a_decimal_string_without_losing_precision(): void
+    {
+        $expected = '9876543210.1234';
+        $builder = Mockery::mock(Builder::class);
+        $builder->shouldReceive('avg')
+            ->once()
+            ->with('amount')
+            ->andReturn($expected);
+
+        $repository = new AggregateReturnTypeRepository(
+            new AggregateReturnTypeItem,
+            $this->app->make(CacheManager::class),
+        );
+        $repository->aggregateQuery = $builder;
+
+        self::assertSame($expected, $repository->avg('amount'));
+    }
 }
 
 final class AggregateReturnTypeRepository extends BaseRepository
