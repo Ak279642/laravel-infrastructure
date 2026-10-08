@@ -63,17 +63,17 @@ $url = $product->fileAssetUrl(
 );
 ```
 
-A signed model URL looks like:
+A signed model URL uses an encrypted resource alias and preserves the file extension:
 
 ```text
-/infrastructure/assets/model/product/10/document_path
+/infrastructure/assets/{encrypted-resource}/10/document_path.pdf
 ?expires=...
 &signature=...
 ```
 
-Laravel's `signature` is an HMAC hash over the signed URL and expiry. Tampering with the resource alias, record key, field, expiry or signature invalidates the link.
+Laravel signs the URL path and expiry. Tampering with either invalidates the link, and requests made after `expires` are rejected.
 
-The URL never contains the PHP model namespace, filesystem disk or stored path. `AssetsController` resolves those values internally from the configured alias, record and file field.
+The URL omits the `model` segment and hides the configured resource alias, PHP model namespace, filesystem disk and stored path. `AssetsController` decrypts the alias and resolves the model class, disk and stored path internally from the record and file field. Missing stored files return the package's default 404 image.
 
 ## Folder fallback
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
+use Ak279642\LaravelInfrastructure\Files\AssetResourceToken;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Files\ImageProcessor;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
@@ -152,9 +153,12 @@ trait InteractsWithFiles
             );
 
         $parameters = [
-            'resource' => $this->infrastructureAssetResourceAlias(),
+            'resource' => AssetResourceToken::encrypt(
+                $this->infrastructureAssetResourceAlias(),
+            ),
             'key' => (string) $this->getKey(),
             'field' => $column,
+            'extension' => $this->infrastructureAssetExtension($path),
         ];
 
         if (! $signed) {
@@ -178,6 +182,19 @@ trait InteractsWithFiles
                 ),
             $parameters,
         );
+    }
+
+    private function infrastructureAssetExtension(string $path): string
+    {
+        $extension = strtolower(
+            (string) pathinfo($path, PATHINFO_EXTENSION),
+        );
+
+        if (preg_match('/^[a-z0-9]{1,20}$/', $extension) !== 1) {
+            return 'bin';
+        }
+
+        return $extension;
     }
 
     private function infrastructureAssetResourceAlias(): string

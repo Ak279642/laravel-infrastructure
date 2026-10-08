@@ -205,12 +205,16 @@ final class AssetsRouteTest extends TestCase
         $url = $document->fileAssetUrl('file_path');
 
         self::assertIsString($url);
-        self::assertStringContainsString(
-            '/infrastructure/assets/model/document/'.
-            $document->getKey().
-            '/file_path',
-            $url,
+        $urlPath = parse_url($url, PHP_URL_PATH);
+        self::assertIsString($urlPath);
+        self::assertMatchesRegularExpression(
+            '#/infrastructure/assets/[^/]+/'.
+            preg_quote((string) $document->getKey(), '#').
+            '/file_path\\.txt$#',
+            $urlPath,
         );
+        self::assertStringNotContainsString('/model/', $url);
+        self::assertStringNotContainsString('/document/', $url);
         self::assertStringNotContainsString(
             AssetRouteDocument::class,
             $url,
@@ -255,12 +259,16 @@ final class AssetsRouteTest extends TestCase
         );
 
         self::assertIsString($url);
-        self::assertStringContainsString(
-            '/infrastructure/assets/model/signed-document/'.
-            $document->getKey().
-            '/file_path',
-            $url,
+        $urlPath = parse_url($url, PHP_URL_PATH);
+        self::assertIsString($urlPath);
+        self::assertMatchesRegularExpression(
+            '#/infrastructure/assets/[^/]+/'.
+            preg_quote((string) $document->getKey(), '#').
+            '/file_path\\.txt$#',
+            $urlPath,
         );
+        self::assertStringNotContainsString('/model/', $url);
+        self::assertStringNotContainsString('/signed-document/', $url);
         self::assertStringContainsString('expires=', $url);
         self::assertStringContainsString('signature=', $url);
         self::assertStringNotContainsString(
@@ -277,8 +285,8 @@ final class AssetsRouteTest extends TestCase
         $this->get($url)->assertOk();
 
         $tampered = str_replace(
-            '/file_path?',
-            '/other_path?',
+            '/file_path.txt?',
+            '/other_path.txt?',
             $url,
         );
 
@@ -304,6 +312,57 @@ final class AssetsRouteTest extends TestCase
         );
 
         $document->fileAssetUrl('file_path');
+    }
+
+    public function test_expired_model_asset_url_is_rejected(): void
+    {
+        Storage::disk('public')->put(
+            'products/secure/manual.txt',
+            'manual-content',
+        );
+
+        $document = SignedAssetRouteDocument::query()->create([
+            'file_path' => 'products/secure/manual.txt',
+        ]);
+
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.resources.signed-document',
+            SignedAssetRouteDocument::class,
+        );
+
+        $url = $document->fileAssetUrl(
+            'file_path',
+            now()->subMinute(),
+        );
+
+        self::assertIsString($url);
+
+        $this->get($url)->assertForbidden();
+    }
+
+    public function test_missing_model_asset_returns_the_default_not_found_image(): void
+    {
+        $document = SignedAssetRouteDocument::query()->create([
+            'file_path' => 'products/secure/missing.webp',
+        ]);
+
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.resources.signed-document',
+            SignedAssetRouteDocument::class,
+        );
+
+        $url = $document->fileAssetUrl('file_path');
+
+        self::assertIsString($url);
+
+        $response = $this->get($url);
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'image/png');
+        self::assertSame(
+            "\x89PNG\r\n\x1a\n",
+            substr((string) $response->getContent(), 0, 8),
+        );
     }
 
     public function test_asset_route_rejects_disk_not_in_allow_list(): void

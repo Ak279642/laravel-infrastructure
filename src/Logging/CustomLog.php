@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Logging;
 
+use BackedEnum;
 use Throwable;
 
 final class CustomLog
@@ -11,7 +12,7 @@ final class CustomLog
     public static function debug(
         string $message,
         array $context = [],
-        LogDomain|string $domain = LogDomain::APPLICATION,
+        BackedEnum|string $domain = LogDomain::APPLICATION,
     ): void {
         self::write('debug', $message, $context, $domain);
     }
@@ -19,7 +20,7 @@ final class CustomLog
     public static function info(
         string $message,
         array $context = [],
-        LogDomain|string $domain = LogDomain::APPLICATION,
+        BackedEnum|string $domain = LogDomain::APPLICATION,
     ): void {
         self::write('info', $message, $context, $domain);
     }
@@ -27,7 +28,7 @@ final class CustomLog
     public static function warning(
         string $message,
         array $context = [],
-        LogDomain|string $domain = LogDomain::APPLICATION,
+        BackedEnum|string $domain = LogDomain::APPLICATION,
     ): void {
         self::write('warning', $message, $context, $domain);
     }
@@ -35,7 +36,7 @@ final class CustomLog
     public static function error(
         string $message,
         array $context = [],
-        LogDomain|string $domain = LogDomain::ERRORS,
+        BackedEnum|string $domain = LogDomain::ERRORS,
     ): void {
         self::write('error', $message, $context, $domain);
     }
@@ -45,7 +46,7 @@ final class CustomLog
         array $context = [],
         ?string $message = null,
         string $level = 'error',
-        LogDomain|string $domain = LogDomain::ERRORS,
+        BackedEnum|string $domain = LogDomain::ERRORS,
     ): void {
         $context['exception'] = self::exceptionContext($exception);
 
@@ -58,7 +59,7 @@ final class CustomLog
     }
 
     public static function enabled(
-        LogDomain|string $domain = LogDomain::APPLICATION,
+        BackedEnum|string $domain = LogDomain::APPLICATION,
     ): bool {
         if (! (bool) config(
             'laravel-infrastructure.logging.enabled',
@@ -125,7 +126,7 @@ final class CustomLog
         string $level,
         string $message,
         array $context,
-        LogDomain|string $domain,
+        BackedEnum|string $domain,
     ): void {
         $domainName = self::domainName($domain);
 
@@ -193,10 +194,10 @@ final class CustomLog
     }
 
     private static function domainName(
-        LogDomain|string $domain,
+        BackedEnum|string $domain,
     ): string {
-        return $domain instanceof LogDomain
-            ? $domain->value
+        return $domain instanceof BackedEnum
+            ? (string) $domain->value
             : $domain;
     }
 }
