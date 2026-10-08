@@ -187,8 +187,7 @@ final class Product extends BaseModel
                     'enabled' => true,
                     'signed' => true,
 
-                    // Only a user authenticated on the "admin" guard
-                    // can access this file field.
+                    // A user authenticated on either guard can access this field.
                     'guard' => ['admin', 'web'],
                 ],
             ],
