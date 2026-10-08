@@ -267,14 +267,14 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         return (int) $this->cacheRemember('count', fn () => $this->buildQuery($filters)->count(), ['filters' => $filters]);
     }
 
-    public function sum(string $column, array $filters = []): float|int|null
+    public function sum(string $column, array $filters = []): float|int|string|null
     {
         $column = $this->safeModelColumn($column);
 
         return $this->cacheRemember('sum', fn () => $this->buildQuery($filters)->sum($column), ['column' => $column, 'filters' => $filters]);
     }
 
-    public function avg(string $column, array $filters = []): float|int|null
+    public function avg(string $column, array $filters = []): float|int|string|null
     {
         $column = $this->safeModelColumn($column);
 
