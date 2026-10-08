@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
-use Ak279642\LaravelInfrastructure\Files\AssetResourceToken;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Files\ImageProcessor;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
@@ -153,9 +152,7 @@ trait InteractsWithFiles
             );
 
         $parameters = [
-            'resource' => AssetResourceToken::encrypt(
-                $this->infrastructureAssetResourceAlias(),
-            ),
+            'resource' => $this->infrastructureAssetResourceAlias(),
             'key' => (string) $this->getKey(),
             'field' => $column,
             'extension' => $this->infrastructureAssetExtension($path),

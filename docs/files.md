@@ -22,7 +22,7 @@ protected function fileAttributes(): array
             'access' => [
                 'enabled' => true,
                 'signed' => true,
-                'guard' => 'admin',
+                'guard' => ['admin', 'web'],
             ],
         ],
     ];
@@ -33,7 +33,7 @@ Access supports only:
 
 - `enabled`: false returns 404.
 - `signed`: require a signed URL.
-- `guard`: require authentication on that Laravel guard.
+- `guard`: a guard name or list of guard names. For a list, authentication on any listed guard is sufficient.
 
 There is no role/permission/RBAC logic in asset access.
 
@@ -63,17 +63,17 @@ $url = $product->fileAssetUrl(
 );
 ```
 
-A signed model URL uses an encrypted resource alias and preserves the file extension:
+A signed model URL includes the configured resource alias and preserves the file extension. Laravel adds an expiry and signature:
 
 ```text
-/infrastructure/assets/{encrypted-resource}/10/document_path.pdf
+/infrastructure/assets/{resource-alias}/10/document_path.pdf
 ?expires=...
 &signature=...
 ```
 
 Laravel signs the URL path and expiry. Tampering with either invalidates the link, and requests made after `expires` are rejected.
 
-The URL omits the `model` segment and hides the configured resource alias, PHP model namespace, filesystem disk and stored path. `AssetsController` decrypts the alias and resolves the model class, disk and stored path internally from the record and file field. Missing stored files return the package's default 404 image.
+The URL omits the `model` segment and includes the configured resource alias. It hides the PHP model namespace, filesystem disk and stored path. `AssetsController` resolves the model class from the alias, then resolves the disk and stored path internally from the record and file field. Missing stored files return the package's default 404 image.
 
 ## Folder fallback
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Http\Controllers;
 
-use Ak279642\LaravelInfrastructure\Files\AssetResourceToken;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -42,10 +41,6 @@ final class AssetsController
         string $field,
         string $extension,
     ): BinaryFileResponse|StreamedResponse {
-        $resource = AssetResourceToken::decrypt($resource);
-
-        abort_unless(is_string($resource), 404);
-
         $resources = (array) config(
             'laravel-infrastructure.assets.resources',
             [],
@@ -142,13 +137,22 @@ final class AssetsController
         }
 
         $guard = $rule['guard'] ?? null;
+        $guards = is_string($guard)
+            ? [$guard]
+            : (is_array($guard) ? $guard : []);
+        $guards = array_values(array_filter(
+            $guards,
+            static fn (mixed $name): bool =>
+                is_string($name) && trim($name) !== '',
+        ));
 
-        if (is_string($guard) && trim($guard) !== '') {
-            abort_if(
-                Auth::guard($guard)->guest(),
-                401,
-            );
+        foreach ($guards as $guardName) {
+            if (Auth::guard(trim($guardName))->check()) {
+                return;
+            }
         }
+
+        abort_if($guards !== [], 401);
     }
 
     private function assertDiskAllowed(string $disk): void
