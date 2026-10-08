@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Ak279642\\LaravelInfrastructure\\Tests\\Feature;
+namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
-use Ak279642\\LaravelInfrastructure\\Cache\\CacheManager;
-use Ak279642\\LaravelInfrastructure\\Database\\Repositories\\BaseRepository;
-use Ak279642\\LaravelInfrastructure\\Tests\\TestCase;
-use Illuminate\\Database\\Eloquent\\Builder;
-use Illuminate\\Database\\Eloquent\\Model;
-use Illuminate\\Database\\Schema\\Blueprint;
-use Illuminate\\Support\\Facades\\Schema;
+use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
+use Ak279642\LaravelInfrastructure\Tests\TestCase;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 
 final class RepositoryAggregateReturnTypeTest extends TestCase
