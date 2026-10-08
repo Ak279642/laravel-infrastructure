@@ -288,9 +288,9 @@ final class AssetsRouteTest extends TestCase
 
         $this->get($url)->assertOk();
 
-        $tampered = str_replace(
-            '/file_path.txt?',
-            '/other_path.txt?',
+        $tampered = preg_replace(
+            '/signature=[^&]+/',
+            'signature=invalid',
             $url,
         );
 
@@ -363,9 +363,11 @@ final class AssetsRouteTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'image/png');
-        self::assertSame(
-            "\x89PNG\r\n\x1a\n",
-            substr((string) $response->getContent(), 0, 8),
+        $response->assertHeader(
+            'Content-Length',
+            (string) filesize(
+                base_path('resources/images/file-not-found.png'),
+            ),
         );
     }
 

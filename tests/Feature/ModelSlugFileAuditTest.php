@@ -155,10 +155,8 @@ final class ModelSlugFileAuditTest extends TestCase
         $model = ModelSlugFileAuditDocument::query()->create([
             'title' => 'Document',
             'seo_title' => 'Document SEO',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'avatar.jpg',
-                5,
-                'image/jpeg',
             ),
             'document_path' => UploadedFile::fake()->create(
                 'contract.pdf',
@@ -187,10 +185,8 @@ final class ModelSlugFileAuditTest extends TestCase
         $model = ModelSlugFileAuditDocument::query()->create([
             'title' => 'Audited Document',
             'seo_title' => 'Audited Document SEO',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'avatar.jpg',
-                5,
-                'image/jpeg',
             ),
         ]);
 
@@ -236,10 +232,8 @@ final class ModelSlugFileAuditTest extends TestCase
         $model = ModelSlugFileAuditDocument::query()->create([
             'title' => 'Transactional File',
             'seo_title' => 'Transactional File SEO',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'original.jpg',
-                5,
-                'image/jpeg',
             ),
         ]);
 
@@ -249,10 +243,8 @@ final class ModelSlugFileAuditTest extends TestCase
         DB::beginTransaction();
 
         try {
-            $model->avatar_path = UploadedFile::fake()->create(
+            $model->avatar_path = UploadedFile::fake()->image(
                 'replacement.jpg',
-                5,
-                'image/jpeg',
             );
             $model->save();
             $replacement = $model->avatar_path;
@@ -277,10 +269,8 @@ final class ModelSlugFileAuditTest extends TestCase
         $model = ModelSlugFileAuditDocument::query()->create([
             'title' => 'Rollback File',
             'seo_title' => 'Rollback File SEO',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'original.jpg',
-                5,
-                'image/jpeg',
             ),
         ]);
 
@@ -289,10 +279,8 @@ final class ModelSlugFileAuditTest extends TestCase
         DB::beginTransaction();
 
         try {
-            $model->avatar_path = UploadedFile::fake()->create(
+            $model->avatar_path = UploadedFile::fake()->image(
                 'replacement.jpg',
-                5,
-                'image/jpeg',
             );
             $model->save();
 
@@ -312,10 +300,8 @@ final class ModelSlugFileAuditTest extends TestCase
         $model = ModelSlugFileAuditDocument::query()->create([
             'title' => 'Rollback Delete',
             'seo_title' => 'Rollback Delete SEO',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'original.jpg',
-                5,
-                'image/jpeg',
             ),
         ]);
 
@@ -347,11 +333,9 @@ final class ModelSlugFileAuditTest extends TestCase
             $model = ModelSlugFileAuditDocument::query()->create([
                 'title' => 'Rolled Back Create',
                 'seo_title' => 'Rolled Back Create SEO',
-                'avatar_path' => UploadedFile::fake()->create(
-                    'rollback-create.jpg',
-                    5,
-                    'image/jpeg',
-                ),
+                'avatar_path' => UploadedFile::fake()->image(
+                'rollback-create.jpg',
+            ),
             ]);
 
             $path = $model->avatar_path;
@@ -385,11 +369,9 @@ final class ModelSlugFileAuditTest extends TestCase
                 'title' => 'Failing Create',
                 'seo_title' => 'Failing Create SEO',
                 'failure_key' => 'duplicate',
-                'avatar_path' => UploadedFile::fake()->create(
-                    'orphan.jpg',
-                    5,
-                    'image/jpeg',
-                ),
+                'avatar_path' => UploadedFile::fake()->image(
+                'orphan.jpg',
+            ),
             ]);
 
             self::fail('Expected duplicate-key create failure.');
@@ -411,10 +393,8 @@ final class ModelSlugFileAuditTest extends TestCase
             'title' => 'Update Target',
             'seo_title' => 'Update Target SEO',
             'failure_key' => 'first',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'original.jpg',
-                5,
-                'image/jpeg',
             ),
         ]);
 
@@ -428,10 +408,8 @@ final class ModelSlugFileAuditTest extends TestCase
 
         try {
             $model->failure_key = 'second';
-            $model->avatar_path = UploadedFile::fake()->create(
+            $model->avatar_path = UploadedFile::fake()->image(
                 'replacement.jpg',
-                5,
-                'image/jpeg',
             );
             $model->save();
 
@@ -454,10 +432,8 @@ final class ModelSlugFileAuditTest extends TestCase
         $model = ModelSlugFileAuditDocument::query()->create([
             'title' => 'Rollback Replacement',
             'seo_title' => 'Rollback Replacement SEO',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'original.jpg',
-                5,
-                'image/jpeg',
             ),
         ]);
 
@@ -467,10 +443,8 @@ final class ModelSlugFileAuditTest extends TestCase
         DB::beginTransaction();
 
         try {
-            $model->avatar_path = UploadedFile::fake()->create(
+            $model->avatar_path = UploadedFile::fake()->image(
                 'replacement.jpg',
-                5,
-                'image/jpeg',
             );
             $model->save();
             $replacement = $model->avatar_path;
@@ -511,10 +485,8 @@ final class ModelSlugFileAuditTest extends TestCase
         $model = ModelSlugFileAuditDocument::query()->create([
             'title' => 'Delete Lifecycle',
             'seo_title' => 'Delete Lifecycle SEO',
-            'avatar_path' => UploadedFile::fake()->create(
+            'avatar_path' => UploadedFile::fake()->image(
                 'lifecycle.jpg',
-                5,
-                'image/jpeg',
             ),
         ]);
 

@@ -20,10 +20,10 @@ final class DatabaseBackupCommandTest extends TestCase
 
     public function test_backup_command_is_registered(): void
     {
-        self::assertArrayHasKey(
+        $this->artisan(
             'infrastructure:database-backup',
-            $this->app['artisan']->all(),
-        );
+            ['--help' => true],
+        )->assertSuccessful();
     }
 
     public function test_backup_command_fails_cleanly_for_unsupported_driver(): void
