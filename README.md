@@ -189,7 +189,7 @@ final class Product extends BaseModel
 
                     // Only a user authenticated on the "admin" guard
                     // can access this file field.
-                    'guard' => 'admin',
+                    'guard' => ['admin', 'web'],
                 ],
             ],
         ];
@@ -277,7 +277,7 @@ $documentUrl = $product->fileAssetUrl(
 );
 ```
 
-The model URL contains an encrypted resource alias, record key, field and file extension. `AssetsController` decrypts the alias and resolves the model class, disk and stored path internally before serving it.
+The model URL contains the configured resource alias, record key, field and file extension. `AssetsController` resolves the model class from the alias and resolves the disk and stored path internally before serving it.
 
 > If you use a `private` disk here, add `private` to `assets.allowed_disks` in package config.
 
@@ -305,15 +305,15 @@ $url = $product->fileAssetUrl(
 );
 ```
 
-produces an opaque URL similar to:
+produces a signed URL similar to:
 
 ```text
-/infrastructure/assets/{encrypted-resource}/10/document_path.pdf
+/infrastructure/assets/{resource-alias}/10/document_path.pdf
 ?expires=...
 &signature=...
 ```
 
-The encrypted resource token hides the configured alias. Laravel signs the path and expiry; changing either invalidates the signature, and Laravel rejects the URL after its `expires` time.
+The configured resource alias is visible in the path. Laravel signs the path and expiry; changing either invalidates the signature, and Laravel rejects the URL after its `expires` time.
 
 The model-aware URL never exposes:
 
@@ -960,7 +960,7 @@ Normal model field:
     'access' => [
         'enabled' => true,
         'signed' => true,
-        'guard' => 'admin',
+        'guard' => ['admin', 'web'],
     ],
 ],
 ```
@@ -970,7 +970,7 @@ Only three access controls exist:
 ```text
 enabled=false -> return 404
 signed=true   -> require signed URL
-guard=admin   -> require authenticated user on the admin guard
+guard='admin' -> require the admin guard; guard=['admin', 'web'] -> any listed guard
 ```
 
 No role/permission/RBAC logic is built into asset access.

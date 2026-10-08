@@ -31,6 +31,10 @@ final class AssetsRouteTest extends TestCase
             'driver' => 'session',
             'provider' => 'asset_users',
         ]);
+        $app['config']->set('auth.guards.staff', [
+            'driver' => 'session',
+            'provider' => 'asset_users',
+        ]);
 
         $app['config']->set(
             'laravel-infrastructure.assets.resources',
@@ -214,7 +218,7 @@ final class AssetsRouteTest extends TestCase
             $urlPath,
         );
         self::assertStringNotContainsString('/model/', $url);
-        self::assertStringNotContainsString('/document/', $url);
+        self::assertStringContainsString('/document/', $url);
         self::assertStringNotContainsString(
             AssetRouteDocument::class,
             $url,
@@ -237,7 +241,7 @@ final class AssetsRouteTest extends TestCase
         $this->get($url)->assertOk();
     }
 
-    public function test_signed_model_asset_url_uses_hash_and_hides_storage_details(): void
+    public function test_signed_model_asset_url_uses_resource_alias_and_hides_storage_details(): void
     {
         Storage::disk('public')->put(
             'products/secure/manual.txt',
@@ -262,13 +266,13 @@ final class AssetsRouteTest extends TestCase
         $urlPath = parse_url($url, PHP_URL_PATH);
         self::assertIsString($urlPath);
         self::assertMatchesRegularExpression(
-            '#/infrastructure/assets/[^/]+/'.
+            '#/infrastructure/assets/signed-document/'.
             preg_quote((string) $document->getKey(), '#').
             '/file_path\\.txt$#',
             $urlPath,
         );
         self::assertStringNotContainsString('/model/', $url);
-        self::assertStringNotContainsString('/signed-document/', $url);
+        self::assertStringContainsString('/signed-document/', $urlPath);
         self::assertStringContainsString('expires=', $url);
         self::assertStringContainsString('signature=', $url);
         self::assertStringNotContainsString(
@@ -402,7 +406,7 @@ final class AssetRouteDocument extends BaseModel
 
                 'access' => [
                     'signed' => false,
-                    'guard' => 'admin',
+                    'guard' => ['staff', 'admin'],
                 ],
             ],
         ];
