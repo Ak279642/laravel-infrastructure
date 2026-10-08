@@ -242,6 +242,21 @@ final class ApiResponseExceptionLoggingTest extends TestCase
         self::assertStringContainsString('********', $logged);
     }
 
+    public function test_custom_log_accepts_an_application_defined_domain_enum(): void
+    {
+        $logger = new Batch4RecordingLogger;
+        $this->app->instance('log', $logger);
+
+        CustomLog::warning(
+            'Webhook could not be matched.',
+            ['operation' => 'webhook_match'],
+            Batch4LogDomain::IVR,
+        );
+
+        self::assertCount(1, $logger->entries);
+        self::assertSame('ivr', $logger->entries[0]['context']['domain']);
+    }
+
     public function test_non_json_requests_keep_laravel_web_exception_rendering(): void
     {
         $response = $this->get('/batch4/not-found');
@@ -321,4 +336,10 @@ final class Batch4RecordingLogger
     ): void {
         $this->entries[] = compact('level', 'message', 'context');
     }
+}
+
+
+enum Batch4LogDomain: string
+{
+    case IVR = 'ivr';
 }

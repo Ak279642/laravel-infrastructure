@@ -277,7 +277,7 @@ $documentUrl = $product->fileAssetUrl(
 );
 ```
 
-The model URL contains only a short resource alias + record key + field. `AssetsController` resolves the model class, disk and stored path internally before serving it.
+The model URL contains an encrypted resource alias, record key, field and file extension. `AssetsController` decrypts the alias and resolves the model class, disk and stored path internally before serving it.
 
 > If you use a `private` disk here, add `private` to `assets.allowed_disks` in package config.
 
@@ -305,15 +305,15 @@ $url = $product->fileAssetUrl(
 );
 ```
 
-produces:
+produces an opaque URL similar to:
 
 ```text
-/infrastructure/assets/model/product/10/document_path
+/infrastructure/assets/{encrypted-resource}/10/document_path.pdf
 ?expires=...
 &signature=...
 ```
 
-Laravel creates the `signature` HMAC hash from the URL and expiry. Changing the resource alias, record key, field, expiry, or signature invalidates the signed link.
+The encrypted resource token hides the configured alias. Laravel signs the path and expiry; changing either invalidates the signature, and Laravel rejects the URL after its `expires` time.
 
 The model-aware URL never exposes:
 
@@ -1051,10 +1051,15 @@ Route::middleware([
 # Logging / exceptions
 
 ```php
-CustomLog::info(
-    'Product created.',
-    ['product_id' => $product->id],
-    LogDomain::APPLICATION,
+enum AppLogDomain: string
+{
+    case IVR = 'ivr';
+}
+
+CustomLog::warning(
+    'Webhook could not be matched.',
+    ['operation' => 'webhook_match'],
+    AppLogDomain::IVR,
 );
 ```
 

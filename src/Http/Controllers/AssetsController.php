@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Http\Controllers;
 
+use Ak279642\LaravelInfrastructure\Files\AssetResourceToken;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class AssetsController
@@ -22,7 +24,7 @@ final class AssetsController
         Request $request,
         string $disk,
         string $path,
-    ): StreamedResponse {
+    ): BinaryFileResponse|StreamedResponse {
         $this->assertDiskAllowed($disk);
 
         $this->authorizeAccess(
@@ -38,7 +40,12 @@ final class AssetsController
         string $resource,
         string $key,
         string $field,
-    ): StreamedResponse {
+        string $extension,
+    ): BinaryFileResponse|StreamedResponse {
+        $resource = AssetResourceToken::decrypt($resource);
+
+        abort_unless(is_string($resource), 404);
+
         $resources = (array) config(
             'laravel-infrastructure.assets.resources',
             [],
@@ -82,6 +89,18 @@ final class AssetsController
         abort_unless(
             is_string($path)
             && trim($path) !== '',
+            404,
+        );
+
+        $actualExtension = strtolower(
+            (string) pathinfo($path, PATHINFO_EXTENSION),
+        );
+        $actualExtension = $actualExtension === ''
+            ? 'bin'
+            : $actualExtension;
+
+        abort_unless(
+            hash_equals($actualExtension, strtolower($extension)),
             404,
         );
 
@@ -151,11 +170,14 @@ final class AssetsController
     private function stream(
         string $disk,
         string $path,
-    ): StreamedResponse {
-        abort_unless(
-            $this->files->exists($path, $disk),
-            404,
-        );
+    ): BinaryFileResponse|StreamedResponse {
+        if (! $this->files->exists($path, $disk)) {
+            return response()->file(
+                dirname(__DIR__, 3).
+                '/resources/images/file-not-found.png',
+                ['Content-Type' => 'image/png'],
+            );
+        }
 
         return $this->filesystems
             ->disk($disk)
