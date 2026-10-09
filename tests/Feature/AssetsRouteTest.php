@@ -406,6 +406,9 @@ final class AssetsRouteTest extends TestCase
     public function test_strict_asset_error_status_is_configurable(): void
     {
         config()->set('laravel-infrastructure.assets.render_error_images', false);
+        config()->set('laravel-infrastructure.assets.folder_access.public', [
+            '*' => ['signed' => false, 'guard' => null],
+        ]);
         $this->get(route('laravel-infrastructure.assets.show', [
             'disk' => 'public', 'path' => 'missing.webp',
         ]))->assertNotFound()->assertHeader('Content-Type', 'image/webp');
