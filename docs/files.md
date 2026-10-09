@@ -197,3 +197,35 @@ LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER=gd
 ```
 
 Use `gd` with `ext-gd` or `imagick` with `ext-imagick`.
+
+
+### SEO filenames and cache versions
+
+Model asset URLs use an SEO-friendly basename instead of the file field name.
+The basename comes from `slug`, `title`, or `name` by default, falling
+back to `{field}-{model-id}` if none is available. The optional `url_name`
+field option selects another model attribute or a callable:
+
+```php
+'image_path' => [
+    'disk' => 'public',
+    'directory' => 'products/images',
+    'url_name' => 'seo_slug',
+],
+```
+
+For a product with `seo_slug = iphone-6-black`, the URL looks like:
+
+```text
+/infrastructure/assets/product/15/iphone-6-black.webp?v=a91234f0bc11
+```
+
+`v` is a short version digest derived from the stored file path and (when
+available) its modification time. Updating the underlying file changes this
+version, preventing stale browser/cache responses. Old field-name routes such
+as `/product/15/image_path.webp` are **not supported**. The controller
+checks the current SEO filename against the record; outdated names return 404.
+
+Two file fields on the same record must not resolve to the same SEO basename
+and extension; ambiguous URLs return 404. Configure distinct `url_name`
+sources for those fields.

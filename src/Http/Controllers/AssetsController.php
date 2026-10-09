@@ -68,9 +68,28 @@ final class AssetsController
         abort_unless($model instanceof Model, 404);
 
         $configured = $model->configuredFileAttributes();
-        $options = $configured[$field] ?? null;
+        $matches = [];
 
-        abort_unless(is_array($options), 404);
+        foreach ($configured as $column => $candidate) {
+            $candidatePath = $model->getAttribute($column);
+
+            if (! is_string($candidatePath) || trim($candidatePath) === '') {
+                continue;
+            }
+
+            if (
+                $model->infrastructureAssetFileName($column, $candidatePath) === $field
+                && strtolower((string) pathinfo($candidatePath, PATHINFO_EXTENSION)) === strtolower($extension)
+            ) {
+                $matches[] = $column;
+            }
+        }
+
+        // Ambiguous names are not served; configure distinct url_name values.
+        abort_unless(count($matches) === 1, 404);
+
+        $column = $matches[0];
+        $options = $configured[$column];
 
         $disk = (string) (
             $options['disk']
@@ -79,7 +98,7 @@ final class AssetsController
                 'public',
             )
         );
-        $path = $model->getAttribute($field);
+        $path = $model->getAttribute($column);
 
         abort_unless(
             is_string($path)

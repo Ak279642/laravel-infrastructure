@@ -1133,3 +1133,7 @@ No dependency on the host application's `App\` namespace.
 # License
 
 MIT.
+
+## SEO-friendly model asset URLs and cache versions
+
+Model file assets now use a slug-derived basename and automatic `?v=` cache version. Configure `'url_name' => 'seo_slug'` inside a model's file field options to select an attribute; a callable is also supported. Default basename priority is `slug`, `title`, `name`, then `{field}-{id}`. Example: `/infrastructure/assets/product/15/iphone-6.webp?v=a91234f0bc11`. Legacy field-name URLs are no longer accepted. Two fields must use distinct basenames for the same extension. See [file docs](docs/files.md).

@@ -214,7 +214,7 @@ final class AssetsRouteTest extends TestCase
         self::assertMatchesRegularExpression(
             '#/infrastructure/assets/[^/]+/'.
             preg_quote((string) $document->getKey(), '#').
-            '/file_path\\.txt$#',
+            '/file-path-'.$document->getKey().'\\.txt$#',
             $urlPath,
         );
         self::assertStringNotContainsString('/model/', $url);
@@ -268,7 +268,7 @@ final class AssetsRouteTest extends TestCase
         self::assertMatchesRegularExpression(
             '#/infrastructure/assets/signed-document/'.
             preg_quote((string) $document->getKey(), '#').
-            '/file_path\\.txt$#',
+            '/file-path-'.$document->getKey().'\\.txt$#',
             $urlPath,
         );
         self::assertStringNotContainsString('/model/', $url);
@@ -287,6 +287,7 @@ final class AssetsRouteTest extends TestCase
         self::assertStringNotContainsString('path=', $url);
 
         $this->get($url)->assertOk();
+        self::assertStringContainsString('v=', $url);
 
         $tampered = preg_replace(
             '/signature=[^&]+/',
@@ -297,6 +298,46 @@ final class AssetsRouteTest extends TestCase
         self::assertNotSame($url, $tampered);
 
         $this->get($tampered)->assertForbidden();
+    }
+
+
+    public function test_old_field_filename_returns_404_and_version_changes_with_file(): void
+    {
+        Storage::disk('public')->put('products/secure/first.webp', 'first');
+
+        $document = SignedAssetRouteDocument::query()->create([
+            'file_path' => 'products/secure/first.webp',
+        ]);
+
+        $this->app['config']->set(
+            'laravel-infrastructure.assets.resources.signed-document',
+            SignedAssetRouteDocument::class,
+        );
+
+        $first = $document->fileAssetUrl('file_path');
+        self::assertIsString($first);
+        self::assertStringContainsString('v=', $first);
+
+        $old = URL::temporarySignedRoute(
+            'laravel-infrastructure.assets.model',
+            now()->addMinutes(5),
+            [
+                'resource' => 'signed-document',
+                'key' => (string) $document->getKey(),
+                'field' => 'file_path',
+                'extension' => 'webp',
+            ],
+        );
+
+        $this->get($old)->assertNotFound();
+        $this->get($first)->assertOk();
+
+        Storage::disk('public')->put('products/secure/second.webp', 'second');
+        $document->update(['file_path' => 'products/secure/second.webp']);
+        $second = $document->fileAssetUrl('file_path');
+
+        self::assertNotSame($first, $second);
+        $this->get($second)->assertOk();
     }
 
     public function test_model_asset_url_requires_configured_resource_alias(): void

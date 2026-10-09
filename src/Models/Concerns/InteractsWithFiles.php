@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use DateTimeInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -154,8 +156,9 @@ trait InteractsWithFiles
         $parameters = [
             'resource' => $this->infrastructureAssetResourceAlias(),
             'key' => (string) $this->getKey(),
-            'field' => $column,
+            'filename' => $this->infrastructureAssetFileName($column, $path),
             'extension' => $this->infrastructureAssetExtension($path),
+            'v' => $this->infrastructureAssetVersion($column, $path, $options),
         ];
 
         if (! $signed) {
@@ -179,6 +182,52 @@ trait InteractsWithFiles
                 ),
             $parameters,
         );
+    }
+
+    /**
+     * Public asset basename. A configured url_name can name a model attribute
+     * or supply a callable ($model, $column). Otherwise use slug/title/name.
+     * The model key fallback intentionally avoids legacy field-name URLs.
+     */
+    public function infrastructureAssetFileName(string $column, string $path): string
+    {
+        $options = $this->configuredFileAttributes()[$column] ?? [];
+        $source = $options['url_name'] ?? null;
+
+        if (is_callable($source)) {
+            $source = $source($this, $column);
+        } elseif (is_string($source) && $source !== '') {
+            $source = $this->getAttribute($source);
+        } else {
+            $source = $this->getAttribute('slug')
+                ?? $this->getAttribute('title')
+                ?? $this->getAttribute('name');
+        }
+
+        $name = is_scalar($source) ? Str::slug((string) $source) : '';
+
+        return $name !== ''
+            ? $name
+            : Str::slug($column).'-'.$this->getKey();
+    }
+
+    private function infrastructureAssetVersion(string $column, string $path, array $options): string
+    {
+        $disk = (string) ($options['disk']
+            ?? config('laravel-infrastructure.files.disk', 'public'));
+
+        // A filename/path change must invalidate a cached public response.
+        // Also detect overwrites to an existing path when the disk supports it.
+        $modified = '';
+        try {
+            if (Storage::disk($disk)->exists($path)) {
+                $modified = (string) Storage::disk($disk)->lastModified($path);
+            }
+        } catch (Throwable) {
+            // Remote disks may not implement modified-time metadata.
+        }
+
+        return substr(hash('sha256', $column.'|'.$path.'|'.$modified), 0, 12);
     }
 
     private function infrastructureAssetExtension(string $path): string
