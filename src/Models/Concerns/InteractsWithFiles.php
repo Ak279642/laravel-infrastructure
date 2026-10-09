@@ -156,7 +156,7 @@ trait InteractsWithFiles
         $parameters = [
             'resource' => $this->infrastructureAssetResourceAlias(),
             'key' => (string) $this->getKey(),
-            'filename' => $this->infrastructureAssetFileName($column, $path),
+            'field' => $this->infrastructureAssetFileName($column, $path),
             'extension' => $this->infrastructureAssetExtension($path),
             'v' => $this->infrastructureAssetVersion($column, $path, $options),
         ];
@@ -394,9 +394,13 @@ trait InteractsWithFiles
                 $filename = null;
             }
 
-            $image = $options['image'] ?? null;
-            $processImage = $image === true
-                || is_array($image);
+            // Global image settings provide defaults, but never opt a field in.
+            $fieldOptions = $this->fileAttributes()[$column] ?? [];
+            $modelOptions = $this->fileOptions();
+            $image = is_array($fieldOptions) && array_key_exists('image', $fieldOptions)
+                ? $fieldOptions['image']
+                : ($modelOptions['image'] ?? null);
+            $processImage = $image === true || is_array($image);
             $imageOptions = is_array($image)
                 ? $image
                 : [];
