@@ -14,6 +14,7 @@ use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasScopes;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasSorting;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryInterface;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Contracts\RepositoryValidationRepository;
+use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
 use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -766,9 +767,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     {
         if (
             preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1
-            || ! $this->model->getConnection()
-                ->getSchemaBuilder()
-                ->hasColumn($this->model->getTable(), $column)
+            || ! app(SchemaRegistry::class)->has(
+                $this->model->getConnection(),
+                $this->model->getTable(),
+                $column,
+            )
         ) {
             throw new \InvalidArgumentException(
                 "Unsafe or unknown model column [{$column}].",

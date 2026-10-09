@@ -37,3 +37,19 @@ $products->paginate(perPage: 20, cacheTtl: 30);    // 30 seconds for this call
 ```
 
 Caching respects model settings, the repository's `withoutCache()` flag, write invalidation, and transaction bypass. The optional `cacheTtl` must be positive and does not mutate the repository's TTL. Page number, filters, sorting, page size, columns, page name, request path and SQL scopes determine cache identity.
+
+## Schema validation metadata
+
+Repository column checks use the shared `SchemaRegistry` instead of issuing a
+new schema query for every column. On MySQL/MariaDB, the first column check
+fetches column names for **all tables in the active database** with one
+`information_schema.COLUMNS` query and stores the snapshot in Laravel's
+default cache for one hour. Subsequent checks (including across requests)
+reuse the snapshot. Each database/connection/table prefix gets a distinct key.
+
+SQLite and PostgreSQL continue to use Laravel's native per-table schema
+discovery, cached in the package's schema registry for the process lifetime.
+
+After applying schema migrations, run `php artisan cache:clear` to discard
+the shared database snapshot; `app(SchemaRegistry::class)->clear()` clears
+snapshots already loaded by the current application process.

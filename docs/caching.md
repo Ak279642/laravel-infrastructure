@@ -65,3 +65,14 @@ $products->paginate(perPage: 20, useCache: false);
 A `cacheTtl` override must be a positive integer. Cache keys vary by resolved page number, page parameter name, page size, selected columns, filters, sorts, relations, current URL path, scoped query SQL/bindings, connection, and effective TTL. This prevents sharing pages across differing query scopes or TTLs. Repository writes clear the tagged cache; `withoutCache()`, model cache settings, non-taggable stores, and open transactions follow the normal repository cache rules. A custom `cacheTtl` overrides `rememberForever()` **for that pagination call only**.
 
 `simplePaginate()`, `cursorPaginate()`, `chunk()`, `lazy()` and `cursor()` keep their existing uncached behavior.
+
+## Schema metadata cache
+
+MySQL/MariaDB column validation uses a single database-wide
+`information_schema.COLUMNS` snapshot, cached for one hour through Laravel's
+existing cache store. The key includes the physical database identity and
+connection name. Other databases retain per-table metadata caching.
+
+Run `php artisan cache:clear` after schema migrations (especially when adding
+new model fields) so workers fetch the updated schema. No package config
+section or new cache driver is needed.
