@@ -28,7 +28,7 @@ Both values default to `null`, which uses the artwork bundled with the package. 
 
 ## Routes and access
 
-Default URL prefix: `/infrastructure/assets`. The package owns model URLs and `/{disk}/{path}` URLs. Allowed disks are configured in `assets.allowed_disks` (default `['public']`); model aliases in `assets.resources`. Guard, signature and folder access settings can be applied per model file field or in `assets.folder_access`.
+Default URL prefix: `/infrastructure/assets`. The package owns model URLs and `/{disk}/{path}` URLs. Model route matching is restricted to configured `assets.resources` aliases, so ordinary disk paths cannot accidentally resolve as model routes. Allowed disks are configured in `assets.allowed_disks` (default `['public']`); model aliases in `assets.resources`. Guard, signature and folder access settings can be applied per model file field or in `assets.folder_access`.
 
 ```php
 'assets' => [

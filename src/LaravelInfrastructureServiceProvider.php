@@ -120,12 +120,22 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                 '/',
             );
 
+            // Restrict model routes to configured aliases. Otherwise a generic
+            // URL like /public/assets/logo.webp looks like a model URL.
+            $aliases = array_keys((array) config('laravel-infrastructure.assets.resources', []));
+            $aliases = array_filter($aliases, static fn (mixed $alias): bool =>
+                is_string($alias) && preg_match('/^[A-Za-z0-9_-]+$/D', $alias) === 1
+            );
+            $resourcePattern = $aliases === []
+                ? '(?!)'
+                : '(?:'.implode('|', array_map(static fn (string $alias): string => preg_quote($alias, '#'), $aliases)).')';
+
             $router
                 ->get(
                     $prefix.'/{resource}/{key}/{field}.{extension}',
                     [AssetsController::class, 'model'],
                 )
-                ->where('resource', '[A-Za-z0-9_-]+')
+                ->where('resource', $resourcePattern)
                 ->where('field', '[a-z0-9-]+')
                 ->where('extension', '[A-Za-z0-9]{1,20}')
                 ->name('laravel-infrastructure.assets.model');

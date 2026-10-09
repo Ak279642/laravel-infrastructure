@@ -40,7 +40,7 @@ final class AssetResponsesTest extends TestCase
             'disk' => 'public', 'path' => 'missing.webp',
         ]))->assertNotFound()
             ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('Cache-Control', 'private, no-store, max-age=0');
+            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
     }
 
     public function test_access_denied_returns_403_image_not_html(): void
@@ -53,7 +53,7 @@ final class AssetResponsesTest extends TestCase
             'disk' => 'public', 'path' => 'private.webp',
         ]))->assertForbidden()
             ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('Cache-Control', 'private, no-store, max-age=0');
+            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
     }
 
     public function test_missing_route_renders_404_image(): void
@@ -105,7 +105,7 @@ final class AssetResponsesTest extends TestCase
             now()->addMinutes(5), ['disk' => 'public', 'path' => 'assets/private.webp']);
 
         $this->get($url)->assertOk()
-            ->assertHeader('Cache-Control', 'private, no-store, max-age=0');
+            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
     }
 
     public function test_uploads_alias_uses_same_package_access_checks(): void

@@ -179,6 +179,10 @@ final class AssetsController
             'X-Content-Type-Options' => 'nosniff',
         ]);
         $response->setStatusCode($status);
+        // BinaryFileResponse may mark files public while preparing headers.
+        // Error images must never be stored by shared caches.
+        $response->headers->remove('Cache-Control');
+        $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
 
         return $response;
     }

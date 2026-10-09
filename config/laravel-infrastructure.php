@@ -32,13 +32,13 @@ return [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED', true),
         'prefix' => env('LARAVEL_INFRASTRUCTURE_ASSETS_PREFIX', 'infrastructure/assets'),
 
-        // 'product' => App\Models\Product::class
+        // Map a URL alias to your Eloquent model class (e.g. Product::class).
         'resources' => [],
 
         // Only these storage disks can be requested through asset URLs.
         'allowed_disks' => ['public'],
 
-        // Per-disk folder rules, e.g. 'public' => ['private' => ['guard' => 'admin']].
+        // Optional per-folder rules: 'public' => ['private' => ['guard' => 'admin']].
         'folder_access' => [],
 
         // Optional regex allowlists for generic (non-model) file URLs.

@@ -61,7 +61,7 @@ final class AssetModelAuthorizationTest extends TestCase
         $this->get($record->fileAssetUrl('file_path'))
             ->assertOk()
             ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('Cache-Control', 'private, no-store, max-age=0');
+            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
     }
 }
 
