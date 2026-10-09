@@ -51,6 +51,10 @@ return [
             'disk' => 'public',
         ],
 
+        // Show fallback artwork on direct browser navigation as HTTP 200.
+        // Set false for strict HTTP 403/404 statuses.
+        'render_error_images' => true,
+
         // null = the included optimized WebP. Override with an absolute file path.
         'error_images' => [
             403 => null,

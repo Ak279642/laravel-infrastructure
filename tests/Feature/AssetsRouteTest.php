@@ -128,7 +128,7 @@ final class AssetsRouteTest extends TestCase
                     'path' => 'products/documents/manual.txt',
                 ],
             ),
-        )->assertForbidden();
+        )->assertOk();
     }
 
     public function test_same_disk_can_have_public_and_guard_protected_folders(): void
@@ -174,7 +174,7 @@ final class AssetsRouteTest extends TestCase
             ],
         );
 
-        $this->get($protectedUrl)->assertForbidden();
+        $this->get($protectedUrl)->assertOk();
 
         $admin = AssetGuardUser::query()->create([
             'name' => 'Admin',
@@ -230,7 +230,7 @@ final class AssetsRouteTest extends TestCase
         self::assertStringNotContainsString('disk=', $url);
         self::assertStringNotContainsString('path=', $url);
 
-        $this->get($url)->assertForbidden();
+        $this->get($url)->assertOk();
 
         $admin = AssetGuardUser::query()->create([
             'name' => 'Admin',
@@ -297,7 +297,7 @@ final class AssetsRouteTest extends TestCase
 
         self::assertNotSame($url, $tampered);
 
-        $this->get($tampered)->assertForbidden();
+        $this->get($tampered)->assertOk();
     }
 
 
@@ -329,7 +329,7 @@ final class AssetsRouteTest extends TestCase
             ],
         );
 
-        $this->get($old)->assertNotFound();
+        $this->get($old)->assertOk();
         $this->get($first)->assertOk();
 
         Storage::disk('public')->put('products/secure/second.webp', 'second');
@@ -382,7 +382,33 @@ final class AssetsRouteTest extends TestCase
 
         self::assertIsString($url);
 
-        $this->get($url)->assertForbidden();
+        $this->get($url)->assertOk();
+    }
+
+    public function test_simple_get_file_url_supports_custom_name_and_missing_files(): void
+    {
+        $document = SignedAssetRouteDocument::query()->create([
+            'file_path' => 'products/secure/missing.webp',
+        ]);
+        config()->set('laravel-infrastructure.assets.resources.signed-document', SignedAssetRouteDocument::class);
+
+        $url = $document->getFileUrl('file_path', 'my-photo');
+        self::assertStringContainsString('/my-photo.webp', $url);
+        $this->get($url)->assertOk()
+            ->assertHeader('Content-Type', 'image/webp')
+            ->assertHeader('X-Asset-Error-Status', '404');
+
+        $document->update(['file_path' => null]);
+        $this->get($document->getFileUrl('file_path'))->assertOk()
+            ->assertHeader('X-Asset-Error-Status', '404');
+    }
+
+    public function test_strict_asset_error_status_is_configurable(): void
+    {
+        config()->set('laravel-infrastructure.assets.render_error_images', false);
+        $this->get(route('laravel-infrastructure.assets.show', [
+            'disk' => 'public', 'path' => 'missing.webp',
+        ]))->assertNotFound()->assertHeader('Content-Type', 'image/webp');
     }
 
     public function test_missing_model_asset_returns_the_default_not_found_image(): void
@@ -402,7 +428,7 @@ final class AssetsRouteTest extends TestCase
 
         $response = $this->get($url);
 
-        $response->assertNotFound();
+        $response->assertOk();
         $response->assertHeader('Content-Type', 'image/webp');
         $response->assertHeader(
             'Content-Length',
@@ -428,7 +454,7 @@ final class AssetsRouteTest extends TestCase
             ],
         );
 
-        $this->get($url)->assertNotFound();
+        $this->get($url)->assertOk();
     }
 }
 

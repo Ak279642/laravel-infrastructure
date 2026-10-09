@@ -126,6 +126,49 @@ trait InteractsWithFiles
         return [];
     }
 
+    /**
+     * Get a model file URL without requiring callers to inspect file state.
+     * $imageName changes only the public URL basename, not the stored file.
+     */
+    public function getFileUrl(string $field, ?string $imageName = null): string
+    {
+        $options = $this->configuredFileAttributes()[$field] ?? [];
+        $path = $this->getAttribute($field);
+        $path = is_string($path) ? $path : '';
+        $access = is_array($options['access'] ?? null) ? $options['access'] : [];
+        $signed = array_key_exists('signed', $access)
+            ? (bool) $access['signed']
+            : (bool) config('laravel-infrastructure.assets.signed', true);
+
+        $name = $imageName !== null && trim($imageName) !== ''
+            ? Str::slug(pathinfo($imageName, PATHINFO_FILENAME))
+            : $this->infrastructureAssetFileName($field, $path);
+        $name = $name !== '' ? $name : Str::slug($field);
+        $extension = $path !== '' ? $this->infrastructureAssetExtension($path) : 'webp';
+        $customExtension = $imageName !== null
+            ? strtolower((string) pathinfo($imageName, PATHINFO_EXTENSION)) : '';
+        if (preg_match('/^[a-z0-9]{1,20}$/', $customExtension) === 1) {
+            $extension = $customExtension;
+        }
+
+        $parameters = [
+            'resource' => $this->infrastructureAssetResourceAlias(),
+            'key' => (string) ($this->getKey() ?? 0),
+            'field' => $name,
+            'extension' => $extension,
+            'attribute' => $field,
+            'v' => $this->infrastructureAssetVersion($field, $path, $options),
+        ];
+
+        return $signed
+            ? URL::temporarySignedRoute(
+                'laravel-infrastructure.assets.model',
+                now()->addMinutes(max(1, (int) config('laravel-infrastructure.assets.url_ttl_minutes', 15))),
+                $parameters,
+            )
+            : route('laravel-infrastructure.assets.model', $parameters);
+    }
+
     public function fileAssetUrl(
         string $column,
         ?DateTimeInterface $expiration = null,

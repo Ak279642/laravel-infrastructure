@@ -1,12 +1,16 @@
 # Assets: package-managed files and error images
 
+Use `$model->getFileUrl('image')`, `$model->getFileUrl('document_path')`, or `$model->getFileUrl('image', 'custom-name')` directly. The helper always generates a URL; no caller-side null checks or manually constructed fallback routes are required. A custom name changes the URL label, not the stored file path. Missing and denied assets return package artwork.
+
+By default, fallback image responses use HTTP 200 so direct browser navigation displays the actual artwork, with `X-Asset-Error-Status: 404` or `403`. Set `assets.render_error_images = false` to preserve the strict HTTP status instead.
+
 The package registers the asset routes, serves files, checks configured access rules, and responds with images for 403 and 404. You do **not** need an app controller, a custom asset authorization middleware, or extra route registration.
 
 | Case | HTTP | Body | HTTP caching |
 | --- | --- | --- | --- |
 | File exists and access is permitted | 200 | The actual file | Public image: 24 hours, ETag |
-| File is missing, path is invalid | 404 | Bundled File Not Found WebP | No-store |
-| Guard/signature/model denies access | 403 | Bundled Access Denied WebP | No-store |
+| File is missing, path is invalid | 200 (strict mode: 404) | Bundled File Not Found WebP | No-store |
+| Guard/signature/model denies access | 200 (strict mode: 403) | Bundled Access Denied WebP | No-store |
 | Public image ETag is unchanged | 304 | Empty body | Authorized requests only |
 
 The default artwork consists of the two provided error images, optimized to WebP. The response always has an image `Content-Type`, correct HTTP status, and `X-Content-Type-Options: nosniff`.

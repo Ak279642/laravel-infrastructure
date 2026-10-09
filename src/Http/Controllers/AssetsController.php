@@ -94,6 +94,29 @@ final class AssetsController
         abort_unless($model instanceof Model, 404);
 
         $configured = $model->configuredFileAttributes();
+        $requestedAttribute = $request->query('attribute');
+        if (is_string($requestedAttribute) && $requestedAttribute !== '') {
+            // The attribute is selected explicitly by getFileUrl(). Never
+            // allow access to fields outside model file configuration.
+            abort_unless(array_key_exists($requestedAttribute, $configured), 404);
+            $column = $requestedAttribute;
+            $options = $configured[$column];
+            $path = $model->getAttribute($column);
+            abort_unless(is_string($path) && trim($path) !== '', 404);
+            $disk = (string) ($options['disk'] ?? config('laravel-infrastructure.files.disk', 'public'));
+            $this->assertDiskAllowed($disk);
+            $rule = array_replace(
+                $this->resolveFolderRule($disk, $path),
+                is_array($options['access'] ?? null) ? $options['access'] : [],
+            );
+            $this->authorizeAccess($request, $rule);
+            if (method_exists($model, 'authorizesAssetField')) {
+                abort_unless($model->authorizesAssetField($column), 403);
+                $rule['cache_public'] = false;
+            }
+            return $this->stream($disk, $path, $request, $rule);
+        }
+
         $matches = [];
 
         foreach ($configured as $column => $candidate) {
@@ -178,7 +201,16 @@ final class AssetsController
             'Cache-Control' => 'private, no-store, max-age=0',
             'X-Content-Type-Options' => 'nosniff',
         ]);
-        $response->setStatusCode($status);
+        // A browser navigating directly to HTTP 404/403 can display its own
+        // error page instead of the returned WebP body. Serve placeholder
+        // artwork with 200 by default so <img> and direct links both render.
+        // The actual failure reason remains available in a dedicated header.
+        $response->headers->set('X-Asset-Error-Status', (string) $status);
+        $response->setStatusCode(
+            (bool) config('laravel-infrastructure.assets.render_error_images', true)
+                ? 200
+                : $status,
+        );
         // BinaryFileResponse may mark files public while preparing headers.
         // Error images must never be stored by shared caches.
         $response->headers->remove('Cache-Control');

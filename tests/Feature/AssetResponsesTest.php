@@ -38,7 +38,7 @@ final class AssetResponsesTest extends TestCase
     {
         $this->get(route('laravel-infrastructure.assets.show', [
             'disk' => 'public', 'path' => 'missing.webp',
-        ]))->assertNotFound()
+        ]))->assertOk()
             ->assertHeader('Content-Type', 'image/webp')
             ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
     }
@@ -51,14 +51,14 @@ final class AssetResponsesTest extends TestCase
 
         $this->get(route('laravel-infrastructure.assets.show', [
             'disk' => 'public', 'path' => 'private.webp',
-        ]))->assertForbidden()
+        ]))->assertOk()
             ->assertHeader('Content-Type', 'image/webp')
             ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
     }
 
     public function test_missing_route_renders_404_image(): void
     {
-        $this->get('/infrastructure/assets/invalid')->assertNotFound()
+        $this->get('/infrastructure/assets/invalid')->assertOk()
             ->assertHeader('Content-Type', 'image/webp');
     }
 
@@ -69,7 +69,7 @@ final class AssetResponsesTest extends TestCase
 
         $this->get(route('laravel-infrastructure.assets.show', [
             'disk' => 'public', 'path' => 'missing.webp',
-        ]))->assertNotFound()
+        ]))->assertOk()
             ->assertHeader('Content-Type', 'image/webp')
             ->assertHeader('Content-Length', (string) filesize(
                 dirname(__DIR__, 2).'/resources/images/file-access-denied.webp'));
@@ -119,6 +119,6 @@ final class AssetResponsesTest extends TestCase
             '*' => ['signed' => true, 'guard' => null],
         ]);
         $this->get(route('uploads', ['file' => 'assets/logo.webp']))
-            ->assertForbidden()->assertHeader('Content-Type', 'image/webp');
+            ->assertOk()->assertHeader('Content-Type', 'image/webp');
     }
 }
