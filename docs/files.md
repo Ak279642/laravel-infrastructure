@@ -66,7 +66,7 @@ $url = $product->fileAssetUrl(
 A signed model URL includes the configured resource alias and preserves the file extension. Laravel adds an expiry and signature:
 
 ```text
-/infrastructure/assets/{resource-alias}/10/document_path.pdf
+/infrastructure/assets/{resource-alias}/10/document_path/document-name.pdf
 ?expires=...
 &signature=...
 ```
@@ -217,7 +217,7 @@ field option selects another model attribute or a callable:
 For a product with `seo_slug = iphone-6-black`, the URL looks like:
 
 ```text
-/infrastructure/assets/product/15/iphone-6-black.webp?v=a91234f0bc11
+/infrastructure/assets/product/15/image_path/iphone-6-black.webp?v=a91234f0bc11
 ```
 
 `v` is a short version digest derived from the stored file path and (when
@@ -226,6 +226,6 @@ version, preventing stale browser/cache responses. Old field-name routes such
 as `/product/15/image_path.webp` are **not supported**. The controller
 checks the current SEO filename against the record; outdated names return 404.
 
-Two file fields on the same record must not resolve to the same SEO basename
-and extension; ambiguous URLs return 404. Configure distinct `url_name`
-sources for those fields.
+The configured file attribute is part of the URL path, not an `attribute` query
+parameter. Different attributes can safely share the same SEO basename and
+extension because the path identifies the field explicitly.
