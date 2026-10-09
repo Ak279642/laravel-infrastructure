@@ -68,12 +68,28 @@ final class AssetsController
         }
     }
 
+    public function modelField(
+        Request $request,
+        string $resource,
+        string $key,
+        string $attribute,
+        string $field,
+        string $extension,
+    ): BinaryFileResponse|StreamedResponse {
+        try {
+            return $this->serveModel($request, $resource, $key, $field, $extension, $attribute);
+        } catch (HttpExceptionInterface $exception) {
+            return $this->errorResponse($this->assetErrorStatus($exception));
+        }
+    }
+
     private function serveModel(
         Request $request,
         string $resource,
         string $key,
         string $field,
         string $extension,
+        ?string $requestedAttribute = null,
     ): BinaryFileResponse|StreamedResponse {
         $resources = (array) config('laravel-infrastructure.assets.resources', []);
         $modelClass = $resources[$resource] ?? null;
@@ -94,7 +110,7 @@ final class AssetsController
         abort_unless($model instanceof Model, 404);
 
         $configured = $model->configuredFileAttributes();
-        $requestedAttribute = $request->query('attribute');
+        $requestedAttribute ??= $request->query('attribute');
         if (is_string($requestedAttribute) && $requestedAttribute !== '') {
             // The attribute is selected explicitly by getFileUrl(). Never
             // allow access to fields outside model file configuration.

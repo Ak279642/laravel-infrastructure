@@ -385,6 +385,20 @@ final class AssetsRouteTest extends TestCase
         $this->get($url)->assertOk();
     }
 
+    public function test_get_file_url_places_attribute_in_path_not_query(): void
+    {
+        Storage::disk('public')->put('products/secure/first.webp', 'image-bytes');
+        $document = SignedAssetRouteDocument::query()->create([
+            'file_path' => 'products/secure/first.webp',
+        ]);
+        config()->set('laravel-infrastructure.assets.resources.signed-document', SignedAssetRouteDocument::class);
+
+        $url = $document->getFileUrl('file_path', 'custom-preview');
+        self::assertStringContainsString('/file_path/custom-preview.webp', $url);
+        self::assertStringNotContainsString('attribute=', $url);
+        $this->get($url)->assertOk();
+    }
+
     public function test_simple_get_file_url_supports_custom_name_and_missing_files(): void
     {
         $document = SignedAssetRouteDocument::query()->create([
@@ -393,7 +407,7 @@ final class AssetsRouteTest extends TestCase
         config()->set('laravel-infrastructure.assets.resources.signed-document', SignedAssetRouteDocument::class);
 
         $url = $document->getFileUrl('file_path', 'my-photo');
-        self::assertStringContainsString('/my-photo.webp', $url);
+        self::assertStringContainsString('/file_path/my-photo.webp', $url);
         $this->get($url)->assertOk()
             ->assertHeader('Content-Type', 'image/webp')
             ->assertHeader('X-Asset-Error-Status', '404');

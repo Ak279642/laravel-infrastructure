@@ -154,15 +154,15 @@ trait InteractsWithFiles
         $parameters = [
             'resource' => $this->infrastructureAssetResourceAlias(),
             'key' => (string) ($this->getKey() ?? 0),
+            'attribute' => $field,
             'field' => $name,
             'extension' => $extension,
-            'attribute' => $field,
             'v' => $this->infrastructureAssetVersion($field, $path, $options),
         ];
 
         return $signed
             ? URL::temporarySignedRoute(
-                'laravel-infrastructure.assets.model',
+                'laravel-infrastructure.assets.model.field',
                 now()->addMinutes(max(1, (int) config('laravel-infrastructure.assets.url_ttl_minutes', 15))),
                 $parameters,
             )

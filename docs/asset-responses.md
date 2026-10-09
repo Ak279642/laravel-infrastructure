@@ -1,6 +1,6 @@
 # Assets: package-managed files and error images
 
-Use `$model->getFileUrl('image')`, `$model->getFileUrl('document_path')`, or `$model->getFileUrl('image', 'custom-name')` directly. The helper always generates a URL; no caller-side null checks or manually constructed fallback routes are required. A custom name changes the URL label, not the stored file path. Missing and denied assets return package artwork.
+Use `$model->getFileUrl('image')`, `$model->getFileUrl('document_path')`, or `$model->getFileUrl('image', 'custom-name')` directly. The helper always generates a URL; no caller-side null checks or manually constructed fallback routes are required. A custom name changes the URL label, not the stored file path. New links use `/{resource}/{key}/{attribute}/{name}.{extension}` so the field identifier is in the path instead of `?attribute=...`. Legacy model links continue resolving. Missing and denied assets return package artwork.
 
 By default, fallback image responses use HTTP 200 so direct browser navigation displays the actual artwork, with `X-Asset-Error-Status: 404` or `403`. Set `assets.render_error_images = false` to preserve the strict HTTP status instead.
 
