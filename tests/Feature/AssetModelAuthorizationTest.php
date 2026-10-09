@@ -46,7 +46,8 @@ final class AssetModelAuthorizationTest extends TestCase
         ]);
 
         $this->get($record->fileAssetUrl('file_path'))
-            ->assertForbidden()
+            ->assertOk()
+            ->assertHeader('X-Asset-Error-Status', '403')
             ->assertHeader('Content-Type', 'image/webp');
     }
 
