@@ -133,7 +133,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                     [AssetsController::class, 'model'],
                 )
                 ->where('resource', '[A-Za-z0-9_-]+')
-                ->where('field', '[A-Za-z0-9_]+')
+                ->where('field', '[a-z0-9-]+')
                 ->where('extension', '[A-Za-z0-9]{1,20}')
                 ->name('laravel-infrastructure.assets.model');
 
