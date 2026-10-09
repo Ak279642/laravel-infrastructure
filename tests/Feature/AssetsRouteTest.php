@@ -214,7 +214,7 @@ final class AssetsRouteTest extends TestCase
         self::assertMatchesRegularExpression(
             '#/infrastructure/assets/[^/]+/'.
             preg_quote((string) $document->getKey(), '#').
-            '/file-path-'.$document->getKey().'\\.txt$#',
+            '/file_path/file-path-'.$document->getKey().'\\.txt$#',
             $urlPath,
         );
         self::assertStringNotContainsString('/model/', $url);
@@ -269,7 +269,7 @@ final class AssetsRouteTest extends TestCase
         self::assertMatchesRegularExpression(
             '#/infrastructure/assets/signed-document/'.
             preg_quote((string) $document->getKey(), '#').
-            '/file-path-'.$document->getKey().'\\.txt$#',
+            '/file_path/file-path-'.$document->getKey().'\\.txt$#',
             $urlPath,
         );
         self::assertStringNotContainsString('/model/', $url);
