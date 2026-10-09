@@ -166,7 +166,7 @@ trait InteractsWithFiles
                 now()->addMinutes(max(1, (int) config('laravel-infrastructure.assets.url_ttl_minutes', 15))),
                 $parameters,
             )
-            : route('laravel-infrastructure.assets.model', $parameters);
+            : route('laravel-infrastructure.assets.model.field', $parameters);
     }
 
     public function fileAssetUrl(
@@ -199,6 +199,7 @@ trait InteractsWithFiles
         $parameters = [
             'resource' => $this->infrastructureAssetResourceAlias(),
             'key' => (string) $this->getKey(),
+            'attribute' => $column,
             'field' => $this->infrastructureAssetFileName($column, $path),
             'extension' => $this->infrastructureAssetExtension($path),
             'v' => $this->infrastructureAssetVersion($column, $path, $options),
@@ -206,13 +207,13 @@ trait InteractsWithFiles
 
         if (! $signed) {
             return route(
-                'laravel-infrastructure.assets.model',
+                'laravel-infrastructure.assets.model.field',
                 $parameters,
             );
         }
 
         return URL::temporarySignedRoute(
-            'laravel-infrastructure.assets.model',
+            'laravel-infrastructure.assets.model.field',
             $expiration
                 ?? now()->addMinutes(
                     max(
