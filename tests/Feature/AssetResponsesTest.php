@@ -85,7 +85,7 @@ final class AssetResponsesTest extends TestCase
         ]);
 
         $response = $this->get($url);
-        $response->assertOk()->assertHeader('Cache-Control', 'public, max-age=86400');
+        $response->assertOk()->assertHeader('Cache-Control', 'max-age=86400, public');
         $etag = $response->headers->get('ETag');
         self::assertIsString($etag);
         self::assertNotSame('', $etag);

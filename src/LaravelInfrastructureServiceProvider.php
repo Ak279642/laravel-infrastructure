@@ -120,15 +120,21 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                 '/',
             );
 
-            // Restrict model routes to configured aliases. Otherwise a generic
-            // URL like /public/assets/logo.webp looks like a model URL.
-            $aliases = array_keys((array) config('laravel-infrastructure.assets.resources', []));
-            $aliases = array_filter($aliases, static fn (mixed $alias): bool =>
-                is_string($alias) && preg_match('/^[A-Za-z0-9_-]+$/D', $alias) === 1
-            );
-            $resourcePattern = $aliases === []
-                ? '(?!)'
-                : '(?:'.implode('|', array_map(static fn (string $alias): string => preg_quote($alias, '#'), $aliases)).')';
+            // Disk paths must use the generic asset route. Resource aliases
+            // are intentionally resolved at request time, not at boot time:
+            // applications/tests may register them after the provider boots.
+            $disks = array_values(array_filter(
+                (array) config('laravel-infrastructure.assets.allowed_disks', ['public']),
+                static fn (mixed $disk): bool => is_string($disk)
+                    && preg_match('/^[A-Za-z0-9_-]+$/D', $disk) === 1,
+            ));
+            $diskPattern = implode('|', array_map(
+                static fn (string $disk): string => preg_quote($disk, '#'),
+                $disks,
+            ));
+            $resourcePattern = $diskPattern === ''
+                ? '[A-Za-z0-9_-]+'
+                : '(?!(?:'.$diskPattern.')(?:/|$))[A-Za-z0-9_-]+';
 
             $router
                 ->get(
