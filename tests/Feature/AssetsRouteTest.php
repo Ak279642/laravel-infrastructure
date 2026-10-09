@@ -174,7 +174,7 @@ final class AssetsRouteTest extends TestCase
             ],
         );
 
-        $this->get($protectedUrl)->assertUnauthorized();
+        $this->get($protectedUrl)->assertForbidden();
 
         $admin = AssetGuardUser::query()->create([
             'name' => 'Admin',
@@ -230,7 +230,7 @@ final class AssetsRouteTest extends TestCase
         self::assertStringNotContainsString('disk=', $url);
         self::assertStringNotContainsString('path=', $url);
 
-        $this->get($url)->assertUnauthorized();
+        $this->get($url)->assertForbidden();
 
         $admin = AssetGuardUser::query()->create([
             'name' => 'Admin',
@@ -402,12 +402,12 @@ final class AssetsRouteTest extends TestCase
 
         $response = $this->get($url);
 
-        $response->assertOk();
-        $response->assertHeader('Content-Type', 'image/png');
+        $response->assertNotFound();
+        $response->assertHeader('Content-Type', 'image/webp');
         $response->assertHeader(
             'Content-Length',
             (string) filesize(
-                dirname(__DIR__, 2).'/resources/images/file-not-found.png',
+                dirname(__DIR__, 2).'/resources/images/file-not-found.webp',
             ),
         );
     }

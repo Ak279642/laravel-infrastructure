@@ -115,15 +115,9 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             RejectSensitivePaths::class,
         );
 
-        if ((bool) config(
-            'laravel-infrastructure.assets.enabled',
-            true,
-        )) {
+        if ((bool) config('laravel-infrastructure.assets.enabled', true)) {
             $prefix = trim(
-                (string) config(
-                    'laravel-infrastructure.assets.prefix',
-                    'infrastructure/assets',
-                ),
+                (string) config('laravel-infrastructure.assets.prefix', 'infrastructure/assets'),
                 '/',
             );
 
@@ -145,6 +139,20 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                 ->where('path', '.*')
                 ->name('laravel-infrastructure.assets.show');
 
+            // Invalid asset URLs render the default 404 image, not Laravel HTML.
+            $router->get($prefix, [AssetsController::class, 'notFound']);
+            $router->get($prefix.'/{unmatched}', [AssetsController::class, 'notFound'])
+                ->where('unmatched', '.*');
+
+            $legacy = (array) config('laravel-infrastructure.assets.legacy_uploads', []);
+            if ((bool) ($legacy['enabled'] ?? false)) {
+                $legacyPrefix = trim((string) ($legacy['prefix'] ?? 'uploads'), '/');
+                if ($legacyPrefix !== '' && $legacyPrefix !== $prefix) {
+                    $router->get($legacyPrefix.'/{file}', [AssetsController::class, 'upload'])
+                        ->where('file', '.*')
+                        ->name('uploads');
+                }
+            }
         }
 
         if ($this->app->runningInConsole()) {
@@ -154,10 +162,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             ]);
         }
 
-        if (! (bool) config(
-            'laravel-infrastructure.responses.exception_renderer_enabled',
-            true,
-        )) {
+        if (! (bool) config('laravel-infrastructure.responses.exception_renderer_enabled', true)) {
             return;
         }
 
