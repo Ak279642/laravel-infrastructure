@@ -74,7 +74,7 @@ final class SchemaSnapshotFakeConnection extends Connection
         );
     }
 
-    public function select($query, $bindings = [], $useReadPdo = true): array
+    public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = []): array
     {
         $this->schemaQueries++;
 
