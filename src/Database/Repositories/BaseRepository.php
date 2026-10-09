@@ -322,12 +322,45 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         array $columns = ['*'],
         string $pageName = 'page',
         ?int $page = null,
+        bool $useCache = true,
+        ?int $cacheTtl = null,
     ): LengthAwarePaginator {
-        return $this->buildQuery($filters)->paginate(
-            $perPage,
-            $this->safeColumns($columns),
-            $pageName,
-            $page,
+        if ($cacheTtl !== null && $cacheTtl < 1) {
+            throw new \InvalidArgumentException('Pagination cache TTL must be greater than zero.');
+        }
+
+        $columns = $this->safeColumns($columns);
+        $page ??= LengthAwarePaginator::resolveCurrentPage($pageName);
+        $query = $this->buildQuery($filters);
+
+        // Include the scoped SQL and bindings so different tenant/user scopes
+        // cannot share a cached page even when their filters are identical.
+        $scopedQuery = $query->toBase();
+
+        return $this->cacheRemember(
+            'paginate',
+            fn (): LengthAwarePaginator => $query->paginate(
+                $perPage,
+                $columns,
+                $pageName,
+                $page,
+            ),
+            [
+                'filters' => $filters,
+                'with' => $filters['with'] ?? [],
+                'columns' => $columns,
+                'per_page' => $perPage,
+                'page_name' => $pageName,
+                'page' => $page,
+                'path' => LengthAwarePaginator::resolveCurrentPath(),
+                'connection' => $this->model->getConnection()->getName(),
+                'sql' => $scopedQuery->toSql(),
+                'bindings' => $scopedQuery->getBindings(),
+                // Keep cache entries with different lifetimes independent.
+                'ttl' => $cacheTtl ?? ($this->cacheForever ? 'forever' : $this->cacheTtl),
+            ],
+            ttlOverride: $cacheTtl,
+            useCache: $useCache,
         );
     }
 

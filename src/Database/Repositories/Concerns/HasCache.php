@@ -100,9 +100,14 @@ trait HasCache
         );
     }
 
-    protected function cacheRemember(string $operation, callable $callback, array $params = []): mixed
-    {
-        $bypass = $this->cacheBypassOnce;
+    protected function cacheRemember(
+        string $operation,
+        callable $callback,
+        array $params = [],
+        ?int $ttlOverride = null,
+        bool $useCache = true,
+    ): mixed {
+        $bypass = $this->cacheBypassOnce || ! $useCache;
 
         // Consume the bypass before executing the callback so nested repository
         // operations cannot accidentally inherit request-specific state.
@@ -130,7 +135,7 @@ trait HasCache
 
         return $this->getCacheManager()->rememberLocked(
             key: $key,
-            ttl: $this->cacheForever ? null : $this->cacheTtl,
+            ttl: $ttlOverride ?? ($this->cacheForever ? null : $this->cacheTtl),
             callback: $callback,
             tags: $tags,
             lockSeconds: max(1, $this->cacheLockSeconds),

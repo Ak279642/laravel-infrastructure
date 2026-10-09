@@ -84,14 +84,16 @@ interface RepositoryInterface
     public function count(array $filters = []): int;
 
     /**
-     * Paginate results.
+     * Paginate results with optional per-call caching and TTL override.
      */
     public function paginate(
         array $filters = [],
         int $perPage = 15,
         array $columns = ['*'],
         string $pageName = 'page',
-        ?int $page = null
+        ?int $page = null,
+        bool $useCache = true,
+        ?int $cacheTtl = null,
     ): LengthAwarePaginator;
 
     /**

@@ -46,3 +46,22 @@ For application-wide behavior, change Laravel's cache store. For operation-level
 ## Image caching
 
 Public images automatically use `Cache-Control: public, max-age=86400` and metadata ETags. Protected, signed, and model-authorized images always use `private, no-store, max-age=0`. There is no separate assets cache configuration, and these HTTP browser headers are not Laravel's server-side cache store.
+
+## Pagination caching
+
+The `paginate()` method caches results by default using the repository's normal TTL. No extra config is needed. Disable caching or override the TTL (in **seconds**) for an individual pagination call:
+
+```php
+// Repository TTL (default 5 minutes unless overridden by defaultCacheTtl()).
+$products->paginate(perPage: 20);
+
+// Cache just this page for 30 seconds; does not change the repository TTL.
+$products->paginate(perPage: 20, cacheTtl: 30);
+
+// Fetch a fresh page without populating or reading the repository cache.
+$products->paginate(perPage: 20, useCache: false);
+```
+
+A `cacheTtl` override must be a positive integer. Cache keys vary by resolved page number, page parameter name, page size, selected columns, filters, sorts, relations, current URL path, scoped query SQL/bindings, connection, and effective TTL. This prevents sharing pages across differing query scopes or TTLs. Repository writes clear the tagged cache; `withoutCache()`, model cache settings, non-taggable stores, and open transactions follow the normal repository cache rules. A custom `cacheTtl` overrides `rememberForever()` **for that pagination call only**.
+
+`simplePaginate()`, `cursorPaginate()`, `chunk()`, `lazy()` and `cursor()` keep their existing uncached behavior.

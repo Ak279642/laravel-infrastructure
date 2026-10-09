@@ -832,6 +832,13 @@ $result = $products
 ## Bulk operations
 
 ```php
+// Pagination uses the repository TTL by default.
+$products->paginate(perPage: 20);
+// Per-method TTL override (seconds).
+$products->paginate(perPage: 20, cacheTtl: 30);
+// Skip caching for one pagination call.
+$products->paginate(perPage: 20, useCache: false);
+
 $products->bulkUpdate(
     // DATA
     ['status' => 'archived'],
