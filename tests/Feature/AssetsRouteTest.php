@@ -407,7 +407,7 @@ final class AssetsRouteTest extends TestCase
         $response->assertHeader(
             'Content-Length',
             (string) filesize(
-                base_path('resources/images/file-not-found.png'),
+                dirname(__DIR__, 2).'/resources/images/file-not-found.png',
             ),
         );
     }
