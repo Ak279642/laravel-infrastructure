@@ -228,6 +228,7 @@ final class AssetsRouteTest extends TestCase
             $url,
         );
         self::assertStringNotContainsString('disk=', $url);
+        self::assertStringNotContainsString('attribute=', $url);
         self::assertStringNotContainsString('path=', $url);
 
         $this->get($url)->assertOk();
@@ -394,8 +395,21 @@ final class AssetsRouteTest extends TestCase
         config()->set('laravel-infrastructure.assets.resources.signed-document', SignedAssetRouteDocument::class);
 
         $url = $document->getFileUrl('file_path', 'custom-preview');
-        self::assertStringContainsString('/file_path/custom-preview.webp', $url);
+        self::assertStringContainsString('/file_path/custom-preview.webp', parse_url($url, PHP_URL_PATH));
         self::assertStringNotContainsString('attribute=', $url);
+        $this->get($url)->assertOk();
+    }
+
+    public function test_unsigned_get_file_url_places_attribute_in_path(): void
+    {
+        Storage::disk('public')->put('products/private/manual.txt', 'manual-content');
+        $document = AssetRouteDocument::query()->create(['file_path' => 'products/private/manual.txt']);
+
+        $url = $document->getFileUrl('file_path', 'custom-manual');
+
+        self::assertStringContainsString('/file_path/custom-manual.txt', parse_url($url, PHP_URL_PATH));
+        self::assertStringNotContainsString('attribute=', $url);
+        self::assertStringNotContainsString('signature=', $url);
         $this->get($url)->assertOk();
     }
 
