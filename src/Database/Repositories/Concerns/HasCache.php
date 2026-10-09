@@ -87,12 +87,8 @@ trait HasCache
             'usesInfrastructureCache',
         ) || $this->model->usesInfrastructureCache();
 
-        $this->cacheEnabled = $this->cacheEnabled
-            && $modelCacheEnabled
-            && (bool) config(
-                'laravel-infrastructure.cache.enabled',
-                true,
-            );
+        // Use Laravel's default cache store; per-model/operation switches remain.
+        $this->cacheEnabled = $this->cacheEnabled && $modelCacheEnabled;
 
         if ($this->cacheTtl !== null) {
             return;
@@ -137,20 +133,8 @@ trait HasCache
             ttl: $this->cacheForever ? null : $this->cacheTtl,
             callback: $callback,
             tags: $tags,
-            lockSeconds: max(
-                1,
-                (int) config(
-                    'laravel-infrastructure.cache.lock_seconds',
-                    $this->cacheLockSeconds,
-                ),
-            ),
-            waitSeconds: max(
-                0,
-                (int) config(
-                    'laravel-infrastructure.cache.lock_wait_seconds',
-                    $this->cacheLockWaitSeconds,
-                ),
-            ),
+            lockSeconds: max(1, $this->cacheLockSeconds),
+            waitSeconds: max(0, $this->cacheLockWaitSeconds),
         );
     }
 

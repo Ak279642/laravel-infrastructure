@@ -29,6 +29,11 @@ final class AssetResponsesTest extends TestCase
         Storage::fake('public');
     }
 
+    public function test_asset_cache_policy_requires_no_package_cache_settings(): void
+    {
+        self::assertArrayNotHasKey('cache', config('laravel-infrastructure.assets'));
+    }
+
     public function test_missing_file_returns_404_image_not_html(): void
     {
         $this->get(route('laravel-infrastructure.assets.show', [

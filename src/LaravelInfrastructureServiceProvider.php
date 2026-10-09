@@ -41,7 +41,6 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->app->singleton(CacheManager::class, function ($app): CacheManager {
             return new CacheManager(
                 $app->make(CacheFactory::class),
-                config('laravel-infrastructure.cache.store'),
             );
         });
 

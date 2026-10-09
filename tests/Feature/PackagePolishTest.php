@@ -45,9 +45,7 @@ final class PackagePolishTest extends TestCase
 
     public function test_published_config_keeps_feature_defaults_out_of_global_config(): void
     {
-        self::assertNull(
-            config('laravel-infrastructure.cache.default_ttl'),
-        );
+        self::assertArrayNotHasKey('cache', config('laravel-infrastructure'));
         self::assertNull(
             config('laravel-infrastructure.slug'),
         );

@@ -1,21 +1,16 @@
 # Caching
 
-Repository reads support deterministic keys, model/dependency tags, repository-specific TTLs, per-operation overrides, one-operation bypasses, forever caching, lock protection and after-commit invalidation.
-
-## Global settings
-
-Global config controls cache infrastructure only:
+The package uses **Laravel's default cache store**. Configure it once in your application's `config/cache.php` and `.env`:
 
 ```dotenv
-LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
-LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
-LARAVEL_INFRASTRUCTURE_CACHE_LOCK_SECONDS=10
-LARAVEL_INFRASTRUCTURE_CACHE_LOCK_WAIT_SECONDS=3
+CACHE_STORE=redis
 ```
 
-There is no global repository TTL.
+No `laravel-infrastructure.cache` section, separate cache driver, or package cache environment variables are required. All repository caching, tags and locks operate through Laravel's configured cache store.
 
-## Repository TTL
+## Repository policy
+
+Repositories use a default TTL of 5 minutes, which can be changed per repository or per call:
 
 ```php
 use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
@@ -29,39 +24,25 @@ final class ProductRepository extends BaseRepository
 }
 ```
 
-If not overridden, repositories use `CacheTtl::MINUTES_5`.
-
-Per operation:
-
 ```php
-$product = $this->products
-    ->cacheTtl(CacheTtl::MINUTE)
-    ->findOrFail($id);
-
-$product = $this->products
-    ->withCache(CacheTtl::MINUTES_15)
-    ->findOrFail($id);
-
-$product = $this->products
-    ->withoutCache()
-    ->findOrFail($id);
-
-$product = $this->products
-    ->rememberForever()
-    ->findOrFail($id);
-
+$product = $this->products->cacheTtl(CacheTtl::MINUTE)->findOrFail($id);
+$product = $this->products->withCache(CacheTtl::MINUTES_15)->findOrFail($id);
+$product = $this->products->withoutCache()->findOrFail($id);
+$product = $this->products->rememberForever()->findOrFail($id);
 $this->products->clearCache();
 ```
 
-## Model-level cache switch
+Disable caching for one model using its own options:
 
 ```php
 protected function cacheOptions(): array
 {
-    return [
-        'enabled' => false,
-    ];
+    return ['enabled' => false];
 }
 ```
 
-Global disable always wins. Otherwise the model switch and repository TTL policy apply.
+For application-wide behavior, change Laravel's cache store. For operation-level bypass use `withoutCache()`. Locks use repository defaults (10-second lock, 3-second wait) and can be adjusted by overriding the repository's protected `$cacheLockSeconds` and `$cacheLockWaitSeconds`.
+
+## Image caching
+
+Public images automatically use `Cache-Control: public, max-age=86400` and metadata ETags. Protected, signed, and model-authorized images always use `private, no-store, max-age=0`. There is no separate assets cache configuration, and these HTTP browser headers are not Laravel's server-side cache store.

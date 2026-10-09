@@ -2,52 +2,68 @@
 
 declare(strict_types=1);
 
+/*
+|--------------------------------------------------------------------------
+| Laravel Infrastructure
+|--------------------------------------------------------------------------
+|
+| Only package-specific settings live here. Caching uses Laravel's own
+| config/cache.php and CACHE_STORE; no separate package cache settings.
+| Override only the sections your application actually needs.
+|
+*/
+
 return [
-    'cache' => [
-        'enabled' => env('LARAVEL_INFRASTRUCTURE_CACHE_ENABLED', true),
-        'store' => env('LARAVEL_INFRASTRUCTURE_CACHE_STORE'),
-    ],
+    // Database transaction retry count.
     'transactions' => [
         'attempts' => max(1, (int) env('LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS', 1)),
     ],
+
+    // Default upload disk and image processor. Models may override per field.
     'files' => [
         'disk' => env('LARAVEL_INFRASTRUCTURE_FILE_DISK', 'public'),
         'image' => [
             'driver' => env('LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER', 'gd'),
         ],
     ],
+
+    // The package registers and handles its own asset URLs and access rules.
     'assets' => [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED', true),
         'prefix' => env('LARAVEL_INFRASTRUCTURE_ASSETS_PREFIX', 'infrastructure/assets'),
-        // Short alias => model class. These are set by each application.
+
+        // 'product' => App\Models\Product::class
         'resources' => [],
+
+        // Only these storage disks can be requested through asset URLs.
         'allowed_disks' => ['public'],
+
+        // Per-disk folder rules, e.g. 'public' => ['private' => ['guard' => 'admin']].
         'folder_access' => [],
+
+        // Optional regex allowlists for generic (non-model) file URLs.
         'generic_path_patterns' => [],
-        // Optional legacy /uploads/{file} alias (off by default).
+
+        // Enable only if existing clients still use /uploads/{file}.
         'legacy_uploads' => [
             'enabled' => false,
             'prefix' => 'uploads',
             'disk' => 'public',
         ],
-        // One global image per HTTP error. Local absolute paths are supported;
-        // null uses the optimized WebP images bundled with this package.
+
+        // null = the included optimized WebP. Override with an absolute file path.
         'error_images' => [
             403 => null,
             404 => null,
         ],
-        'cache' => [
-            'enabled' => true,
-            // Only publicly accessible images may use shared browser/CDN caches.
-            'public_max_age' => 86400,
-            // Zero by default: signed/authenticated images must not remain
-            // available in the browser's cache after access is revoked.
-            'private_max_age' => 0,
-            // ETag is metadata-based; no file contents are loaded into memory.
-            'etag' => true,
-        ],
     ],
-    'storage_audit' => ['models' => []],
+
+    // Models whose stored files should be checked by the storage audit command.
+    'storage_audit' => [
+        'models' => [],
+    ],
+
+    // Optional database backups; uses Laravel filesystem disks.
     'database_backup' => [
         'disk' => env('LARAVEL_INFRASTRUCTURE_BACKUP_DISK', 'local'),
         'path' => env('LARAVEL_INFRASTRUCTURE_BACKUP_PATH', 'backups/database'),
@@ -57,9 +73,13 @@ return [
         'mysql_dump_binary' => env('LARAVEL_INFRASTRUCTURE_MYSQLDUMP_BINARY', ''),
         'pgsql_dump_binary' => env('LARAVEL_INFRASTRUCTURE_PG_DUMP_BINARY', ''),
     ],
+
+    // API exception handling.
     'responses' => [
         'exception_renderer_enabled' => env('LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED', true),
     ],
+
+    // Structured logs; channel falls back to Laravel's logging.default.
     'logging' => [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED', true),
         'channel' => env('LARAVEL_INFRASTRUCTURE_LOG_CHANNEL'),

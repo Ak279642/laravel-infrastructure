@@ -17,6 +17,15 @@ use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 
 final class ServiceProviderTest extends TestCase
 {
+    public function test_package_uses_laravel_default_cache_store(): void
+    {
+        self::assertArrayNotHasKey('cache', config('laravel-infrastructure'));
+        self::assertSame(
+            $this->app['cache']->store()->getStore(),
+            $this->app->make(CacheManager::class)->getStore(),
+        );
+    }
+
     public function test_core_services_are_registered(): void
     {
         self::assertInstanceOf(

@@ -18,7 +18,7 @@ Optional config:
 php artisan vendor:publish --tag=laravel-infrastructure-config
 ```
 
-The published config is intentionally small. Model behavior belongs in the model, cache TTL belongs in the repository, and safe internal defaults stay in package code.
+The published config contains only package-specific options, organized by feature. Laravel's `config/cache.php` selects the cache store; repository cache TTLs belong in repositories, and image HTTP caching is automatic.
 
 ## Features
 
@@ -881,12 +881,7 @@ foreach ($products->cursor() as $product) {
 
 # Cache usage
 
-Global settings control cache infrastructure only. TTL belongs to the repository.
-
-```dotenv
-LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
-LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
-```
+Use Laravel's default cache configuration (`config/cache.php`), not a package-specific cache driver. Set `CACHE_STORE=redis` in your application `.env` if desired. Repository TTLs remain configurable per repository.
 
 Repository default:
 
@@ -1075,8 +1070,7 @@ throw new BusinessLogicException(
 # Main environment options
 
 ```dotenv
-LARAVEL_INFRASTRUCTURE_CACHE_ENABLED=true
-LARAVEL_INFRASTRUCTURE_CACHE_STORE=redis
+CACHE_STORE=redis # Laravel's existing config/cache.php setting
 
 LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
 
@@ -1133,6 +1127,10 @@ No dependency on the host application's `App\` namespace.
 # License
 
 MIT.
+
+## Asset 403/404 images and caching
+
+Missing files return the bundled **404 File Not Found** WebP; denied requests return the bundled **403 Access Denied** WebP. Change the global images in `assets.error_images` in the published config if needed. Public images have 24-hour browser/CDN caching and ETags; signed and guarded files are never publicly cached. No separate package cache config is needed. See [asset responses](docs/asset-responses.md).
 
 ## SEO-friendly model asset URLs and cache versions
 

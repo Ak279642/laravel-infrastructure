@@ -1,54 +1,54 @@
-# Package-managed asset responses
+# Assets: package-managed files and error images
 
-The `laravel-infrastructure` package owns asset routes, access checks and image responses. Do not register an additional backend asset controller or asset authorization middleware. Optional per-model authorization belongs on the model via `authorizesAssetField(string $column): bool`.
+The package registers the asset routes, serves files, checks configured access rules, and responds with images for 403 and 404. You do **not** need an app controller, a custom asset authorization middleware, or extra route registration.
 
-## Default responses
-
-| Situation | HTTP status | Body | Cache |
+| Case | HTTP | Body | HTTP caching |
 | --- | --- | --- | --- |
-| Existing permitted asset | 200 | Original file | Public image TTL for unsigned/unprotected assets; otherwise private no-store by default |
-| Missing asset | 404 | Bundled, optimized WebP "File Not Found" | Private no-store |
-| Unauthorized request, invalid signature, or forbidden asset | 403 | Bundled, optimized WebP "Access Denied" | Private no-store |
-| Conditional request with matching ETag and current authorization | 304 | Empty | Same cache rule as permitted asset |
+| File exists and access is permitted | 200 | The actual file | Public image: 24 hours, ETag |
+| File is missing, path is invalid | 404 | Bundled File Not Found WebP | No-store |
+| Guard/signature/model denies access | 403 | Bundled Access Denied WebP | No-store |
+| Public image ETag is unchanged | 304 | Empty body | Authorized requests only |
 
-The bundled 403 and 404 images are 512×512 optimized WebP files based on the provided artwork. Error responses use the correct `Content-Type: image/webp`, status code, and `X-Content-Type-Options: nosniff`.
+The default artwork consists of the two provided error images, optimized to WebP. The response always has an image `Content-Type`, correct HTTP status, and `X-Content-Type-Options: nosniff`.
 
-## Global error images and caching
+## Global image overrides
 
-In the Laravel application `config/laravel-infrastructure.php`, override the relevant keys:
+Edit **one** section of the app's published `config/laravel-infrastructure.php`:
 
 ```php
 'assets' => [
     'error_images' => [
-        403 => resource_path('images/access-denied.webp'), // or null for bundled WebP
-        404 => resource_path('images/not-found.webp'),    // or null for bundled WebP
-    ],
-    'cache' => [
-        'enabled' => true,
-        'public_max_age' => 86400,
-        'private_max_age' => 0,
-        'etag' => true,
+        403 => resource_path('images/my-403.webp'),
+        404 => resource_path('images/my-404.webp'),
     ],
 ],
 ```
 
-Overrides can be readable local PNG, JPEG, GIF, or WebP files. Missing/unreadable or unsupported overrides fall back to the bundled WebP artwork. Error responses never use browser/shared caches.
+Both values default to `null`, which uses the artwork bundled with the package. Any readable local WebP, PNG, JPEG, or GIF image can be used. An invalid override falls back to the bundled WebP.
 
 ## Routes and access
 
-The package registers routes under its configured `assets.prefix` (`infrastructure/assets` by default). Model asset URLs use a configured resource alias and model key. Generic asset routes use `assets.allowed_disks`, `assets.folder_access` and optional `assets.generic_path_patterns` per-disk regular-expression allowlists. The optional legacy `/uploads/{file}` alias is disabled by default and uses the identical generic access checks when enabled:
+Default URL prefix: `/infrastructure/assets`. The package owns model URLs and `/{disk}/{path}` URLs. Allowed disks are configured in `assets.allowed_disks` (default `['public']`); model aliases in `assets.resources`. Guard, signature and folder access settings can be applied per model file field or in `assets.folder_access`.
 
 ```php
 'assets' => [
-    'legacy_uploads' => ['enabled' => true, 'prefix' => 'uploads', 'disk' => 'public'],
-    'generic_path_patterns' => [
-        'public' => ['#^(?:images|logos)/[a-zA-Z0-9/_-]+\\.(?:webp|jpg|jpeg|png)$#i'],
+    'resources' => ['product' => App\Models\Product::class],
+    'allowed_disks' => ['public'],
+    'folder_access' => [
+        'public' => [
+            '*' => ['signed' => false],
+            'private' => ['guard' => 'admin'],
+        ],
     ],
 ],
 ```
 
-Use model-level `access` options for signed URLs and guard checks. A model with an `authorizesAssetField()` hook never has its response shared-cached, even when the file path is publicly stored. Protected images default to `Cache-Control: private, no-store, max-age=0`.
+The optional legacy `/uploads/{file}` alias stays disabled unless `assets.legacy_uploads.enabled` is set. For generic URLs, `assets.generic_path_patterns` may allowlist paths by disk. Model-specific rules override folder rules; `authorizesAssetField(string $column): bool` remains supported on models, and such responses are never shared-cached.
+
+## Cache settings
+
+Repository data caching uses **Laravel's own** `config/cache.php` and `CACHE_STORE`, not a second package cache config. Image browser caching is automatic: only unprotected public images get a 24-hour browser/CDN TTL and metadata ETags; denied, missing, guarded and signed responses are not cached.
 
 ## Verify
 
-Run `vendor/bin/phpunit` and `vendor/bin/pint --test` in the package checkout with Composer dependencies installed. PHP syntax validation alone does not replace Laravel integration tests. Publish a separate version tag only after tests pass.
+Run `vendor/bin/phpunit` and `vendor/bin/pint --test` after `composer install`.

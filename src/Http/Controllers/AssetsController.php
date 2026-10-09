@@ -287,53 +287,35 @@ final class AssetsController
             return $response;
         }
 
-        $cache = (array) config('laravel-infrastructure.assets.cache', []);
-        if (! (bool) ($cache['enabled'] ?? true)) {
-            $response->headers->set('Cache-Control', 'private, no-store');
-            return $response;
-        }
-
+        // Public browser/CDN caching is independent of Laravel's cache store.
+        // Never persist guarded, signed, or model-authorized responses.
         $signed = array_key_exists('signed', $rule)
             ? (bool) $rule['signed']
             : (bool) config('laravel-infrastructure.assets.signed', true);
         $guard = $rule['guard'] ?? null;
         $hasGuard = is_string($guard) ? trim($guard) !== '' : (is_array($guard) && $guard !== []);
-        // Unsigned and unguarded model assets may be cached publicly.
         $isPrivate = $signed || $hasGuard || ($rule['cache_public'] ?? true) === false;
-        $ttl = max(0, (int) ($isPrivate
-            ? ($cache['private_max_age'] ?? 0)
-            : ($cache['public_max_age'] ?? 86400)));
 
-        if ($signed) {
-            $expires = $request->query('expires');
-            if (is_numeric($expires)) {
-                $ttl = min($ttl, max(0, (int) $expires - time()));
-            }
-        }
-
-        if ($ttl === 0) {
+        if ($isPrivate) {
             $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
+
             return $response;
         }
 
-        $response->headers->set(
-            'Cache-Control',
-            ($isPrivate ? 'private' : 'public').', max-age='.$ttl,
-        );
+        // Public images get browser/CDN caching and a metadata-based ETag.
+        $response->headers->set('Cache-Control', 'public, max-age=86400');
 
         // Weak ETags use metadata only, never read the whole remote image into RAM.
-        if ((bool) ($cache['etag'] ?? true)) {
-            try {
-                $filesystem = $this->filesystems->disk($disk);
-                $stamp = $filesystem->lastModified($path);
-                $size = $filesystem->size($path);
-                $etag = 'W/"'.substr(hash('sha256', $disk.'|'.$path.'|'.$stamp.'|'.$size), 0, 32).'"';
-                $response->headers->set('ETag', $etag);
-                // Conditional requests are evaluated only after all access checks.
-                $response->isNotModified($request);
-            } catch (Throwable) {
-                // Some remote disks cannot provide file metadata.
-            }
+        try {
+            $filesystem = $this->filesystems->disk($disk);
+            $stamp = $filesystem->lastModified($path);
+            $size = $filesystem->size($path);
+            $etag = 'W/"'.substr(hash('sha256', $disk.'|'.$path.'|'.$stamp.'|'.$size), 0, 32).'"';
+            $response->headers->set('ETag', $etag);
+            // Conditional requests are evaluated only after all access checks.
+            $response->isNotModified($request);
+        } catch (Throwable) {
+            // Some remote disks cannot provide file metadata.
         }
 
         return $response;
