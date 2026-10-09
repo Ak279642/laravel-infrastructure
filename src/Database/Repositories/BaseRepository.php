@@ -18,6 +18,7 @@ use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\Pagination\Paginator;
+use Illuminate\Pagination\Paginator as ConcretePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -330,7 +331,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         }
 
         $columns = $this->safeColumns($columns);
-        $page ??= LengthAwarePaginator::resolveCurrentPage($pageName);
+        $page ??= ConcretePaginator::resolveCurrentPage($pageName);
         $query = $this->buildQuery($filters);
 
         // Include the scoped SQL and bindings so different tenant/user scopes
@@ -352,7 +353,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
                 'per_page' => $perPage,
                 'page_name' => $pageName,
                 'page' => $page,
-                'path' => LengthAwarePaginator::resolveCurrentPath(),
+                'path' => ConcretePaginator::resolveCurrentPath(),
                 'connection' => $this->model->getConnection()->getName(),
                 'sql' => $scopedQuery->toSql(),
                 'bindings' => $scopedQuery->getBindings(),
