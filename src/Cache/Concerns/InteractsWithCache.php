@@ -89,45 +89,82 @@ trait InteractsWithCache
     }
 
     /**
-     * Opt-in ownership partition. Unconfigured models retain model-wide invalidation.
-     * A scope must be enforced by the repository, not merely added to a cache key.
+     * Resolve ownership dimensions without database queries. Legacy scope/scope_column
+     * and new scopes mappings are supported. Each mapping's value can be a user
+     * attribute name, "auth.id", or an explicit closure resolver.
      *
-     * @return array{column:string,value:int|string,tag:string}|null
+     * @return array<string, int|string>
      */
-    public function infrastructureCacheScope(): ?array
+    public function infrastructureCacheScopes(): array
     {
         $options = $this->cacheOptions();
-        $scope = $options['scope'] ?? null;
-        if (! in_array($scope, ['user', 'tenant'], true)) {
-            return null;
+        $definitions = $options['scopes'] ?? null;
+        if ($definitions === null && in_array($options['scope'] ?? null, ['user', 'tenant'], true)) {
+            $type = $options['scope'];
+            $column = $this->infrastructureScopeColumn();
+            $definitions = [$column => $type === 'user' ? 'auth.id' : 'auth.'.$column];
         }
-
-        $column = $options['scope_column'] ?? ($scope === 'user' ? 'user_id' : 'tenant_id');
-        if (! is_string($column) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1) {
-            throw new \InvalidArgumentException('Invalid cache scope column.');
+        if ($definitions === null) {
+            return [];
+        }
+        if (! is_array($definitions) || $definitions === []) {
+            throw new \InvalidArgumentException('Cache scopes must be a non-empty column-to-resolver map.');
         }
 
         $user = auth()->user();
-        $value = $scope === 'user' ? auth()->id() : $user?->getAttribute($column);
-        if (! is_int($value) && (! is_string($value) || $value === '')) {
-            throw new \RuntimeException('An authenticated cache scope is required.');
+        if ($user === null) {
+            throw new \RuntimeException('Authenticated cache scope is required.');
         }
 
+        $resolved = [];
+        foreach ($definitions as $column => $source) {
+            if (! is_string($column) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1) {
+                throw new \InvalidArgumentException('Invalid cache scope column.');
+            }
+            $value = match (true) {
+                $source === 'auth.id' => $user->getAuthIdentifier(),
+                is_string($source) && str_starts_with($source, 'auth.') =>
+                    $user->getAttribute(substr($source, 5)),
+                $source instanceof \Closure => $source($user),
+                default => throw new \InvalidArgumentException('Invalid cache scope resolver.'),
+            };
+            if (! is_int($value) && (! is_string($value) || $value === '')) {
+                throw new \RuntimeException('A non-empty authenticated cache scope is required.');
+            }
+            $resolved[$column] = $value;
+        }
+        ksort($resolved);
+
+        return $resolved;
+    }
+
+    /** @return array{column:string,value:int|string,tag:string}|null */
+    public function infrastructureCacheScope(): ?array
+    {
+        $scopes = $this->infrastructureCacheScopes();
+        if ($scopes === []) {
+            return null;
+        }
+
+        $column = array_key_first($scopes);
         return [
             'column' => $column,
-            'value' => $value,
-            'tag' => static::cacheTag().':scope:'.$scope.':'.hash('sha256', (string) $value),
+            'value' => $scopes[$column],
+            'tag' => $this->infrastructureScopeTagForValues($scopes),
         ];
+    }
+
+    /** @param array<string,int|string> $values */
+    public function infrastructureScopeTagForValues(array $values): string
+    {
+        ksort($values);
+        return static::cacheTag().':scope:'.hash('sha256', json_encode($values, JSON_THROW_ON_ERROR));
     }
 
     public function infrastructureScopeTagFor(int|string $value): ?string
     {
-        $scope = $this->cacheOptions()['scope'] ?? null;
-        if (! in_array($scope, ['user', 'tenant'], true)) {
-            return null;
-        }
-
-        return static::cacheTag().':scope:'.$scope.':'.hash('sha256', (string) $value);
+        $column = $this->infrastructureScopeColumn();
+        return $column === null ? null : $this->infrastructureScopeTagForValues([$column => $value]);
     }
 
     public function infrastructureScopeColumn(): ?string
@@ -136,13 +173,25 @@ trait InteractsWithCache
         if (! in_array($options['scope'] ?? null, ['user', 'tenant'], true)) {
             return null;
         }
-
         $column = $options['scope_column'] ?? ($options['scope'] === 'user' ? 'user_id' : 'tenant_id');
         if (! is_string($column) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1) {
             throw new \InvalidArgumentException('Invalid cache scope column.');
         }
-
         return $column;
+    }
+
+    /**
+     * Visibility resolvers may add OR/global conditions and must return a Builder.
+     * Their cache dependencies cannot be inferred from ownership columns, so
+     * affected caches use conservative model-wide invalidation.
+     */
+    public function infrastructureVisibilityResolver(): ?\Closure
+    {
+        $resolver = $this->cacheOptions()['visibility_resolver'] ?? null;
+        if ($resolver !== null && ! $resolver instanceof \Closure) {
+            throw new \InvalidArgumentException('Visibility resolver must be a closure.');
+        }
+        return $resolver;
     }
 
     public static function cacheTag(): string
@@ -247,20 +296,37 @@ trait InteractsWithCache
 
     public function getCacheInvalidationTags(): array
     {
-        $column = $this->infrastructureScopeColumn();
-        if ($column !== null) {
-            $tags = [];
-            foreach ([$this->getRawOriginal($column), $this->getAttribute($column)] as $value) {
-                if (is_int($value) || (is_string($value) && $value !== '')) {
-                    $tags[] = $this->infrastructureScopeTagFor($value);
-                }
-            }
-            return CacheTag::tags(...$tags);
+        $options = $this->cacheOptions();
+        if (isset($options['visibility_resolver'])) {
+            return [static::cacheTag()];
         }
 
-        return CacheTag::merge(
-            [static::cacheTag()],
-            $this->getCacheTags(),
+        $definitions = $options['scopes'] ?? null;
+        if ($definitions === null) {
+            $column = $this->infrastructureScopeColumn();
+            $definitions = $column === null ? [] : [$column => true];
+        }
+        if ($definitions === []) {
+            return CacheTag::merge([static::cacheTag()], $this->getCacheTags());
+        }
+
+        $old = [];
+        $new = [];
+        foreach (array_keys($definitions) as $column) {
+            if (! is_string($column)) {
+                throw new \InvalidArgumentException('Invalid cache scope column.');
+            }
+            $previous = $this->getRawOriginal($column);
+            $current = $this->getAttribute($column);
+            if (! is_int($current) && (! is_string($current) || $current === '')) {
+                return [static::cacheTag()];
+            }
+            $new[$column] = $current;
+            $old[$column] = is_int($previous) || (is_string($previous) && $previous !== '') ? $previous : $current;
+        }
+        return CacheTag::tags(
+            $this->infrastructureScopeTagForValues($old),
+            $this->infrastructureScopeTagForValues($new),
         );
     }
 
