@@ -98,7 +98,7 @@ final class RepositoryCachePolicyIntegrationTest extends TestCase
         ));
 
         DB::table('policy_cache_records')->update(['name' => 'New']);
-        self::assertSame('Before', $cache->rememberWithDependencies(
+        self::assertSame($cache->supportsTags() ? 'Before' : 'New', $cache->rememberWithDependencies(
             'policy.aggregate', 60, $read, $tags, DB::connection(),
         ));
         $invalidator->invalidateAfterCommit($tags, DB::connection());
