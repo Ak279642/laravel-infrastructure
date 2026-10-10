@@ -23,6 +23,14 @@ final class ScopedRepositoryCacheTest extends TestCase
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
         ]);
         $app['config']->set('cache.default', 'array');
+        $app['config']->set('auth.providers.scoped_cache', [
+            'driver' => 'eloquent', 'model' => ScopedCacheActor::class,
+        ]);
+        foreach (['partner', 'agent'] as $guard) {
+            $app['config']->set('auth.guards.'.$guard, [
+                'driver' => 'session', 'provider' => 'scoped_cache',
+            ]);
+        }
     }
 
     protected function setUp(): void
@@ -32,6 +40,8 @@ final class ScopedRepositoryCacheTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('user_id');
             $table->unsignedBigInteger('tenant_id')->default(10);
+            $table->unsignedBigInteger('assigned_to')->nullable();
+            $table->unsignedBigInteger('assigned_by')->nullable();
             $table->boolean('is_global')->default(false);
             $table->string('name');
             $table->timestamps();
@@ -161,6 +171,87 @@ final class ScopedRepositoryCacheTest extends TestCase
         self::assertSame(['Updated'], $repository->get()->pluck('name')->all());
     }
 
+    public function test_single_named_guard_can_filter_a_custom_column(): void
+    {
+        $repository = new ScopedCacheRepository(new PartnerGuardCacheRecord, app(CacheManager::class));
+
+        try {
+            $repository->get();
+            self::fail('Expected missing guard to deny reads.');
+        } catch (\RuntimeException $e) {
+            self::assertSame('Authenticated cache scope is required.', $e->getMessage());
+        }
+
+        $this->be(new ScopedCacheActor(['id' => 101]), 'partner');
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+
+        $this->be(new ScopedCacheActor(['id' => 102]), 'partner');
+        self::assertSame(['Second'], $repository->get()->pluck('name')->all());
+
+        PartnerGuardCacheRecord::query()->findOrFail(2)->update(['name' => 'Updated']);
+        self::assertSame(['Updated'], $repository->get()->pluck('name')->all());
+    }
+
+    public function test_repeated_guard_supports_different_columns_with_or(): void
+    {
+        DB::table('scoped_cache_records')->insert([
+            ['id' => 3, 'user_id' => 999, 'assigned_to' => 101, 'assigned_by' => 102, 'name' => 'Shared assignment'],
+            ['id' => 4, 'user_id' => 888, 'assigned_to' => 102, 'assigned_by' => 103, 'name' => 'Second assignment'],
+        ]);
+        $repository = new ScopedCacheRepository(new AssignedGuardCacheRecord, app(CacheManager::class));
+
+        $this->be(new ScopedCacheActor(['id' => 101]), 'partner');
+        self::assertSame(['First', 'Shared assignment'], $repository->get()->pluck('name')->all());
+
+        $this->be(new ScopedCacheActor(['id' => 102]), 'partner');
+        self::assertSame(['Second', 'Shared assignment', 'Second assignment'], $repository->get()->pluck('name')->all());
+
+        AssignedGuardCacheRecord::query()->findOrFail(3)->update(['name' => 'Changed assignment']);
+        self::assertContains('Changed assignment', $repository->get()->pluck('name')->all());
+
+        $this->be(new ScopedCacheActor(['id' => 101]), 'partner');
+        self::assertContains('Changed assignment', $repository->get()->pluck('name')->all());
+    }
+
+    public function test_repeated_guard_uses_and_by_default(): void
+    {
+        DB::table('scoped_cache_records')->where('id', 1)->update(['assigned_to' => 101]);
+        DB::table('scoped_cache_records')->where('id', 2)->update(['assigned_to' => 101]);
+        $repository = new ScopedCacheRepository(new AssignedAndGuardCacheRecord, app(CacheManager::class));
+
+        $this->be(new ScopedCacheActor(['id' => 101]), 'partner');
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+
+        $this->be(new ScopedCacheActor(['id' => 102]), 'partner');
+        self::assertSame([], $repository->get()->pluck('name')->all());
+    }
+
+    public function test_multiple_named_guards_and_custom_guard_attribute(): void
+    {
+        $repository = new ScopedCacheRepository(new MultipleGuardsCacheRecord, app(CacheManager::class));
+
+        $this->be(new ScopedCacheActor(['id' => 101]), 'partner');
+        $this->be(new ScopedCacheActor(['id' => 77, 'tenant_id' => 10]), 'agent');
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+
+        $this->be(new ScopedCacheActor(['id' => 77, 'tenant_id' => 20]), 'agent');
+        self::assertSame([], $repository->get()->pluck('name')->all());
+    }
+
+    public function test_global_scope_and_guard_rules_apply_together(): void
+    {
+        DB::table('scoped_cache_records')->insert([
+            ['id' => 3, 'user_id' => 101, 'name' => 'Hidden', 'is_global' => true],
+        ]);
+        $repository = new ScopedCacheRepository(new GlobalAndGuardCacheRecord, app(CacheManager::class));
+
+        $this->be(new ScopedCacheActor(['id' => 101]), 'partner');
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+
+        $this->be(new ScopedCacheActor(['id' => 102]), 'partner');
+        self::assertSame(['Second'], $repository->get()->pluck('name')->all());
+    }
+
     public function test_explicit_global_visibility_includes_global_records_and_refreshes_after_changes(): void
     {
         DB::table('scoped_cache_records')->insert([
@@ -280,5 +371,90 @@ final class GlobalScopeOnlyRecord extends Model implements CacheableModel
         static::addGlobalScope('owner', static function (\Illuminate\Database\Eloquent\Builder $query): void {
             $query->where('user_id', request()->attributes->get('user_id'));
         });
+    }
+}
+
+final class PartnerGuardCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return ['scope' => ['column' => 'user_id', 'guard' => 'partner']];
+    }
+}
+
+final class AssignedGuardCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return [
+            'scopes' => [
+                ['column' => 'user_id', 'guard' => 'partner'],
+                ['column' => 'assigned_to', 'guard' => 'partner'],
+                ['column' => 'assigned_by', 'guard' => 'partner'],
+            ],
+            'scope_operator' => 'or',
+        ];
+    }
+}
+
+final class AssignedAndGuardCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return ['scopes' => [
+            ['column' => 'user_id', 'guard' => 'partner'],
+            ['column' => 'assigned_to', 'guard' => 'partner'],
+        ]];
+    }
+}
+
+final class MultipleGuardsCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return ['scopes' => [
+            ['column' => 'user_id', 'guard' => 'partner'],
+            ['column' => 'tenant_id', 'guard' => 'agent', 'attribute' => 'tenant_id'],
+        ]];
+    }
+}
+
+final class GlobalAndGuardCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('published', static function (\Illuminate\Database\Eloquent\Builder $query): void {
+            $query->where('is_global', false);
+        });
+    }
+
+    protected function cacheOptions(): array
+    {
+        return ['scope' => ['column' => 'user_id', 'guard' => 'partner']];
     }
 }
