@@ -254,6 +254,10 @@ trait InteractsWithCache
                     $loadedDefaultGuard = true;
                 }
                 $actor ??= $this->infrastructureVisibilityActor();
+                if ($user === null && $actor === null && is_string($source)
+                    && (str_starts_with($source, 'auth.') || str_starts_with($source, 'actor.'))) {
+                    throw new \RuntimeException('Authenticated cache scope is required.');
+                }
                 $value = match (true) {
                     $source === 'auth.id' => $user?->getAuthIdentifier() ?? ($actor['id'] ?? null),
                     is_string($source) && str_starts_with($source, 'auth.') =>

@@ -308,7 +308,7 @@ final class ScopedRepositoryCacheTest extends TestCase
     public function test_tenant_and_owner_visibility_preserves_other_partitions(): void
     {
         DB::table('scoped_cache_records')->insert([
-            ['id' => 3, 'tenant_id' => 20, 'user_id' => 101, 'name' => 'Separate tenant'],
+            ['id' => 3, 'tenant_id' => 20, 'user_id' => 101, 'assigned_to' => null, 'name' => 'Separate tenant'],
             ['id' => 4, 'tenant_id' => 10, 'user_id' => 999, 'assigned_to' => 101, 'name' => 'Delegated'],
         ]);
         $repository = new ScopedCacheRepository(new TenantAssignmentRecord, app(CacheManager::class));
