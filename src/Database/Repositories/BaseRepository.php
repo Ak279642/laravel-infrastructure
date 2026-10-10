@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure\Database\Repositories;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
+use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasBulkCache;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasCache;
@@ -182,6 +183,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function clearCache(): void
     {
+        RequestReadCache::clear();
         $targeted = method_exists($this->model, 'infrastructureUsesTargetedCacheInvalidation')
             && $this->model->infrastructureUsesTargetedCacheInvalidation();
         $tags = $targeted
