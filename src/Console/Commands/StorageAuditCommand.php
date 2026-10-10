@@ -334,7 +334,7 @@ final class StorageAuditCommand extends Command
                     foreach ($models as $record) {
                         foreach ($scopes as $scopeKey => $scope) {
                             foreach ($scope['columns'] as $column) {
-                                $value = $record->getAttribute($column);
+                                $value = $record->getRawOriginal($column);
 
                                 if (! is_string($value) || trim($value) === '') {
                                     continue;

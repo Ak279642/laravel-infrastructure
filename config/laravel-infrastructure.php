@@ -93,6 +93,5 @@ return [
         'correlation_header' => 'X-Request-ID',
         'accept_incoming_correlation_id' => true,
         'domain_enabled' => [],
-        'domain_channels' => [],
     ],
 ];

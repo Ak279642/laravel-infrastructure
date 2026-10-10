@@ -144,9 +144,12 @@ final class CustomLog
 
         $message = (string) LogContextRedactor::redact($message);
 
-        $channel = config(
-            "laravel-infrastructure.logging.domain_channels.{$domainName}",
-        ) ?? config('laravel-infrastructure.logging.channel');
+        // Generic package domains and application-specific domains are resolved
+        // from channels owned by config/logging.php.
+        $namedChannel = 'domain_'.$domainName;
+        $channel = config('logging.channels.'.$namedChannel) !== null
+            ? $namedChannel
+            : config('laravel-infrastructure.logging.channel');
 
         try {
             $logger = app('log');
