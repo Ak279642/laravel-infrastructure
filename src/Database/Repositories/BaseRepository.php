@@ -92,6 +92,9 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $globalVisibilityScope = 'App'.'\\Scopes\\VisibilityScope';
         if ($visibility !== null && class_exists($globalVisibilityScope)
             && $query->hasGlobalScope($globalVisibilityScope)) {
+            if ($actor === null) {
+                $query->whereRaw('1 = 0');
+            }
             return $query;
         }
 
