@@ -8,6 +8,7 @@ use Ak279642\LaravelInfrastructure\Cache\CacheKey;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
+use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Illuminate\Database\Eloquent\Model;
 
@@ -100,6 +101,23 @@ trait HasCache
         );
     }
 
+    /**
+     * Optional policy for authenticated or permission-sensitive reads.
+     *
+     * Return null for the package's default persistent cache.
+     * Return ['mode' => 'request'] for one-request memoization,
+     * ['mode' => 'none'] to bypass, or ['mode' => 'persistent',
+     * 'params' => [...], 'ttl' => 120] to customize the cache identity/TTL.
+     * The policy must include any authorization context that is not already
+     * represented by Eloquent scopes and their SQL bindings.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function cacheReadPolicy(string $operation, array $params): ?array
+    {
+        return null;
+    }
+
     protected function cacheRemember(
         string $operation,
         callable $callback,
@@ -121,6 +139,39 @@ trait HasCache
         // uncommitted state that disappears on rollback.
         if ($this->getModel()->getConnection()->transactionLevel() > 0) {
             return $callback();
+        }
+
+        $policy = $this->cacheReadPolicy($operation, $params);
+        if ($policy !== null) {
+            $mode = $policy['mode'] ?? 'persistent';
+            if (! in_array($mode, ['persistent', 'request', 'none'], true)) {
+                throw new \InvalidArgumentException('Invalid repository cache policy mode.');
+            }
+
+            if ($mode === 'none') {
+                return $callback();
+            }
+
+            $context = $policy['params'] ?? [];
+            if (! is_array($context)) {
+                throw new \InvalidArgumentException('Repository cache policy params must be an array.');
+            }
+            // Never let policy context overwrite the caller's operation inputs.
+            $params['__cache_policy'] = $context;
+
+            if ($mode === 'request') {
+                return RequestReadCache::remember(
+                    $this->getCacheKey($operation, $this->normalizeRepositoryCacheParams($params)),
+                    $callback,
+                );
+            }
+
+            if ($ttlOverride === null && isset($policy['ttl'])) {
+                if (! is_int($policy['ttl']) || $policy['ttl'] < 1) {
+                    throw new \InvalidArgumentException('Repository cache policy TTL must be a positive integer.');
+                }
+                $ttlOverride = $policy['ttl'];
+            }
         }
 
         $tags = $this->resolveCacheTags($params);
