@@ -10,6 +10,7 @@ use Illuminate\Cache\Repository;
 use Illuminate\Cache\TaggableStore;
 use Illuminate\Cache\TaggedCache;
 use Illuminate\Database\Connection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -544,7 +545,7 @@ final class CacheManager
         }
 
         try {
-            $result = $this->store($normalizedTags)->flush();
+            $result = $this->store($normalizedTags, false)->flush();
 
             // Log::info('Cache TAG FLUSH', [
             //     'tags' => $normalizedTags,
@@ -606,9 +607,13 @@ final class CacheManager
         return $this->store->getStore() instanceof TaggableStore;
     }
 
-    private function store(array $tags = []): Repository|TaggedCache
+    private function store(array $tags = [], bool $forRead = true): Repository|TaggedCache
     {
         $normalizedTags = CacheTag::tags(...$tags);
+        if ($forRead && $normalizedTags !== []
+            && (bool) config('laravel-infrastructure.cache.auto_invalidation.enabled', false)) {
+            $normalizedTags = CacheTag::withReadDependencies($normalizedTags, DB::connection());
+        }
 
         if ($normalizedTags === []) {
             return $this->store;
