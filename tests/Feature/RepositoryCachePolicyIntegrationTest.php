@@ -107,6 +107,41 @@ final class RepositoryCachePolicyIntegrationTest extends TestCase
         ));
     }
 
+    public function test_dependency_batch_lookup_and_write_share_a_safe_tagged_cache(): void
+    {
+        $cache = app(CacheManager::class);
+        $invalidator = app(CacheInvalidator::class);
+        $tags = [CacheTag::fromModel(PolicyCacheRecord::class)];
+
+        // The non-computing API lets callers group multiple misses into one SQL query.
+        $missing = new \stdClass;
+        self::assertSame($missing, $cache->getWithDependencies(
+            'policy.metrics', $missing, $tags, DB::connection(),
+        ));
+
+        $cache->putWithDependencies('policy.metrics', ['count' => 1], 60, $tags, DB::connection());
+        $value = $cache->getWithDependencies('policy.metrics', $missing, $tags, DB::connection());
+        if ($cache->supportsTags()) {
+            self::assertSame(['count' => 1], $value);
+        } else {
+            self::assertSame($missing, $value);
+        }
+
+        DB::transaction(function () use ($cache, $tags, $missing): void {
+            self::assertSame($missing, $cache->getWithDependencies(
+                'policy.metrics', $missing, $tags, DB::connection(),
+            ));
+            self::assertFalse($cache->putWithDependencies(
+                'policy.metrics', ['count' => 999], 60, $tags, DB::connection(),
+            ));
+        });
+
+        $invalidator->invalidateAfterCommit($tags, DB::connection());
+        self::assertSame($missing, $cache->getWithDependencies(
+            'policy.metrics', $missing, $tags, DB::connection(),
+        ));
+    }
+
     public function test_request_cache_supports_null_and_explicit_clear(): void
     {
         $calls = 0;
