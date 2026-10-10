@@ -219,6 +219,27 @@ $product->document_path = $request->file('document');
 $product->save();
 ```
 
+You can also upload from a public HTTPS URL using the same model file attributes and existing image processing, naming, disk, and cleanup settings:
+
+```php
+$product->image_path = 'https://example.com/images/product.jpg';
+$product->save();
+```
+
+Or store a URL directly using `FileStorage`:
+
+```php
+use Ak279642\LaravelInfrastructure\Files\FileStorage;
+
+$path = app(FileStorage::class)->storeFromUrl(
+    'https://example.com/images/product.jpg',
+    'products',
+);
+```
+
+URL uploads require HTTPS and a publicly resolving hostname. Redirects and restricted IP addresses are rejected, and downloads are limited to 20 MB.
+
+
 For `image_path` above the package will:
 
 ```text
