@@ -134,6 +134,19 @@ final class ScopedRepositoryCacheTest extends TestCase
         self::assertNull($repository->find(1));
     }
 
+    public function test_class_visibility_resolver_accepts_request_actor(): void
+    {
+        $repository = new ScopedCacheRepository(new ClassResolverCacheRecord, app(CacheManager::class));
+        request()->attributes->set('user_id', 101);
+        request()->attributes->set('user_type', 'user');
+
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+
+        request()->attributes->set('user_type', 'partner');
+        request()->attributes->set('user_id', 102);
+        self::assertSame(['Second'], $repository->get()->pluck('name')->all());
+    }
+
     public function test_explicit_global_visibility_includes_global_records_and_refreshes_after_changes(): void
     {
         DB::table('scoped_cache_records')->insert([
@@ -213,5 +226,30 @@ final class RequestActorCacheRecord extends Model implements CacheableModel
     protected function cacheOptions(): array
     {
         return ['scopes' => ['user_id' => 'actor.id']];
+    }
+}
+
+final class ClassResolverCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return ['visibility_resolver' => ScopedTestVisibilityResolver::class];
+    }
+}
+
+final class ScopedTestVisibilityResolver
+{
+    public function apply(
+        \\Illuminate\\Database\\Eloquent\\Builder $query,
+        Model $model,
+        ?string $actorType = null,
+        int|string|null $actorId = null,
+    ): \\Illuminate\\Database\\Eloquent\\Builder {
+        return $query->where($model->qualifyColumn('user_id'), $actorId);
     }
 }
