@@ -77,10 +77,22 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     public function query(): Builder
     {
         $query = $this->model->newQuery();
-        if (method_exists($this->model, 'infrastructureCacheScope')) {
-            $scope = $this->model->infrastructureCacheScope();
-            if ($scope !== null) {
-                $query->where($this->model->qualifyColumn($scope['column']), $scope['value']);
+        if (method_exists($this->model, 'infrastructureCacheScopes')) {
+            $scopes = $this->model->infrastructureCacheScopes();
+            $visibility = $this->model->infrastructureVisibilityResolver();
+            if ($visibility !== null) {
+                $query->where(function (Builder $builder) use ($scopes, $visibility): void {
+                    $builder->where(function (Builder $owned) use ($scopes): void {
+                        foreach ($scopes as $column => $value) {
+                            $owned->where($this->model->qualifyColumn($column), $value);
+                        }
+                    });
+                    $visibility($builder, auth()->user(), $scopes);
+                });
+            } else {
+                foreach ($scopes as $column => $value) {
+                    $query->where($this->model->qualifyColumn($column), $value);
+                }
             }
         }
 
