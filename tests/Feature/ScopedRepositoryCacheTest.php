@@ -245,11 +245,11 @@ final class ClassResolverCacheRecord extends Model implements CacheableModel
 final class ScopedTestVisibilityResolver
 {
     public function apply(
-        \\Illuminate\\Database\\Eloquent\\Builder $query,
+        \Illuminate\Database\Eloquent\Builder $query,
         Model $model,
         ?string $actorType = null,
         int|string|null $actorId = null,
-    ): \\Illuminate\\Database\\Eloquent\\Builder {
+    ): \Illuminate\Database\Eloquent\Builder {
         return $query->where($model->qualifyColumn('user_id'), $actorId);
     }
 }
