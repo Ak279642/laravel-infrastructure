@@ -32,7 +32,7 @@ final class AutomaticQueryInvalidator
 
         $connection = $event->connection;
         $tags = [];
-        $dependencies = config('laravel-infrastructure.cache.auto_invalidation.table_dependencies', []);
+        $dependencies = config('laravel-infrastructure.auto_invalidation.table_dependencies', []);
         if ($tables === []) {
             $tags[] = SqlCacheDependency::databaseTag($connection);
         }
