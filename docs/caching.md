@@ -43,24 +43,39 @@ protected function cacheOptions(): array
 
 For application-wide behavior, change Laravel's cache store. For operation-level bypass use `withoutCache()`. Locks use repository defaults (10-second lock, 3-second wait) and can be adjusted by overriding the repository's protected `$cacheLockSeconds` and `$cacheLockWaitSeconds`.
 
-## User and tenant scoped caching (opt-in)
+## User, tenant, multi-scope and global visibility (opt-in)
 
-Models using `InteractsWithCache` can opt into owner-level cache partitioning:
+The legacy `scope => user|tenant` / `scope_column` configuration remains supported. For AND-combined ownership, configure a column-to-authenticated-value mapping:
 
 ```php
 protected function cacheOptions(): array
 {
     return [
-        'enabled' => true,
-        'scope' => 'user',       // or 'tenant'
-        'scope_column' => 'user_id', // for tenant scope: 'tenant_id'
+        'scopes' => [
+            'tenant_id' => 'auth.tenant_id',
+            'user_id' => 'auth.id',
+        ],
     ];
 }
 ```
 
-The repository adds an ownership `WHERE` clause on queries, partitions cache keys by the authenticated scope, and tags only that owner's entries. User scope uses the authenticated user ID; tenant scope reads the configured column from the authenticated user. Missing authentication/scope values fail closed. This applies to repository reads and mutations; don't enable it for administrative or cross-owner repositories. Direct unscoped Eloquent queries are outside these repository boundaries.
+Every dimension is enforced as a query `WHERE` clause, included in repository cache keys and used for targeted composite ownership tags. Supported value resolvers: `auth.id`, `auth.<attribute>` or a closure accepting the authenticated user and returning a nonempty scalar. Missing credentials or values fail closed. Scope changes invalidate previous and new composite partitions after commit using in-memory attributes, without extra ownership queries.
 
-Model events invalidate the previous and new owner tags on create/update/delete/restore, after commit, using loaded attributes (no extra ownership query). Repository writes and `clearCache()` target the active scope. Models without scope configuration keep the previous model-wide invalidation; global/shared or cross-model cached reports need explicit invalidation of their own dependencies. Use a tag-capable store like Redis. Non-taggable stores preserve the safe uncached repository fallback.
+For explicitly shared or global records, define an OR visibility resolver:
+
+```php
+protected function cacheOptions(): array
+{
+    return [
+        'scopes' => ['tenant_id' => 'auth.tenant_id', 'user_id' => 'auth.id'],
+        'visibility_resolver' => static function ($query, $user, array $scopes): void {
+            $query->orWhere('is_global', true); // only if truly visible to all actors
+        },
+    ];
+}
+```
+
+The repository builds `(owned conditions OR visibility conditions)`; implement authorization carefully inside the resolver. Cache keys also include the authenticated actor ID. Because shared/global results may be visible across scope partitions, enabling this resolver conservatively keeps **model-wide invalidation** rather than potentially serving stale results. Direct Eloquent queries, custom cached reports, membership changes and external query builders need their own authorization and invalidation rules; this package does not infer relationship-based visibility. Do not use a scoped repository for administrative cross-owner writes. Use Redis or another tag-capable store; the existing uncached fallback remains on non-taggable stores.
 
 ## Image caching
 
