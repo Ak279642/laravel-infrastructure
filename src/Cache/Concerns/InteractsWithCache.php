@@ -200,9 +200,9 @@ trait InteractsWithCache
         }
         if (is_object($resolver) && method_exists($resolver, 'resolve')) {
             $actor = $resolver->resolve();
-            return is_array($actor) && isset($actor['id'], $actor['type'])
-                ? $actor
-                : null;
+            if (is_array($actor) && isset($actor['id'], $actor['type'])) {
+                return $actor;
+            }
         }
 
         $attributes = request()->attributes;
