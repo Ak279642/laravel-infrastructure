@@ -285,3 +285,51 @@ to those dependencies. These operations do not introduce additional database
 reads; Redis/tag support is recommended.
 
 
+
+## Automatic raw-SQL and pivot invalidation (opt-in)
+
+Laravel Infrastructure can observe **successful** database writes without
+turning set-based mutations into N individual Eloquent saves. Opt in:
+
+```php
+// config/laravel-infrastructure.php
+'auto_invalidation' => [
+    'enabled' => true,
+    // Declarative cross-table dependencies, not per-write flush calls:
+    'table_dependencies' => [
+        'partner_pincodes' => [Partner::class, ServiceRequest::class],
+        'admin_role_permissions' => [AdminRole::class, Admin::class],
+    ],
+],
+```
+
+- The package listens to Laravel `QueryExecuted` (SQL **already executed**),
+  parses standard INSERT/UPDATE/DELETE/REPLACE/TRUNCATE targets and attaches
+  physical table tags to repository and model-tagged custom cached reads.
+- On a successful write, the relevant table and declared dependent model tags
+  are invalidated. Within transactions, changed tags are deduplicated and
+  flushed once after commit; full rollback discards them.
+- Changes to pivot/visibility tables cannot always be inferred from the
+  cached root model: declare their affected models once in
+  `table_dependencies`. The application does not call an invalidation method
+  after each write.
+- No additional database queries, model hydration, or per-record updates.
+  The package still honors its existing `cacheReadPolicy` and scope logic.
+- Complex or unrecognized mutation SQL invalidates a conservative
+  connection/database fallback tag rather than risking stale results.
+- This mode is intentionally **more conservative** than scoped Eloquent
+  observer invalidation. Writes can evict unrelated cached owner partitions
+  for the same physical table. Measure Redis hit rate before enabling it
+  globally when extremely high cache retention is required.
+- The watcher observes only writes executed through **the current Laravel
+  connection**. External jobs/applications writing through another process
+  with no watcher, database triggers writing other tables, queue events that
+  do not write through Laravel, and arbitrary untagged cache keys cannot be
+  made automatically coherent without an external change feed.
+- Use a tag-capable Laravel store (Redis recommended). No separate package
+  cache store exists. Repository read caching falls back to uncached reads
+  on stores without tags to preserve correctness.
+
+**This is automatic invalidation, not automatic caching of `query()`.**
+Repository methods and explicit package cache operations remain the read
+caching boundary.

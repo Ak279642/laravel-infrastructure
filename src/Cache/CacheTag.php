@@ -4,11 +4,50 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Cache;
 
+use Illuminate\Database\Connection;
+use Illuminate\Database\Eloquent\Model;
+
 final class CacheTag
 {
+    /** @var array<string, string> */
+    private static array $modelTables = [];
+
     public static function fromModel(string $modelClass): string
     {
-        return 'model:'.strtolower(str_replace('\\', '.', $modelClass));
+        $tag = 'model:'.strtolower(str_replace('\\', '.', $modelClass));
+        if (is_subclass_of($modelClass, Model::class) && ! isset(self::$modelTables[$tag])) {
+            // Constructing Eloquent model metadata performs no SELECT queries.
+            self::$modelTables[$tag] = (new $modelClass)->getTable();
+        }
+
+        return $tag;
+    }
+
+    /**
+     * Add physical table dependencies to cache READS only. Invalidation calls
+     * must retain their exact tags or scoped Eloquent writes would fan out to
+     * unrelated owners.
+     */
+    public static function withReadDependencies(array $tags, Connection $connection): array
+    {
+        $tags = self::tags(...$tags);
+        if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
+            return $tags;
+        }
+
+        $expanded = $tags;
+        $hasTable = false;
+        foreach ($tags as $tag) {
+            if (isset(self::$modelTables[$tag])) {
+                $expanded[] = SqlCacheDependency::tableTag($connection, self::$modelTables[$tag]);
+                $hasTable = true;
+            }
+        }
+        if ($hasTable) {
+            $expanded[] = SqlCacheDependency::databaseTag($connection);
+        }
+
+        return self::tags(...$expanded);
     }
 
     public static function entity(string $tag, int|string $id): string
