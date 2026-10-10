@@ -104,7 +104,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             return $visibility->apply($query, $this->model, $actor['type'], $actor['id']);
         }
 
-        if ($visibility instanceof \\Closure) {
+        if ($visibility instanceof \Closure) {
             if ($actor === null && $scopes === []) {
                 $query->whereRaw('1 = 0');
                 return $query;
