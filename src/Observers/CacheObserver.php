@@ -15,32 +15,32 @@ final class CacheObserver implements ShouldHandleEventsAfterCommit
         private readonly CacheInvalidator $invalidator,
     ) {}
 
-    public function created(Model $model): void
+    public function created(Model $model, ?array $tags = null): void
     {
-        $this->invalidate($model, 'created');
+        $this->invalidate($model, 'created', $tags);
     }
 
-    public function updated(Model $model): void
+    public function updated(Model $model, ?array $tags = null): void
     {
-        $this->invalidate($model, 'updated');
+        $this->invalidate($model, 'updated', $tags);
     }
 
-    public function deleted(Model $model): void
+    public function deleted(Model $model, ?array $tags = null): void
     {
-        $this->invalidate($model, 'deleted');
+        $this->invalidate($model, 'deleted', $tags);
     }
 
-    public function restored(Model $model): void
+    public function restored(Model $model, ?array $tags = null): void
     {
-        $this->invalidate($model, 'restored');
+        $this->invalidate($model, 'restored', $tags);
     }
 
-    public function forceDeleted(Model $model): void
+    public function forceDeleted(Model $model, ?array $tags = null): void
     {
-        $this->invalidate($model, 'forceDeleted');
+        $this->invalidate($model, 'forceDeleted', $tags);
     }
 
-    private function invalidate(Model $model, string $event): void
+    private function invalidate(Model $model, string $event, ?array $tags = null): void
     {
         if (! $model instanceof CacheableModel) {
             return;
@@ -53,7 +53,7 @@ final class CacheObserver implements ShouldHandleEventsAfterCommit
             return;
         }
 
-        $tags = $model->getCacheInvalidationTags();
+        $tags ??= $model->getCacheInvalidationTags();
 
         if ($tags === []) {
             return;
