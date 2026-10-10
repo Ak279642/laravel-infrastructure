@@ -33,7 +33,7 @@ final class AssetResponsesTest extends TestCase
             dirname(__DIR__, 2).'/resources/images/file-not-found.webp',
         ));
         $this->get('/media/products/logo.webp')->assertOk()
-            ->assertHeader('Cache-Control', 'public, max-age=86400');
+            ->assertHeader('Cache-Control', 'max-age=86400, public');
         self::assertNull(\Illuminate\Support\Facades\Route::getRoutes()->getByName('laravel-infrastructure.assets.show'));
         self::assertNull(\Illuminate\Support\Facades\Route::getRoutes()->getByName('uploads'));
     }
