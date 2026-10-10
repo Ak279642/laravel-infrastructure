@@ -148,7 +148,9 @@ trait HasCache
         $model = $this->getModel();
         if (method_exists($model, 'infrastructureCacheScopes')) {
             $params['infrastructure_scopes'] = $model->infrastructureCacheScopes();
-            if ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()) {
+            $params['scope_operator'] = $model->infrastructureCacheScopeOperator();
+            if ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()
+                || $model->infrastructureCacheScopeOperator() === 'or') {
                 $actor = $model->infrastructureVisibilityActor();
                 $params['visibility_actor'] = $actor === null
                     ? null
@@ -176,7 +178,8 @@ trait HasCache
             ? $model->infrastructureCacheScope()
             : null;
         $visibility = method_exists($model, 'infrastructureVisibilityResolver')
-            && ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes());
+            && ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()
+                || $model->infrastructureCacheScopeOperator() === 'or');
         $tags = CacheTag::merge(
             [$scope === null || $visibility ? CacheTag::fromModel($model::class) : $scope['tag']],
             $this->extraCacheTags,
@@ -210,7 +213,8 @@ trait HasCache
             ? $model->infrastructureCacheScope()
             : null;
         $visibility = method_exists($model, 'infrastructureVisibilityResolver')
-            && $model->infrastructureVisibilityResolver() !== null;
+            && ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()
+                || $model->infrastructureCacheScopeOperator() === 'or');
         $tags = $scope !== null && ! $visibility
             ? [$scope['tag']]
             : ($model instanceof CacheableModel
