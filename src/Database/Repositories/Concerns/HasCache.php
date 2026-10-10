@@ -148,11 +148,15 @@ trait HasCache
         $model = $this->getModel();
         if (method_exists($model, 'infrastructureCacheScopes')) {
             $params['infrastructure_scopes'] = $model->infrastructureCacheScopes();
-            if ($model->infrastructureVisibilityResolver() !== null) {
+            if ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()) {
                 $actor = $model->infrastructureVisibilityActor();
                 $params['visibility_actor'] = $actor === null
                     ? null
                     : [$actor['type'] ?? null, $actor['id'] ?? null, $actor['partner_id'] ?? null];
+                // Eloquent applies global scopes when compiling the query.
+                $scoped = $model->newQuery()->toBase();
+                $params['global_scope_sql'] = $scoped->toSql();
+                $params['global_scope_bindings'] = $scoped->getBindings();
             }
         }
 
@@ -172,7 +176,7 @@ trait HasCache
             ? $model->infrastructureCacheScope()
             : null;
         $visibility = method_exists($model, 'infrastructureVisibilityResolver')
-            && $model->infrastructureVisibilityResolver() !== null;
+            && ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes());
         $tags = CacheTag::merge(
             [$scope === null || $visibility ? CacheTag::fromModel($model::class) : $scope['tag']],
             $this->extraCacheTags,
