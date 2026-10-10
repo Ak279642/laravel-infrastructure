@@ -879,17 +879,19 @@ foreach ($products->cursor() as $product) {
 
 Use Laravel's configured cache store (Redis recommended for tag invalidation), e.g. `CACHE_STORE=redis`. Repositories cache reads with configurable TTLs, scoped keys and automatic invalidation after writes; `withoutCache()` bypasses one read. See [Caching](docs/caching.md) for full examples.
 
-User/tenant partitioning is **opt-in**, enforced on repository queries, and requires authentication:
+User/tenant ownership and composite dimensions are **opt-in**:
 
 ```php
 protected function cacheOptions(): array
 {
-    return ['scope' => 'user', 'scope_column' => 'user_id'];
-    // Or: ['scope' => 'tenant', 'scope_column' => 'tenant_id']
+    return ['scopes' => [
+        'tenant_id' => 'auth.tenant_id',
+        'user_id' => 'auth.id',
+    ]];
 }
 ```
 
-Scoped writes invalidate the old and new owners' cached data after commit. Without this option, existing model-level invalidation is preserved. Only use scoped repositories for owner-restricted reads; separately managed global reports need their own invalidation policy.
+For shared/global visibility, add a `visibility_resolver` that appends explicitly authorized `orWhere` conditions. Those caches use model-wide invalidation to avoid stale public results. Unconfigured models retain existing behavior; see [Caching](docs/caching.md).
 
 # Public and private media
 
