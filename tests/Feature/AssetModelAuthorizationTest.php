@@ -58,7 +58,7 @@ final class AssetModelAuthorizationTest extends TestCase
         $owner->id = 42;
         $this->actingAs($owner, 'web');
         $this->get($url)->assertOk()
-            ->assertHeader('Cache-Control', 'private, no-store, max-age=0');
+            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
 
         $tampered = preg_replace('/signature=[^&]+/', 'signature=invalid', $url);
         $this->get($tampered)->assertHeader('X-Asset-Error-Status', '403');
