@@ -76,7 +76,15 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function query(): Builder
     {
-        return $this->model->newQuery();
+        $query = $this->model->newQuery();
+        if (method_exists($this->model, 'infrastructureCacheScope')) {
+            $scope = $this->model->infrastructureCacheScope();
+            if ($scope !== null) {
+                $query->where($this->model->qualifyColumn($scope['column']), $scope['value']);
+            }
+        }
+
+        return $query;
     }
 
     public function clearCache(): void
