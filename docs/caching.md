@@ -355,3 +355,33 @@ the first-seen requested ID order and uses the normal after-commit write
 invalidation. It does not hydrate models or introduce per-ID SQL reads.
 On non-taggable stores or open transactions it executes the loader without
 publishing stale or uncommitted values.
+
+## Cached `loadMissing()` relation graphs
+
+The repository `loadMissing($model, ['activeSubscription', 'city.state'])`
+now uses its existing `cacheRemember('loadMissing', ...)` policy when
+`auto_invalidation.enabled` is on. The application does not provide a cache
+key, tag list, invalidation calls or extra cache implementation.
+
+- Only missing relations are hydrated. When a top-level relation has already
+  been loaded, Eloquent's original `loadMissing()` semantics are preserved;
+  no cached snapshot replaces the caller's loaded objects.
+- Complete missing relation graphs, including nested paths, are cached using
+  the supplied persisted model's primary key and **raw attribute fingerprint**,
+  the relation list, current actor/request identity and the normal scoped
+  repository key.
+- The standard repository caching policy determines persistent, request-only
+  or uncached behavior and TTL, including `withoutCache()`.
+- The package's related-model table dependencies and automatic SQL watcher
+  invalidate cached graphs for Eloquent writes, raw SQL and pivot operations
+  after commit. This path is deliberately disabled when the watcher is off
+  because a related model with targeted invalidation may not flush a broad
+  model tag.
+- Dirty or unsaved models, relation callbacks, partially loaded relation
+  graphs and cross-connection relationships fall back to native Eloquent
+  loading. Reads during open transactions also avoid caching.
+- The package does not cache arbitrary `query()` builder chains; only
+  repository read operations, including this one, participate.
+
+Configure a tag-capable Laravel cache driver (Redis recommended). The feature
+never executes extra SQL queries to build the cache key or invalidate data.
