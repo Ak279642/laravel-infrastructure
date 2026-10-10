@@ -147,6 +147,20 @@ final class ScopedRepositoryCacheTest extends TestCase
         self::assertSame(['Second'], $repository->get()->pluck('name')->all());
     }
 
+    public function test_eloquent_global_scope_is_detected_without_visibility_resolver(): void
+    {
+        $repository = new ScopedCacheRepository(new GlobalScopeOnlyRecord, app(CacheManager::class));
+
+        request()->attributes->set('user_id', 101);
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+
+        request()->attributes->set('user_id', 102);
+        self::assertSame(['Second'], $repository->get()->pluck('name')->all());
+
+        GlobalScopeOnlyRecord::withoutGlobalScopes()->findOrFail(2)->update(['name' => 'Updated']);
+        self::assertSame(['Updated'], $repository->get()->pluck('name')->all());
+    }
+
     public function test_explicit_global_visibility_includes_global_records_and_refreshes_after_changes(): void
     {
         DB::table('scoped_cache_records')->insert([
@@ -251,5 +265,20 @@ final class ScopedTestVisibilityResolver
         int|string|null $actorId = null,
     ): \Illuminate\Database\Eloquent\Builder {
         return $query->where($model->qualifyColumn('user_id'), $actorId);
+    }
+}
+
+final class GlobalScopeOnlyRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('owner', static function (\Illuminate\Database\Eloquent\Builder $query): void {
+            $query->where('user_id', request()->attributes->get('user_id'));
+        });
     }
 }
