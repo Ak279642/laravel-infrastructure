@@ -43,54 +43,27 @@ protected function cacheOptions(): array
 
 For application-wide behavior, change Laravel's cache store. For operation-level bypass use `withoutCache()`. Locks use repository defaults (10-second lock, 3-second wait) and can be adjusted by overriding the repository's protected `$cacheLockSeconds` and `$cacheLockWaitSeconds`.
 
-## User, tenant, multi-scope and global visibility (opt-in)
+## Ownership and Eloquent global scopes
 
-The legacy `scope => user|tenant` / `scope_column` configuration remains supported. For AND-combined ownership, configure a column-to-authenticated-value mapping:
+**No configuration is required** for normal repositories. Laravel applies any Eloquent global scopes defined on your models (such as active status or application-defined visibility). The package detects custom global scopes without depending on their class names. Repository cache keys reflect the scoped SQL and bindings, and use broad model-level invalidation for safety. Permission/membership changes that do not update the cached model require explicit invalidation.
 
-```php
-protected function cacheOptions(): array
-{
-    return [
-        'scopes' => [
-            'tenant_id' => 'auth.tenant_id',
-            'user_id' => 'auth.id',
-        ],
-    ];
-}
-```
-
-Every dimension is enforced as a query `WHERE` clause, included in repository cache keys and used for targeted composite ownership tags. Supported value resolvers: `auth.id`, `auth.<attribute>` or a closure accepting the authenticated user and returning a nonempty scalar. Missing credentials or values fail closed. Scope changes invalidate previous and new composite partitions after commit using in-memory attributes, without extra ownership queries.
-
-### Automatic application visibility integration
-
-When the host application provides `App\\Support\\Visibility\\CurrentActor::resolve()` and `App\\Support\\Visibility\\VisibilityResolver::apply(Builder $query, Model $model, ?string $actorType, int|string|null $actorId)`, the package discovers and resolves these classes through Laravel's container. It reads the request actor (`id`, `type`, optional `partner_id`) instead of requiring the default auth guard. An existing `App\\Scopes\\VisibilityScope` Eloquent global scope is not applied twice.
-
-No model configuration is needed for this convention. To opt in explicitly with different class names, use `'actor_resolver' => MyActor::class` and `'visibility_resolver' => MyVisibility::class`. For explicit ownership dimensions sourced from request actor metadata, use:
+To enforce straightforward ownership when no Eloquent global visibility policy exists, opt in per model:
 
 ```php
 protected function cacheOptions(): array
 {
-    return ['scopes' => ['user_id' => 'actor.id']];
+    return ['scopes' => [
+        'company_code' => 'auth.company_code',
+        'created_by' => 'auth.id',
+    ]];
 }
 ```
 
-Visibility-based cache entries are keyed by actor type, identifier and partner identifier; writes conservatively invalidate the model tag. Authorization/membership changes not accompanied by model writes must invalidate affected caches separately. Application visibility resolution may itself query the database; this package does not add queries for ownership tagging.
+These conditions combine with AND. Alternatives: `actor.id`, `actor.partner_id`, `auth.<attribute>`, or a closure resolver. A legacy `scope => user|tenant` remains supported. Request attributes `user_id`, `user_type` (and optional `user`) supply actor identity without using a default auth guard. An absent required scope value fails closed.
 
-For explicitly shared or global records, define an OR visibility resolver:
+Configured ownership allows targeted invalidation of previous and new ownership partitions after model writes, without extra database reads. Custom global scopes, which may expose records across partitions, use conservative model-wide invalidation instead. Eloquent global scopes remain responsible for data visibility; a cache scope is not a substitute for authorization. Custom `actor_resolver` or `visibility_resolver` classes remain optional overrides, but **no application-specific class name is auto-detected**.
 
-```php
-protected function cacheOptions(): array
-{
-    return [
-        'scopes' => ['tenant_id' => 'auth.tenant_id', 'user_id' => 'auth.id'],
-        'visibility_resolver' => static function ($query, $user, array $scopes): void {
-            $query->orWhere('is_global', true); // only if truly visible to all actors
-        },
-    ];
-}
-```
-
-The repository builds `(owned conditions OR visibility conditions)`; implement authorization carefully inside the resolver. Cache keys also include the authenticated actor ID. Because shared/global results may be visible across scope partitions, enabling this resolver conservatively keeps **model-wide invalidation** rather than potentially serving stale results. Direct Eloquent queries, custom cached reports, membership changes and external query builders need their own authorization and invalidation rules; this package does not infer relationship-based visibility. Do not use a scoped repository for administrative cross-owner writes. Use Redis or another tag-capable store; the existing uncached fallback remains on non-taggable stores.
+Use Redis or another tagged cache store. Non-taggable stores preserve the uncached repository fallback.
 
 ## Image caching
 
