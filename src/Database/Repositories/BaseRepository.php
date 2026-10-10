@@ -581,6 +581,12 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             $roots[$root] = true;
         }
 
+        // Redis tag namespace order matters, not only the hashed cache key.
+        // Canonicalize simple relation lists so equivalent requests share the
+        // same key and the same dependency-tag order.
+        $relations = array_values(array_unique($relations));
+        sort($relations, SORT_STRING);
+
         // The automatic SQL watcher provides the physical table dependencies
         // required to invalidate cached relations after scoped model and raw
         // pivot updates. Without it, never cache a potentially stale graph.
