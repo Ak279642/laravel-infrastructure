@@ -72,6 +72,98 @@ final class FileStorage
         });
     }
 
+    /**
+     * Download a public HTTPS file into a temporary upload for the existing
+     * storage/image pipeline. The caller must remove the temporary file.
+     */
+    public function downloadUrl(string $url): UploadedFile
+    {
+        $parts = parse_url($url);
+        if (! is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || ! isset($parts['host'])
+            || isset($parts['user'], $parts['pass'])
+            || isset($parts['user'])
+            || isset($parts['fragment'])
+            || (isset($parts['port']) && (int) $parts['port'] !== 443)
+        ) {
+            throw new RuntimeException('A public HTTPS file URL is required.');
+        }
+
+        $host = $parts['host'];
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            throw new RuntimeException('File URLs must use a public hostname.');
+        }
+
+        $records = dns_get_record($host, DNS_A | DNS_AAAA);
+        if (! is_array($records) || $records === []) {
+            throw new RuntimeException('Unable to resolve file URL hostname.');
+        }
+
+        $addresses = [];
+        foreach ($records as $record) {
+            $ip = $record['ip'] ?? $record['ipv6'] ?? null;
+            if (! is_string($ip) || ! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                throw new RuntimeException('File URL resolves to a restricted address.');
+            }
+            $addresses[] = $ip;
+        }
+
+        $temporary = tempnam(sys_get_temp_dir(), 'infra-url-');
+        if ($temporary === false) {
+            throw new RuntimeException('Unable to create temporary upload.');
+        }
+
+        $stream = fopen($temporary, 'wb');
+        $handle = curl_init($url);
+        if ($stream === false || $handle === false) {
+            @unlink($temporary);
+            throw new RuntimeException('Unable to initialize URL download.');
+        }
+
+        $bytes = 0;
+        $limit = 20 * 1024 * 1024;
+        try {
+            curl_setopt_array($handle, [
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+                CURLOPT_RESOLVE => array_map(
+                    static fn (string $ip): string => $host.':443:'.(str_contains($ip, ':') ? '['.$ip.']' : $ip),
+                    $addresses,
+                ),
+                CURLOPT_WRITEFUNCTION => static function ($curl, string $data) use ($stream, &$bytes, $limit): int {
+                    $bytes += strlen($data);
+                    if ($bytes > $limit) {
+                        return 0;
+                    }
+                    $written = fwrite($stream, $data);
+                    return $written === false ? 0 : $written;
+                },
+            ]);
+            $success = curl_exec($handle);
+            $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+            if ($success === false || $status !== 200 || $bytes === 0) {
+                throw new RuntimeException('Unable to download file URL (invalid response or size limit exceeded).');
+            }
+        } catch (\Throwable $exception) {
+            @unlink($temporary);
+            throw $exception;
+        } finally {
+            curl_close($handle);
+            fclose($stream);
+        }
+
+        $name = basename((string) ($parts['path'] ?? '')) ?: 'download';
+        $name = rawurldecode($name);
+        if ($name === '.' || $name === '..' || preg_match('/[^A-Za-z0-9._-]/', $name)) {
+            $name = 'download';
+        }
+
+        return new UploadedFile($temporary, $name, null, null, true);
+    }
+
     public function delete(?string $path, ?string $disk = null): bool
     {
         if (! is_string($path) || trim($path) === '') {
