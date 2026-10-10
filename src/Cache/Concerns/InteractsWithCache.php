@@ -165,8 +165,9 @@ trait InteractsWithCache
             return [];
         }
 
-        $user = auth()->user();
+        $user = null;
         $actor = null;
+        $loadedDefaultGuard = false;
         $resolved = [];
 
         foreach ($definitions as $column => $source) {
@@ -184,6 +185,10 @@ trait InteractsWithCache
                     ? $guardUser->getAuthIdentifier()
                     : data_get($guardUser, $source['attribute']);
             } else {
+                if (! $loadedDefaultGuard) {
+                    $user = auth()->user();
+                    $loadedDefaultGuard = true;
+                }
                 $actor ??= $this->infrastructureVisibilityActor();
                 $value = match (true) {
                     $source === 'auth.id' => $user?->getAuthIdentifier() ?? ($actor['id'] ?? null),
@@ -225,7 +230,10 @@ trait InteractsWithCache
     public function infrastructureScopeTagForValues(array $values): string
     {
         ksort($values);
-        return static::cacheTag().':scope:'.hash('sha256', json_encode($values, JSON_THROW_ON_ERROR));
+        // Database raw attributes and guard IDs may use different PHP scalar types.
+        // Normalize tags so a string guard ID and integer database ID invalidate together.
+        $canonical = array_map(static fn (int|string $value): string => (string) $value, $values);
+        return static::cacheTag().':scope:'.hash('sha256', json_encode($canonical, JSON_THROW_ON_ERROR));
     }
 
     public function infrastructureScopeTagFor(int|string $value): ?string
