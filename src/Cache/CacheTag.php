@@ -31,7 +31,7 @@ final class CacheTag
     public static function withReadDependencies(array $tags, Connection $connection): array
     {
         $tags = self::tags(...$tags);
-        if (! (bool) config('laravel-infrastructure.cache.auto_invalidation.enabled', false)) {
+        if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             return $tags;
         }
 
