@@ -633,9 +633,6 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
                     $actor?->get('user_id'),
                     $actor?->get('partner_id'),
                     auth()->id(),
-                    auth('admin')->id(),
-                    auth('partner')->id(),
-                    auth('agent')->id(),
                 ],
             ],
         );
