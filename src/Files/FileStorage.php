@@ -72,6 +72,20 @@ final class FileStorage
         });
     }
 
+    public function storeFromUrl(
+        string $url,
+        ?string $directory = null,
+        ?string $disk = null,
+        ?string $filename = null,
+    ): string {
+        $file = $this->downloadUrl($url);
+        try {
+            return $this->store($file, $directory, $disk, $filename);
+        } finally {
+            @unlink($file->getPathname());
+        }
+    }
+
     /**
      * Download a public HTTPS file into a temporary upload for the existing
      * storage/image pipeline. The caller must remove the temporary file.
@@ -115,8 +129,14 @@ final class FileStorage
         }
 
         $stream = fopen($temporary, 'wb');
-        $handle = curl_init($url);
+        $handle = function_exists('curl_init') ? curl_init($url) : false;
         if ($stream === false || $handle === false) {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+            if ($handle !== false) {
+                curl_close($handle);
+            }
             @unlink($temporary);
             throw new RuntimeException('Unable to initialize URL download.');
         }
