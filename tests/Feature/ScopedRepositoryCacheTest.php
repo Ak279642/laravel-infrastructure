@@ -120,6 +120,20 @@ final class ScopedRepositoryCacheTest extends TestCase
         self::assertSame(2, $repo->count());
     }
 
+    public function test_request_attribute_actor_resolves_without_laravel_authentication(): void
+    {
+        $repository = new ScopedCacheRepository(new RequestActorCacheRecord, app(CacheManager::class));
+        request()->attributes->set('user_id', 101);
+        request()->attributes->set('user_type', 'user');
+
+        self::assertSame(1, $repository->count());
+        self::assertNull($repository->find(2));
+
+        request()->attributes->set('user_id', 102);
+        self::assertSame(1, $repository->count());
+        self::assertNull($repository->find(1));
+    }
+
     public function test_explicit_global_visibility_includes_global_records_and_refreshes_after_changes(): void
     {
         DB::table('scoped_cache_records')->insert([
@@ -186,5 +200,18 @@ final class GlobalVisibleCacheRecord extends Model implements CacheableModel
                 $query->orWhere('is_global', true);
             },
         ];
+    }
+}
+
+final class RequestActorCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return ['scopes' => ['user_id' => 'actor.id']];
     }
 }
