@@ -237,10 +237,10 @@ trait InteractsWithCache
         if (is_string($resolver) && class_exists($resolver)) {
             $resolver = app($resolver);
         }
-        if ($resolver instanceof \\Closure || (is_object($resolver) && method_exists($resolver, 'apply'))) {
+        if ($resolver instanceof \Closure || (is_object($resolver) && method_exists($resolver, 'apply'))) {
             return $resolver;
         }
-        throw new \\InvalidArgumentException('Visibility resolver must be a closure or class with apply().');
+        throw new \InvalidArgumentException('Visibility resolver must be a closure or class with apply().');
     }
 
     public static function cacheTag(): string
