@@ -91,7 +91,7 @@ protected function cacheOptions(): array
 }
 ```
 
-This requires **both** named guards to be authenticated and matches both columns (AND). To support mutually exclusive actors such as admin *or* partner, apply your existing Eloquent visibility scope instead; an OR of independent guards still requires both identities under this explicit configuration.
+With the default AND operator, both guards must be authenticated. Set `'scope_operator' => 'or'` to match rules for whichever named guards are authenticated; inactive guards are skipped, and a request with **no matching authenticated guard fails closed**. If several named guards are authenticated at once, their rules are OR-combined. Use your existing Eloquent visibility scope for more complex authorization decisions.
 
 Existing `scope => 'user' | 'tenant'`, `scope_column`, and `scopes => ['column' => 'auth.id' | 'auth.attribute' | 'actor.id' | Closure]` configurations remain supported. Optional `actor_resolver` and `visibility_resolver` extensions remain available for backward compatibility; they are not auto-detected.
 
