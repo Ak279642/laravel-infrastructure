@@ -252,7 +252,7 @@ trait HasCache
 
         // Physical table tags enable automatic invalidation for raw/pivot SQL
         // writes. Compile scoped SQL without executing additional SELECTs.
-        if ((bool) config('laravel-infrastructure.cache.auto_invalidation.enabled', false)) {
+        if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             $connection = $model->getConnection();
             $tags[] = SqlCacheDependency::databaseTag($connection);
             $tags[] = SqlCacheDependency::tableTag($connection, $model->getTable());
