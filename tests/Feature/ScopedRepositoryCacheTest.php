@@ -31,6 +31,8 @@ final class ScopedRepositoryCacheTest extends TestCase
         Schema::create('scoped_cache_records', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('tenant_id')->default(10);
+            $table->boolean('is_global')->default(false);
             $table->string('name');
             $table->timestamps();
         });
@@ -86,6 +88,34 @@ final class ScopedRepositoryCacheTest extends TestCase
         $this->asUser(101);
         self::assertSame(0, $repo->count());
     }
+
+    public function test_composite_scopes_restrict_records_and_invalidate_only_matching_partition(): void
+    {
+        DB::table('scoped_cache_records')->insert([
+            ['id' => 3, 'user_id' => 101, 'tenant_id' => 20, 'name' => 'Other tenant'],
+        ]);
+        $repo = new ScopedCacheRepository(new CompositeCacheRecord, app(CacheManager::class));
+        $this->be(new ScopedCacheActor(['id' => 101, 'tenant_id' => 10]));
+        self::assertSame(1, $repo->count());
+        self::assertNull($repo->find(3));
+        CompositeCacheRecord::query()->findOrFail(1)->update(['tenant_id' => 20]);
+        self::assertSame(0, $repo->count());
+
+        $this->be(new ScopedCacheActor(['id' => 101, 'tenant_id' => 20]));
+        self::assertSame(2, $repo->count());
+    }
+
+    public function test_explicit_global_visibility_includes_global_records_and_refreshes_after_changes(): void
+    {
+        DB::table('scoped_cache_records')->insert([
+            ['id' => 3, 'user_id' => 999, 'tenant_id' => 10, 'name' => 'Shared', 'is_global' => true],
+        ]);
+        $this->be(new ScopedCacheActor(['id' => 101, 'tenant_id' => 10]));
+        $repo = new ScopedCacheRepository(new GlobalVisibleCacheRecord, app(CacheManager::class));
+        self::assertSame(2, $repo->count());
+        GlobalVisibleCacheRecord::query()->findOrFail(3)->update(['is_global' => false]);
+        self::assertSame(1, $repo->count());
+    }
 }
 
 final class ScopedCacheRepository extends BaseRepository {}
@@ -108,4 +138,38 @@ final class ScopedCacheActor extends Model implements \Illuminate\Contracts\Auth
     use \Illuminate\Auth\Authenticatable;
 
     protected $guarded = [];
+}
+
+final class CompositeCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return ['scopes' => [
+            'tenant_id' => 'auth.tenant_id',
+            'user_id' => 'auth.id',
+        ]];
+    }
+}
+
+final class GlobalVisibleCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return [
+            'scopes' => ['tenant_id' => 'auth.tenant_id', 'user_id' => 'auth.id'],
+            'visibility_resolver' => static function ($query): void {
+                $query->orWhere('is_global', true);
+            },
+        ];
+    }
 }
