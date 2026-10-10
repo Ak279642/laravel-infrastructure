@@ -891,7 +891,7 @@ protected function cacheOptions(): array
 }
 ```
 
-For shared/global visibility, add a `visibility_resolver` that appends explicitly authorized `orWhere` conditions. Those caches use model-wide invalidation to avoid stale public results. Unconfigured models retain existing behavior; see [Caching](docs/caching.md).
+Request-based actors and application `CurrentActor` / `VisibilityResolver::apply()` are detected automatically when available. The existing Eloquent `VisibilityScope` is reused, not applied twice. For shared/global visibility, optionally configure `visibility_resolver` (class name or closure). Those caches use model-wide invalidation to avoid stale public results. Unconfigured models retain existing behavior; see [Caching](docs/caching.md).
 
 # Public and private media
 
