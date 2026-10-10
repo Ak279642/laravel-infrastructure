@@ -85,7 +85,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
         $scopes = $this->model->infrastructureCacheScopes();
         $visibility = $this->model->infrastructureVisibilityResolver();
-        $actor = $this->model->infrastructureVisibilityActor();
+        $actor = $visibility === null ? null : $this->model->infrastructureVisibilityActor();
 
         // Do not execute an application visibility resolver twice when its
         // Eloquent global scope already applies it.
