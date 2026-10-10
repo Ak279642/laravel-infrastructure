@@ -256,10 +256,6 @@ trait HasCache
             $connection = $model->getConnection();
             $tags[] = SqlCacheDependency::databaseTag($connection);
             $tags[] = SqlCacheDependency::tableTag($connection, $model->getTable());
-
-            foreach (SqlCacheDependency::readTables($this->query()->toBase()->toSql()) as $table) {
-                $tags[] = SqlCacheDependency::tableTag($connection, $table);
-            }
         }
 
         if ($model instanceof CacheableModel) {
