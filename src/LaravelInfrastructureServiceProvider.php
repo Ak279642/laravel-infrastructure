@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
+use Ak279642\LaravelInfrastructure\Cache\AutomaticQueryInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Console\Commands\DatabaseBackupCommand;
 use Ak279642\LaravelInfrastructure\Console\Commands\MediaRenameCommand;
@@ -27,6 +28,7 @@ use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Debug\ExceptionHandler as ExceptionHandlerContract;
 use Illuminate\Contracts\Events\Dispatcher as EventDispatcher;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Http\Request;
@@ -49,6 +51,8 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         $this->app->singleton(CacheInvalidator::class, fn ($app): CacheInvalidator => new CacheInvalidator(
             $app->make(CacheManager::class),
         ));
+
+        $this->app->singleton(AutomaticQueryInvalidator::class);
 
         $this->app->singleton(CacheObserver::class, fn ($app): CacheObserver => new CacheObserver(
             $app->make(CacheInvalidator::class),
@@ -82,6 +86,12 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         ], 'laravel-infrastructure-config');
 
         $events = $this->app->make(EventDispatcher::class);
+
+        if ((bool) config('laravel-infrastructure.cache.auto_invalidation.enabled', false)) {
+            $watcher = $this->app->make(AutomaticQueryInvalidator::class);
+            $events->listen(QueryExecuted::class, [$watcher, 'onQuery']);
+            $events->listen(TransactionRolledBack::class, [$watcher, 'onRollback']);
+        }
 
         $events->listen(
             TransactionRolledBack::class,
