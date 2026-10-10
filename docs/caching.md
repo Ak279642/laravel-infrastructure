@@ -45,25 +45,59 @@ For application-wide behavior, change Laravel's cache store. For operation-level
 
 ## Ownership and Eloquent global scopes
 
-**No configuration is required** for normal repositories. Laravel applies any Eloquent global scopes defined on your models (such as active status or application-defined visibility). The package detects custom global scopes without depending on their class names. Repository cache keys reflect the scoped SQL and bindings, and use broad model-level invalidation for safety. Permission/membership changes that do not update the cached model require explicit invalidation.
+**Already using Eloquent global scopes? No additional configuration is required.** The package respects normal Laravel global scopes without depending on their class names. Scope SQL/bindings and available actor identity contribute to cache keys; models with custom global scopes use conservative model-wide invalidation.
 
-To enforce straightforward ownership when no Eloquent global visibility policy exists, opt in per model:
+**No global ownership scope?** Specify the database column and Laravel authentication guard:
+
+```php
+protected function cacheOptions(): array
+{
+    return ['scope' => [
+        'column' => 'partner_id',
+        'guard' => 'partner',
+    ]];
+}
+```
+
+This filters by `partner_id = auth('partner')->id()`. A missing authenticated guard or required attribute rejects the scoped read instead of returning unrestricted records.
+
+**Multiple columns, even with the same guard:** Use `scopes`. By default conditions are combined with **AND**. Set `scope_operator => 'or'` if matching **any** of the columns should grant a match:
+
+```php
+protected function cacheOptions(): array
+{
+    return [
+        'scopes' => [
+            ['column' => 'user_id', 'guard' => 'web'],
+            ['column' => 'assigned_to', 'guard' => 'web'],
+            ['column' => 'assigned_by', 'guard' => 'web'],
+        ],
+        'scope_operator' => 'or',
+    ];
+}
+```
+
+The package groups the OR conditions within parentheses, so any existing Eloquent global scope still applies as an additional condition. With `and`, every column must match the configured actor.
+
+**Different guards and a non-ID attribute:**
 
 ```php
 protected function cacheOptions(): array
 {
     return ['scopes' => [
-        'company_code' => 'auth.company_code',
-        'created_by' => 'auth.id',
+        ['column' => 'partner_id', 'guard' => 'partner'],
+        ['column' => 'company_id', 'guard' => 'admin', 'attribute' => 'company_id'],
     ]];
 }
 ```
 
-These conditions combine with AND. Alternatives: `actor.id`, `actor.partner_id`, `auth.<attribute>`, or a closure resolver. A legacy `scope => user|tenant` remains supported. Request attributes `user_id`, `user_type` (and optional `user`) supply actor identity without using a default auth guard. An absent required scope value fails closed.
+This requires **both** named guards to be authenticated and matches both columns (AND). To support mutually exclusive actors such as admin *or* partner, apply your existing Eloquent visibility scope instead; an OR of independent guards still requires both identities under this explicit configuration.
 
-Configured ownership allows targeted invalidation of previous and new ownership partitions after model writes, without extra database reads. Custom global scopes, which may expose records across partitions, use conservative model-wide invalidation instead. Eloquent global scopes remain responsible for data visibility; a cache scope is not a substitute for authorization. Custom `actor_resolver` or `visibility_resolver` classes remain optional overrides, but **no application-specific class name is auto-detected**.
+Existing `scope => 'user' | 'tenant'`, `scope_column`, and `scopes => ['column' => 'auth.id' | 'auth.attribute' | 'actor.id' | Closure]` configurations remain supported. Optional `actor_resolver` and `visibility_resolver` extensions remain available for backward compatibility; they are not auto-detected.
 
-Use Redis or another tagged cache store. Non-taggable stores preserve the uncached repository fallback.
+**Cache isolation and invalidation:** Resolved column values and AND/OR operator are included in the cache keys. Simple AND ownership scopes use targeted tags for the previous and new owner after writes. OR rules and custom Eloquent global scopes use model-wide invalidation because a record can appear in multiple actors' result sets. Permission or group membership changes that do not write to the cached model require explicit invalidation. Caching does not replace authorization.
+
+Use Redis or another tagged cache store for persistent repository caches. The package does not cache tagged entries on stores without tag support.
 
 ## Image caching
 
