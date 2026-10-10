@@ -89,15 +89,6 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
         // Do not execute an application visibility resolver twice when its
         // Eloquent global scope already applies it.
-        $globalVisibilityScope = 'App'.'\\Scopes\\VisibilityScope';
-        if ($visibility !== null && class_exists($globalVisibilityScope)
-            && $query->hasGlobalScope($globalVisibilityScope)) {
-            if ($actor === null) {
-                $query->whereRaw('1 = 0');
-            }
-            return $query;
-        }
-
         if (is_object($visibility) && method_exists($visibility, 'apply')) {
             // Application resolver owns the complete visibility policy.
             if ($actor === null) {
