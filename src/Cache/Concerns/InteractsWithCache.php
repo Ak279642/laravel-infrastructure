@@ -88,6 +88,63 @@ trait InteractsWithCache
         $callback();
     }
 
+    /**
+     * Opt-in ownership partition. Unconfigured models retain model-wide invalidation.
+     * A scope must be enforced by the repository, not merely added to a cache key.
+     *
+     * @return array{column:string,value:int|string,tag:string}|null
+     */
+    public function infrastructureCacheScope(): ?array
+    {
+        $options = $this->cacheOptions();
+        $scope = $options['scope'] ?? null;
+        if (! in_array($scope, ['user', 'tenant'], true)) {
+            return null;
+        }
+
+        $column = $options['scope_column'] ?? ($scope === 'user' ? 'user_id' : 'tenant_id');
+        if (! is_string($column) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1) {
+            throw new \InvalidArgumentException('Invalid cache scope column.');
+        }
+
+        $user = auth()->user();
+        $value = $scope === 'user' ? auth()->id() : $user?->getAttribute($column);
+        if (! is_int($value) && (! is_string($value) || $value === '')) {
+            throw new \RuntimeException('An authenticated cache scope is required.');
+        }
+
+        return [
+            'column' => $column,
+            'value' => $value,
+            'tag' => static::cacheTag().':scope:'.$scope.':'.hash('sha256', (string) $value),
+        ];
+    }
+
+    public function infrastructureScopeTagFor(int|string $value): ?string
+    {
+        $scope = $this->cacheOptions()['scope'] ?? null;
+        if (! in_array($scope, ['user', 'tenant'], true)) {
+            return null;
+        }
+
+        return static::cacheTag().':scope:'.$scope.':'.hash('sha256', (string) $value);
+    }
+
+    public function infrastructureScopeColumn(): ?string
+    {
+        $options = $this->cacheOptions();
+        if (! in_array($options['scope'] ?? null, ['user', 'tenant'], true)) {
+            return null;
+        }
+
+        $column = $options['scope_column'] ?? ($options['scope'] === 'user' ? 'user_id' : 'tenant_id');
+        if (! is_string($column) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $column) !== 1) {
+            throw new \InvalidArgumentException('Invalid cache scope column.');
+        }
+
+        return $column;
+    }
+
     public static function cacheTag(): string
     {
         return CacheTag::fromModel(static::class);
@@ -190,6 +247,17 @@ trait InteractsWithCache
 
     public function getCacheInvalidationTags(): array
     {
+        $column = $this->infrastructureScopeColumn();
+        if ($column !== null) {
+            $tags = [];
+            foreach ([$this->getRawOriginal($column), $this->getAttribute($column)] as $value) {
+                if (is_int($value) || (is_string($value) && $value !== '')) {
+                    $tags[] = $this->infrastructureScopeTagFor($value);
+                }
+            }
+            return CacheTag::tags(...$tags);
+        }
+
         return CacheTag::merge(
             [static::cacheTag()],
             $this->getCacheTags(),
