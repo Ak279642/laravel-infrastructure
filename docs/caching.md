@@ -258,6 +258,21 @@ For a pivot write or raw query in a service (outside a repository), inject
 `CacheInvalidator` and call
 `invalidateAfterCommit($modelTags, $connection)` after the SQL change.
 
+### Dependency-safe batched lookups
+
+For reports where one query calculates several missing actor or tenant buckets,
+use `CacheManager::getWithDependencies($key, $missing, $tags, $connection)`
+and `putWithDependencies($key, $value, $ttlSeconds, $tags, $connection)`.
+Both require nonempty tags and skip shared caching when the store lacks tags or
+the connection is inside a transaction. Reads return the supplied missing value
+in either case, while writes return false. Calculate all missing buckets in one
+SQL operation instead of replacing batch computation with per-actor reads.
+
+Include the complete set of model dependency tags. Eloquent changes invalidate
+their model tags after commit; raw SQL changes require an explicit
+`CacheInvalidator::invalidateAfterCommit(...)`. The application selects the
+dependency models, but the package owns cache storage and safety.
+
 ### Cached custom SQL reads
 
 Use `CacheManager::rememberWithDependencies($key, $ttlSeconds, $callback,
