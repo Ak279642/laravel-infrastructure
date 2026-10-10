@@ -65,7 +65,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         protected CacheManager $cache,
         protected ?ValidationContext $validationContext = null,
     ) {
-        $this->query = $this->model->newQuery();
+        $this->query = $this->query();
         $this->initializeCache();
     }
 
@@ -503,7 +503,9 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $where = $this->safeWhere($where);
         $values = $this->normalizeWhereInValues($field, $values);
         $context = $this->validationContextInstance();
-        $resolved = $this->hasOpenTransaction()
+        $resolved = ($this->hasOpenTransaction()
+            || (method_exists($this->model, 'infrastructureCacheScope')
+                && $this->model->infrastructureCacheScope() !== null))
             ? new Collection
             : $context->findManyMatching(
                 $this->model::class,
@@ -871,7 +873,9 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     protected function findFromContext(int|string $id, array $with = []): ?Model
     {
-        if ($this->hasOpenTransaction()) {
+        if ($this->hasOpenTransaction()
+            || (method_exists($this->model, 'infrastructureCacheScope')
+                && $this->model->infrastructureCacheScope() !== null)) {
             return null;
         }
 
