@@ -881,16 +881,31 @@ Use Laravel's configured cache store (Redis recommended for tag invalidation), e
 
 Laravel's Eloquent global scopes are respected automatically (including application-specific visibility and active-status scopes). Cache keys account for scoped SQL/bindings, and custom global-scope models use conservative model-wide invalidation. No separate visibility resolver or configuration is required.
 
-For simple ownership without an existing visibility scope, models can opt in:
+For simple ownership without an existing visibility scope, models can opt in using a **column and Laravel guard**:
 
 ```php
 protected function cacheOptions(): array
 {
-    return ['scopes' => ['customer_ref' => 'auth.id']];
+    return ['scope' => ['column' => 'partner_id', 'guard' => 'partner']];
 }
 ```
 
-Multiple columns are supported and combined with AND; see [Caching](docs/caching.md). Laravel global scopes remain responsible for authorization, and permission changes may need explicit cache invalidation.
+For multiple columns (including the **same guard**), use `scopes`:
+
+```php
+protected function cacheOptions(): array
+{
+    return [
+        'scopes' => [
+            ['column' => 'user_id', 'guard' => 'web'],
+            ['column' => 'assigned_to', 'guard' => 'web'],
+        ],
+        'scope_operator' => 'or', // default is 'and'
+    ];
+}
+```
+
+Global scopes still apply alongside configured ownership. OR rules use model-wide cache invalidation; AND-only ownership rules without global scopes can use targeted invalidation. See [Caching](docs/caching.md) for named guards, custom attributes and legacy configuration.
 
 # Public and private media
 
