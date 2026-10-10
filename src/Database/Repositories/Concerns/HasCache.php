@@ -8,6 +8,7 @@ use Ak279642\LaravelInfrastructure\Cache\CacheKey;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
+use Ak279642\LaravelInfrastructure\Cache\SqlCacheDependency;
 use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Illuminate\Database\Eloquent\Model;
@@ -248,6 +249,18 @@ trait HasCache
             $targeted ? $model->infrastructureCacheReadTags() : [],
             $this->extraCacheTags,
         );
+
+        // Physical table tags enable automatic invalidation for raw/pivot SQL
+        // writes. Compile scoped SQL without executing additional SELECTs.
+        if ((bool) config('laravel-infrastructure.cache.auto_invalidation.enabled', false)) {
+            $connection = $model->getConnection();
+            $tags[] = SqlCacheDependency::databaseTag($connection);
+            $tags[] = SqlCacheDependency::tableTag($connection, $model->getTable());
+
+            foreach (SqlCacheDependency::readTables($this->query()->toBase()->toSql()) as $table) {
+                $tags[] = SqlCacheDependency::tableTag($connection, $table);
+            }
+        }
 
         if ($model instanceof CacheableModel) {
             $relations = $params['with'] ?? [];
