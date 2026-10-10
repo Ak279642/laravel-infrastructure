@@ -9,6 +9,7 @@ use DateTimeInterface;
 use Illuminate\Cache\Repository;
 use Illuminate\Cache\TaggableStore;
 use Illuminate\Cache\TaggedCache;
+use Illuminate\Database\Connection;
 use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -266,6 +267,90 @@ final class CacheManager
 
             return $value;
         }
+    }
+
+    /**
+     * Dependency-safe non-computing read for callers that calculate multiple
+     * cache misses in a single database query.
+     *
+     * A non-taggable store or an open transaction is always a cache miss.
+     */
+    public function getWithDependencies(
+        string $key,
+        mixed $default,
+        array $tags,
+        ?Connection $connection = null,
+    ): mixed {
+        $tags = CacheTag::tags(...$tags);
+        if ($tags === []) {
+            throw new \InvalidArgumentException('Dependency-aware caching requires at least one tag.');
+        }
+
+        if (! $this->supportsTags()
+            || ($connection !== null && $connection->transactionLevel() > 0)) {
+            return $default;
+        }
+
+        return $this->get($key, $default, $tags);
+    }
+
+    /**
+     * Dependency-safe non-computing write for batching cache misses.
+     * Returns false instead of publishing uncommitted/unsafe entries.
+     */
+    public function putWithDependencies(
+        string $key,
+        mixed $value,
+        int $ttl,
+        array $tags,
+        ?Connection $connection = null,
+    ): bool {
+        $tags = CacheTag::tags(...$tags);
+        if ($tags === []) {
+            throw new \InvalidArgumentException('Dependency-aware caching requires at least one tag.');
+        }
+        if ($ttl < 1) {
+            throw new \InvalidArgumentException('Cache TTL must be positive.');
+        }
+
+        if (! $this->supportsTags()
+            || ($connection !== null && $connection->transactionLevel() > 0)) {
+            return false;
+        }
+
+        return $this->put($key, $value, $ttl, $tags);
+    }
+
+    /**
+     * Cache a raw-query or aggregate result only when its dependent model tags
+     * can actually be invalidated. This is intentionally stricter than the
+     * low-level remember() helper, which also supports untagged ephemeral keys.
+     *
+     * @param list<string> $tags
+     */
+    public function rememberWithDependencies(
+        string $key,
+        int $ttl,
+        callable $callback,
+        array $tags,
+        ?Connection $connection = null,
+    ): mixed {
+        $tags = CacheTag::tags(...$tags);
+        if ($tags === []) {
+            throw new \InvalidArgumentException('Dependency-aware caching requires at least one tag.');
+        }
+        if ($ttl < 1) {
+            throw new \InvalidArgumentException('Cache TTL must be positive.');
+        }
+
+        // Tagless drivers cannot safely invalidate these records. Never
+        // publish uncommitted transaction reads to the shared cache.
+        if (! $this->supportsTags()
+            || ($connection !== null && $connection->transactionLevel() > 0)) {
+            return $callback();
+        }
+
+        return $this->rememberLocked($key, $ttl, $callback, $tags);
     }
 
     public function rememberForever(

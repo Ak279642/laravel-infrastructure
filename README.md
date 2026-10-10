@@ -192,6 +192,13 @@ This marker adds **no SQL restriction**; do not use it unless the existing globa
 
 > Cache isolation does not replace authorization. Use Eloquent model writes for automatic invalidation; raw SQL writes and independent membership/permission changes require explicit invalidation. Cache stores without tags bypass repository read caching for correctness.
 
+
+The package also supports request-only repository memoization, explicit after-commit
+invalidation for efficient set-based SQL/pivot writes, and dependency-safe caching
+for custom reads. These features allow applications to keep their own authorization
+policy while delegating cache storage, key isolation, invalidation and transaction
+timing to the package. See [Caching](docs/caching.md).
+
 ## Validation, services and transactions
 
 `RepositoryFormRequest` performs Laravel validation first, then optional repository-backed existence/uniqueness checks. A named resolver loads a validated model once for reuse:

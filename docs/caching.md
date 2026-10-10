@@ -209,3 +209,79 @@ connection name. Other databases retain per-table metadata caching.
 Run `php artisan cache:clear` after schema migrations (especially when adding
 new model fields) so workers fetch the updated schema. No package config
 section or new cache driver is needed.
+
+## Request-only caching and application cache policies
+
+Repositories may override `cacheReadPolicy(string $operation, array $params): ?array`.
+The default `null` preserves the repository's standard tagged persistent caching
+and is backward compatible. An application policy can choose:
+
+- `['mode' => 'persistent', 'params' => ['role' => $roleId], 'ttl' => 120]`:
+  persist with extra authorization context included in the cache key.
+- `['mode' => 'request', 'params' => ['actor' => $actorId]]`:
+  memoize a read only for the current request, never to Redis.
+- `['mode' => 'none']`: run the callback without caching.
+
+Explicit `withoutCache()`, `useCache: false`, disabled models and reads inside an
+open transaction bypass **all** policy caching. Request-only memoization is held
+on Laravel request attributes, not static globals; it caches `null` correctly.
+Eloquent writes clear that memo immediately, including during transactions.
+The package automatically includes global scopes, compiled SQL/bindings and
+resolved actors in repository cache keys. The application must add policy
+context for permissions not reflected in SQL (for example role changes).
+
+### Efficient set-based SQL and pivot mutations
+
+The existing `bulkUpdate()`/`bulkDelete()` API intentionally hydrates and
+writes each model, triggering Eloquent events. For very large sets, using one
+SQL statement is more efficient, but Eloquent will not emit model events.
+Use the inherited package helper from inside a repository:
+
+```php
+DB::transaction(function () use ($ids) {
+    $count = DB::table('tasks')->whereIn('id', $ids)->update(['status' => 'done']);
+    if ($count > 0) {
+        $this->invalidateAfterBulkWrite([
+            CacheTag::fromModel(OtherDependentModel::class),
+        ]);
+    }
+});
+```
+
+This invalidates the model and dependency tags **after commit**, without
+reading or hydrating the changed rows. On rollback the shared cache remains.
+Without a reliable old/new ownership snapshot, bulk invalidation must use
+the model-wide tag: attempting a specific actor's scope could leave stale
+caches for previous owners or other viewers.
+
+For a pivot write or raw query in a service (outside a repository), inject
+`CacheInvalidator` and call
+`invalidateAfterCommit($modelTags, $connection)` after the SQL change.
+
+### Dependency-safe batched lookups
+
+For reports where one query calculates several missing actor or tenant buckets,
+use `CacheManager::getWithDependencies($key, $missing, $tags, $connection)`
+and `putWithDependencies($key, $value, $ttlSeconds, $tags, $connection)`.
+Both require nonempty tags and skip shared caching when the store lacks tags or
+the connection is inside a transaction. Reads return the supplied missing value
+in either case, while writes return false. Calculate all missing buckets in one
+SQL operation instead of replacing batch computation with per-actor reads.
+
+Include the complete set of model dependency tags. Eloquent changes invalidate
+their model tags after commit; raw SQL changes require an explicit
+`CacheInvalidator::invalidateAfterCommit(...)`. The application selects the
+dependency models, but the package owns cache storage and safety.
+
+### Cached custom SQL reads
+
+Use `CacheManager::rememberWithDependencies($key, $ttlSeconds, $callback,
+$tags, $connection)` when a specialized read cannot use repository caching.
+It requires dependency tags and a positive TTL; if tags are unavailable
+or the passed connection has an open transaction, it executes the callback
+without publishing potentially stale or uncommitted data. Call
+`CacheInvalidator::invalidateAfterCommit($tags, $connection)` for SQL changes
+to those dependencies. These operations do not introduce additional database
+reads; Redis/tag support is recommended.
+
+

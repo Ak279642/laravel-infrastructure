@@ -1,0 +1,33 @@
+name: Package tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  php-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, dom, fileinfo, sqlite3, pdo_sqlite, gd
+          coverage: none
+          tools: composer:v2
+      - name: Validate package metadata
+        run: composer validate --strict
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+      - name: PHP syntax
+        run: find src tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+      - name: PHPUnit
+        run: composer test

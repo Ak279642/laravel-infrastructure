@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Database\Repositories;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
+use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasBulkCache;
 use Ak279642\LaravelInfrastructure\Database\Repositories\Concerns\HasCache;
@@ -181,6 +183,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function clearCache(): void
     {
+        RequestReadCache::clear();
         $targeted = method_exists($this->model, 'infrastructureUsesTargetedCacheInvalidation')
             && $this->model->infrastructureUsesTargetedCacheInvalidation();
         $tags = $targeted
@@ -199,6 +202,21 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         }
 
         $this->clearCache();
+    }
+
+    /**
+     * Invalidate caches for optimized direct SQL or pivot-table mutations.
+     * Regular model writes should use model observers instead of this method.
+     *
+     * @param list<string> $dependentModelTags Additional model/cache tags whose
+     *                                         cached results depend on this write.
+     */
+    protected function invalidateAfterBulkWrite(array $dependentModelTags = []): void
+    {
+        app(CacheInvalidator::class)->invalidateAfterCommit(
+            CacheTag::tags(CacheTag::fromModel($this->model::class), ...$dependentModelTags),
+            $this->model->getConnection(),
+        );
     }
 
     public function truncate(): void
