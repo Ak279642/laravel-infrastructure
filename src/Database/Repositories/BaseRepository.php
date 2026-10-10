@@ -65,7 +65,9 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         protected CacheManager $cache,
         protected ?ValidationContext $validationContext = null,
     ) {
-        $this->query = $this->query();
+        // Do not resolve authenticated scopes during construction: repositories
+        // can be instantiated before a request's authentication is established.
+        $this->query = $this->model->newQuery();
         $this->initializeCache();
     }
 
