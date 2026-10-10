@@ -142,6 +142,34 @@ final class RepositoryCachePolicyIntegrationTest extends TestCase
         ));
     }
 
+    public function test_remember_batch_loads_all_missing_ids_in_one_callback(): void
+    {
+        $calls = 0;
+        $cache = app(CacheManager::class);
+        $tags = [CacheTag::fromModel(PolicyCacheRecord::class)];
+        $loader = function (array $ids) use (&$calls): array {
+            $calls++;
+            return array_fill_keys($ids, ['metric' => 12]);
+        };
+        $first = $cache->rememberBatch(
+            'metrics:partner', [3, 1, 3, 2], 60, $loader,
+            fn (int $id): array => [...$tags, CacheTag::entity('actor', $id)],
+            DB::connection(),
+        );
+
+        self::assertSame([3, 1, 2], array_keys($first));
+        self::assertSame(['metric' => 12], $first[1]);
+        self::assertSame(1, $calls);
+
+        $second = $cache->rememberBatch(
+            'metrics:partner', [1, 2], 60, $loader,
+            fn (int $id): array => [...$tags, CacheTag::entity('actor', $id)],
+            DB::connection(),
+        );
+        self::assertSame(['metric' => 12], $second[2]);
+        self::assertSame($cache->supportsTags() ? 1 : 2, $calls);
+    }
+
     public function test_request_cache_supports_null_and_explicit_clear(): void
     {
         $calls = 0;
