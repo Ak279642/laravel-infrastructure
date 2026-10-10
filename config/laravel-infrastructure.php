@@ -17,13 +17,11 @@ return [
     // Optional automatic invalidation for successful query-builder/raw SQL
     // mutations, including pivot sync and set-based UPDATE. Uses Laravel's
     // existing cache store; Redis tags are recommended.
-    'cache' => [
-        'auto_invalidation' => [
-            'enabled' => (bool) env('LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION', false),
-            // Pivot/visibility tables can affect caches for other models.
-            // Keys are physical table names; values are dependent model classes.
-            'table_dependencies' => [],
-        ],
+    'auto_invalidation' => [
+        'enabled' => (bool) env('LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION', false),
+        // Pivot/visibility tables can affect caches for other models.
+        // Keys are physical table names; values are dependent model classes.
+        'table_dependencies' => [],
     ],
 
     // Database transaction retry count.
