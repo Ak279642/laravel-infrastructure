@@ -52,6 +52,21 @@ final class ScopedRepositoryCacheTest extends TestCase
         $this->be(new ScopedCacheActor(['id' => $id]));
     }
 
+    public function test_repository_can_be_constructed_before_authentication_but_reads_fail_closed(): void
+    {
+        $repository = $this->repository();
+
+        try {
+            $repository->get();
+            self::fail('Expected unauthenticated scoped read to be rejected.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('Authenticated cache scope is required.', $exception->getMessage());
+        }
+
+        $this->asUser(101);
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+    }
+
     public function test_scoped_reads_are_isolated_and_an_update_does_not_flush_another_owner(): void
     {
         $this->asUser(101);
