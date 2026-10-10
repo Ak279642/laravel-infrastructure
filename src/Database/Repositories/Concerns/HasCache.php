@@ -146,6 +146,12 @@ trait HasCache
     protected function getCacheKey(string $operation, array $params = []): string
     {
         $model = $this->getModel();
+        if (method_exists($model, 'infrastructureCacheScope')) {
+            $scope = $model->infrastructureCacheScope();
+            if ($scope !== null) {
+                $params['infrastructure_scope'] = [$scope['column'], $scope['value']];
+            }
+        }
 
         return CacheKey::make(
             'repository:'.strtolower(str_replace('\\', '.', static::class)).':'.$operation,
@@ -159,8 +165,11 @@ trait HasCache
     protected function resolveCacheTags(array $params = []): array
     {
         $model = $this->getModel();
+        $scope = method_exists($model, 'infrastructureCacheScope')
+            ? $model->infrastructureCacheScope()
+            : null;
         $tags = CacheTag::merge(
-            [CacheTag::fromModel($model::class)],
+            [$scope === null ? CacheTag::fromModel($model::class) : $scope['tag']],
             $this->extraCacheTags,
         );
 
@@ -169,8 +178,8 @@ trait HasCache
             $relations = is_array($relations) ? $relations : [];
             $tags = CacheTag::merge(
                 $tags,
-                [$model::cacheTag()],
-                $model->getCacheDependencyTags(null, $relations),
+                $scope === null ? [$model::cacheTag()] : [],
+                $scope === null ? $model->getCacheDependencyTags(null, $relations) : [],
             );
         }
 
@@ -180,9 +189,14 @@ trait HasCache
     protected function flushCache(): void
     {
         $model = $this->getModel();
-        $tags = $model instanceof CacheableModel
-            ? CacheTag::merge([$model::cacheTag()], $this->extraCacheTags)
-            : CacheTag::merge([CacheTag::fromModel($model::class)], $this->extraCacheTags);
+        $scope = method_exists($model, 'infrastructureCacheScope')
+            ? $model->infrastructureCacheScope()
+            : null;
+        $tags = $scope !== null
+            ? [$scope['tag']]
+            : ($model instanceof CacheableModel
+                ? CacheTag::merge([$model::cacheTag()], $this->extraCacheTags)
+                : CacheTag::merge([CacheTag::fromModel($model::class)], $this->extraCacheTags));
 
         if ($tags !== []) {
             $this->getCacheManager()->flushTags($tags);
