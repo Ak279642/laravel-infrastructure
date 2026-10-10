@@ -235,10 +235,20 @@ trait InteractsWithFiles
 
             $file = $this->getAttribute($column);
 
-            if (! $file instanceof UploadedFile) {
+            $remoteUrl = is_string($file) && preg_match('~^https?://~i', $file) === 1
+                ? $file
+                : null;
+            if (! $file instanceof UploadedFile && $remoteUrl === null) {
                 continue;
             }
 
+            $temporaryFile = null;
+            if ($remoteUrl !== null) {
+                $file = $storage->downloadUrl($remoteUrl);
+                $temporaryFile = $file->getPathname();
+            }
+
+            try {
             $directory = $options['directory'] ?? null;
 
             if (
@@ -321,6 +331,11 @@ trait InteractsWithFiles
             }
 
             $this->setAttribute($column, $path);
+            } finally {
+                if ($temporaryFile !== null) {
+                    @unlink($temporaryFile);
+                }
+            }
         }
     }
 
