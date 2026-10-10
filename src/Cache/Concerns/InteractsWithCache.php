@@ -179,6 +179,11 @@ trait InteractsWithCache
             if (is_array($source) && isset($source['guard'], $source['attribute'])) {
                 $guardUser = auth($source['guard'])->user();
                 if ($guardUser === null) {
+                    // OR rules can match any authenticated guard; inactive
+                    // guards do not turn the query into an unrestricted read.
+                    if ($this->infrastructureCacheScopeOperator() === 'or') {
+                        continue;
+                    }
                     throw new \RuntimeException('Authenticated cache scope is required.');
                 }
                 $value = $source['attribute'] === 'id'
@@ -204,6 +209,10 @@ trait InteractsWithCache
                 throw new \RuntimeException('A non-empty authenticated cache scope is required.');
             }
             $resolved[$column] = $value;
+        }
+
+        if ($resolved === []) {
+            throw new \RuntimeException('Authenticated cache scope is required.');
         }
 
         ksort($resolved);
