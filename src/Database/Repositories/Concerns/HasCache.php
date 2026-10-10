@@ -146,10 +146,10 @@ trait HasCache
     protected function getCacheKey(string $operation, array $params = []): string
     {
         $model = $this->getModel();
-        if (method_exists($model, 'infrastructureCacheScope')) {
-            $scope = $model->infrastructureCacheScope();
-            if ($scope !== null) {
-                $params['infrastructure_scope'] = [$scope['column'], $scope['value']];
+        if (method_exists($model, 'infrastructureCacheScopes')) {
+            $params['infrastructure_scopes'] = $model->infrastructureCacheScopes();
+            if ($model->infrastructureVisibilityResolver() !== null) {
+                $params['visibility_actor'] = auth()->user()?->getAuthIdentifier();
             }
         }
 
@@ -168,8 +168,10 @@ trait HasCache
         $scope = method_exists($model, 'infrastructureCacheScope')
             ? $model->infrastructureCacheScope()
             : null;
+        $visibility = method_exists($model, 'infrastructureVisibilityResolver')
+            && $model->infrastructureVisibilityResolver() !== null;
         $tags = CacheTag::merge(
-            [$scope === null ? CacheTag::fromModel($model::class) : $scope['tag']],
+            [$scope === null || $visibility ? CacheTag::fromModel($model::class) : $scope['tag']],
             $this->extraCacheTags,
         );
 
@@ -177,7 +179,7 @@ trait HasCache
             $relations = $params['with'] ?? [];
             $relations = is_array($relations) ? $relations : [];
             $dependencies = $model->getCacheDependencyTags(null, $relations);
-            if ($scope !== null) {
+            if ($scope !== null && ! $visibility) {
                 // Retain related-model dependencies without a broad self-model tag.
                 $dependencies = array_values(array_filter(
                     $dependencies,
@@ -186,7 +188,7 @@ trait HasCache
             }
             $tags = CacheTag::merge(
                 $tags,
-                $scope === null ? [$model::cacheTag()] : [],
+                $scope === null || $visibility ? [$model::cacheTag()] : [],
                 $dependencies,
             );
         }
@@ -200,7 +202,9 @@ trait HasCache
         $scope = method_exists($model, 'infrastructureCacheScope')
             ? $model->infrastructureCacheScope()
             : null;
-        $tags = $scope !== null
+        $visibility = method_exists($model, 'infrastructureVisibilityResolver')
+            && $model->infrastructureVisibilityResolver() !== null;
+        $tags = $scope !== null && ! $visibility
             ? [$scope['tag']]
             : ($model instanceof CacheableModel
                 ? CacheTag::merge([$model::cacheTag()], $this->extraCacheTags)
