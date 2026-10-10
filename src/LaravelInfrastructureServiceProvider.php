@@ -87,7 +87,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
 
         $events = $this->app->make(EventDispatcher::class);
 
-        if ((bool) config('laravel-infrastructure.cache.auto_invalidation.enabled', false)) {
+        if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             $watcher = $this->app->make(AutomaticQueryInvalidator::class);
             $events->listen(QueryExecuted::class, [$watcher, 'onQuery']);
             $events->listen(TransactionRolledBack::class, [$watcher, 'onRollback']);
