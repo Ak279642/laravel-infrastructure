@@ -185,24 +185,19 @@ trait InteractsWithCache
     }
 
     /**
-     * Resolve request-scoped actor metadata without a database query.
-     * Uses an explicit actor_resolver, or the conventional CurrentActor when
-     * present. No application namespace is referenced at compile time.
-     *
-     * @return array<string, mixed>|null
+     * Optional application-defined actor and visibility extensions are deliberately
+     * not auto-discovered. Laravel global scopes apply through Eloquent as usual.
+     * Configured column scopes continue to work independently.
      */
     public function infrastructureVisibilityActor(): ?array
     {
-        $resolver = $this->cacheOptions()['actor_resolver']
-            ?? ('App'.'\\Support\\Visibility\\CurrentActor');
+        $resolver = $this->cacheOptions()['actor_resolver'] ?? null;
         if (is_string($resolver) && class_exists($resolver)) {
             $resolver = app($resolver);
         }
         if (is_object($resolver) && method_exists($resolver, 'resolve')) {
             $actor = $resolver->resolve();
-            if (is_array($actor) && isset($actor['id'], $actor['type'])) {
-                return $actor;
-            }
+            return is_array($actor) && isset($actor['id'], $actor['type']) ? $actor : null;
         }
 
         $attributes = request()->attributes;
@@ -210,11 +205,8 @@ trait InteractsWithCache
         $type = $attributes->get('user_type');
         if ((is_int($id) || (is_string($id) && $id !== ''))
             && is_string($type) && $type !== '') {
-            return [
-                'id' => $id,
-                'type' => $type === 'user' ? 'api' : $type,
-                'partner_id' => $attributes->get('user')?->partner_id,
-            ];
+            return ['id' => $id, 'type' => $type === 'user' ? 'api' : $type,
+                'partner_id' => $attributes->get('user')?->partner_id];
         }
 
         $user = auth()->user();
@@ -224,23 +216,17 @@ trait InteractsWithCache
         ];
     }
 
-    /** @return callable|null */
     public function infrastructureVisibilityResolver(): mixed
     {
         $resolver = $this->cacheOptions()['visibility_resolver'] ?? null;
-        if ($resolver === null) {
-            $resolver = 'App'.'\\Support\\Visibility\\VisibilityResolver';
-            if (! class_exists($resolver)) {
-                return null;
-            }
-        }
         if (is_string($resolver) && class_exists($resolver)) {
             $resolver = app($resolver);
         }
-        if ($resolver instanceof \Closure || (is_object($resolver) && method_exists($resolver, 'apply'))) {
+        if ($resolver === null || $resolver instanceof \\Closure
+            || (is_object($resolver) && method_exists($resolver, 'apply'))) {
             return $resolver;
         }
-        throw new \InvalidArgumentException('Visibility resolver must be a closure or class with apply().');
+        throw new \\InvalidArgumentException('Invalid visibility resolver.');
     }
 
     public static function cacheTag(): string
