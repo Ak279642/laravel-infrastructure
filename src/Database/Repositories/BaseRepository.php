@@ -89,7 +89,12 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
 
     public function clearCache(): void
     {
-        $this->getCacheManager()->flushTags([CacheTag::fromModel($this->model::class)]);
+        $scope = method_exists($this->model, 'infrastructureCacheScope')
+            ? $this->model->infrastructureCacheScope()
+            : null;
+        $this->getCacheManager()->flushTags([
+            $scope === null ? CacheTag::fromModel($this->model::class) : $scope['tag'],
+        ]);
     }
 
     public function truncate(): void
