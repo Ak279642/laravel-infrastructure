@@ -43,6 +43,25 @@ protected function cacheOptions(): array
 
 For application-wide behavior, change Laravel's cache store. For operation-level bypass use `withoutCache()`. Locks use repository defaults (10-second lock, 3-second wait) and can be adjusted by overriding the repository's protected `$cacheLockSeconds` and `$cacheLockWaitSeconds`.
 
+## User and tenant scoped caching (opt-in)
+
+Models using `InteractsWithCache` can opt into owner-level cache partitioning:
+
+```php
+protected function cacheOptions(): array
+{
+    return [
+        'enabled' => true,
+        'scope' => 'user',       // or 'tenant'
+        'scope_column' => 'user_id', // for tenant scope: 'tenant_id'
+    ];
+}
+```
+
+The repository adds an ownership `WHERE` clause on queries, partitions cache keys by the authenticated scope, and tags only that owner's entries. User scope uses the authenticated user ID; tenant scope reads the configured column from the authenticated user. Missing authentication/scope values fail closed. This applies to repository reads and mutations; don't enable it for administrative or cross-owner repositories. Direct unscoped Eloquent queries are outside these repository boundaries.
+
+Model events invalidate the previous and new owner tags on create/update/delete/restore, after commit, using loaded attributes (no extra ownership query). Repository writes and `clearCache()` target the active scope. Models without scope configuration keep the previous model-wide invalidation; global/shared or cross-model cached reports need explicit invalidation of their own dependencies. Use a tag-capable store like Redis. Non-taggable stores preserve the safe uncached repository fallback.
+
 ## Image caching
 
 Public images automatically use `Cache-Control: public, max-age=86400` and metadata ETags. Protected, signed, and model-authorized images always use `private, no-store, max-age=0`. There is no separate assets cache configuration, and these HTTP browser headers are not Laravel's server-side cache store.
