@@ -55,6 +55,11 @@ final class SqlCacheDependency
         if (! preg_match('/^(insert|replace|update|delete|truncate|alter|create|drop|rename|merge|with)\b/i', $sql)) {
             return null;
         }
+        // Common-table-expression SELECT statements are reads, not writes.
+        if (preg_match('/^with\b/i', $sql)
+            && ! preg_match('/\b(?:insert\s+into|update\s+\S+\s+set|delete\s+from|replace\s+into)\b/i', $sql)) {
+            return null;
+        }
 
         $id = '((?:[\x60"][a-zA-Z_][\w$]*[\x60"]|[a-zA-Z_][\w$]*)(?:\.(?:[\x60"][a-zA-Z_][\w$]*[\x60"]|[a-zA-Z_][\w$]*))?)';
         $patterns = [
