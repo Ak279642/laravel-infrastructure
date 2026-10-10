@@ -611,7 +611,7 @@ final class CacheManager
     {
         $normalizedTags = CacheTag::tags(...$tags);
         if ($forRead && $normalizedTags !== []
-            && (bool) config('laravel-infrastructure.cache.auto_invalidation.enabled', false)) {
+            && (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             $normalizedTags = CacheTag::withReadDependencies($normalizedTags, DB::connection());
         }
 
