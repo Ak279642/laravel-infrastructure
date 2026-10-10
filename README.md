@@ -879,19 +879,18 @@ foreach ($products->cursor() as $product) {
 
 Use Laravel's configured cache store (Redis recommended for tag invalidation), e.g. `CACHE_STORE=redis`. Repositories cache reads with configurable TTLs, scoped keys and automatic invalidation after writes; `withoutCache()` bypasses one read. See [Caching](docs/caching.md) for full examples.
 
-User/tenant ownership and composite dimensions are **opt-in**:
+Laravel's Eloquent global scopes are respected automatically (including application-specific visibility and active-status scopes). Cache keys account for scoped SQL/bindings, and custom global-scope models use conservative model-wide invalidation. No separate visibility resolver or configuration is required.
+
+For simple ownership without an existing visibility scope, models can opt in:
 
 ```php
 protected function cacheOptions(): array
 {
-    return ['scopes' => [
-        'tenant_id' => 'auth.tenant_id',
-        'user_id' => 'auth.id',
-    ]];
+    return ['scopes' => ['customer_ref' => 'auth.id']];
 }
 ```
 
-Request-based actors and application `CurrentActor` / `VisibilityResolver::apply()` are detected automatically when available. The existing Eloquent `VisibilityScope` is reused, not applied twice. For shared/global visibility, optionally configure `visibility_resolver` (class name or closure). Those caches use model-wide invalidation to avoid stale public results. Unconfigured models retain existing behavior; see [Caching](docs/caching.md).
+Multiple columns are supported and combined with AND; see [Caching](docs/caching.md). Laravel global scopes remain responsible for authorization, and permission changes may need explicit cache invalidation.
 
 # Public and private media
 
