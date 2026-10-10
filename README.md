@@ -877,51 +877,19 @@ foreach ($products->cursor() as $product) {
 
 # Cache usage
 
-Use Laravel's default cache configuration (`config/cache.php`), not a package-specific cache driver. Set `CACHE_STORE=redis` in your application `.env` if desired. Repository TTLs remain configurable per repository.
+Use Laravel's configured cache store (Redis recommended for tag invalidation), e.g. `CACHE_STORE=redis`. Repositories cache reads with configurable TTLs, scoped keys and automatic invalidation after writes; `withoutCache()` bypasses one read. See [Caching](docs/caching.md) for full examples.
 
-Repository default:
-
-```php
-use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
-
-protected function defaultCacheTtl(): int
-{
-    return CacheTtl::MINUTES_10;
-}
-```
-
-Model-specific:
+User/tenant partitioning is **opt-in**, enforced on repository queries, and requires authentication:
 
 ```php
 protected function cacheOptions(): array
 {
-    return [
-        'enabled' => false, // disable repository cache only for this model
-    ];
+    return ['scope' => 'user', 'scope_column' => 'user_id'];
+    // Or: ['scope' => 'tenant', 'scope_column' => 'tenant_id']
 }
 ```
 
-Per operation, using the injected `ProductRepository` from the Controller above:
-
-```php
-// $this->products is ProductRepository.
-
-$fresh = $this->products
-    ->withoutCache()
-    ->findOrFail($id);
-
-$cachedFor60Seconds = $this->products
-    ->withCache(CacheTtl::MINUTE)
-    ->findOrFail($id);
-
-$cachedForever = $this->products
-    ->rememberForever()
-    ->findOrFail($id);
-
-$this->products->clearCache();
-```
-
-Custom repository reads use protected `cacheRemember()`, as shown in `ProductRepository::featured()`.
+Scoped writes invalidate the old and new owners' cached data after commit. Without this option, existing model-level invalidation is preserved. Only use scoped repositories for owner-restricted reads; separately managed global reports need their own invalidation policy.
 
 # Public and private media
 
@@ -1081,195 +1049,8 @@ Reusable infrastructure only. No application-specific models, RBAC dependency, a
 No dependency on the host application's `App` namespace.
 
 
-# Full feature and API reference
+# Feature reference
 
-> This reference describes the current `main` implementation. Public assets use the stored path, with no model ID, model query, or resource-alias registry. `filename_from`, `FileReferenceCast`, media disk aliases, and a one-time rename command are implemented; Composer installations must update to a release containing these changes.
+For the full API, examples, configuration and edge cases, use the focused guides above. The package provides Eloquent repositories (CRUD, filters, relations, search, aggregates, pagination and streaming), model validation, service/action layers, transactions, cache management, file/image uploads (including HTTPS URLs), public/private media, slugs, storage audits, database backups, logging, API responses and security middleware.
 
-## Feature index
-
-| Area | Implemented capabilities | Entry point |
-| --- | --- | --- |
-| Models | Base Eloquent model, model-aware caching, per-model slug fields, file attributes and lifecycle | `Models\BaseModel` |
-| Repositories | CRUD, safe filters, nested relation filters, search, sorting, scopes, eager loading, aggregates, pagination, streaming | `Database\Repositories\BaseRepository` |
-| Repository mutations | Create/update/upsert, delete/force-delete/restore, bulk update/delete/restore/force-delete, duplicate detection | `BaseRepository`, `HasBulkCache` |
-| Validation | Repository-backed existence/uniqueness, resolved models and collections, validation context reuse, named resolvers | `RepositoryFormRequest`, `RepositoryValidationService` |
-| Business layers | Repository-backed services, lifecycle hooks, transactional actions, transaction manager interface | `BaseService`, `BaseAction` |
-| Caching | Repository/model caching, TTLs, tags, keys, stampede locks, explicit invalidation, no-tag-store fallback | `CacheManager`, `CacheInvalidator` |
-| File uploads | Per-field disks/directories, automatic uploads, custom filenames, conversions, safe replacement/deletion | `InteractsWithFiles`, `FileStorage`, `ImageProcessor` |
-| File delivery | Direct public media URLs, signed private routes, guard checks, model authorization, 403/404 images | `AssetsController` |
-| Maintenance | Model-owned orphan audit on public/private disks, SEO media rename, database backups | Artisan commands |
-| Structured logging | Standard package domains, arbitrary application enum/string domains, contextual logs, redaction, correlation IDs | `CustomLog` |
-| Log files | Optional Monolog daily and size rotation via a custom Laravel channel factory | `DomainLoggerFactory` |
-| HTTP | JSON API response helpers, resources/pagination, package exception types and exception renderer | `ApiResponse`, `ResourceResponse` |
-| Security | Sensitive-path rejection, security headers, correlation middleware | HTTP middleware |
-| Utilities | Schema metadata registry, immutable operation context, slug lookup, cache tags, TTL constants | See source modules |
-
-## Repository API — complete public method index
-
-These operations are implemented on `BaseRepository` or its included concerns. Not every method has the same signature; inspect the linked [repository guide](docs/repositories.md) and code before combining named arguments.
-
-| Category | Methods |
-| --- | --- |
-| Foundation | `getModel`, `query`, `clearCache`, `truncate` |
-| Reads | `all`, `get`, `first`, `firstOrFail`, `find`, `findOrFail`, `findWhere`, `findWhereIn`, `findDuplicate` |
-| Writes | `create`, `update`, `updateOrCreate`, `delete`, `restore`, `forceDelete` |
-| Existence and aggregates | `exists`, `doesntExist`, `count`, `sum`, `avg`, `min`, `max`, `pluck`, `groupCount` |
-| Pagination | `paginate`, `simplePaginate`, `cursorPaginate` |
-| Memory-efficient reads | `chunk`, `lazy`, `cursor` |
-| Relations | `with`, `withCount`, `withSum`, `withAvg`, `load`, `loadMissing` |
-| Scopes and ordering | `scope`, `orderBy`, `orderByDesc`, `latest`, `oldest` |
-| Bulk writes | `bulkUpdate`, `bulkDelete`, `bulkRestore`, `bulkForceDelete` |
-| Repository caching | `cacheTtl`, `rememberForever`, `cacheTags`, `withoutCache`, `withCache`, `flushCache` |
-
-Configure `allowedFilters`, `allowedRelationFilters`, `searchable`, `allowedSorts`, `allowedRelations`, `allowedScopes`, `defaultRelations`, `defaultOrder` and strictness in concrete repositories. Filter inputs can include nested relationship keys, operator/value objects, search columns, eager relations/counts, scopes, and sorting. The [filtering guide](docs/filtering.md) documents operator syntax. Do not send unvalidated column/relation identifiers to raw query builders.
-
-Bulk operations currently iterate through affected models rather than issuing one mass SQL statement; this is intentional for Eloquent lifecycle behavior and cache invalidation. For very large operations, measure memory use and query counts before choosing a bulk method.
-
-### Cache API and behavior
-
-`CacheManager` provides `get`, `many`, `put`, `putMany`, `forever`, `putForever`, `remember`, `rememberLocked`, `rememberForever`, `pull`, `add`, `increment`, `decrement`, `has`, `missing`, `forget`, `forgetMany`, `refresh`, `lock`, `flushTags`, `flushAll`, `supportsTags` and `getStore`.
-
-Other cache building blocks:
-- `CacheKey`: deterministic key building and normalized parameters.
-- `CacheTag`: model/tag helpers.
-- `CacheTtl`: readable TTL constants.
-- `UnorderedArray`: normalization for unordered parameters.
-- `CacheInvalidator` and `CacheObserver`: invalidate dependent caches after writes.
-- `Cacheable` and `InteractsWithCache`: reusable caching behavior for application classes and models.
-
-Repository cache can be bypassed per operation using `withoutCache()`, which clones the repository to avoid leaking a bypass to subsequent callers. Laravel's configured cache store is used; support for tag-based invalidation depends on the store, with alternative behavior on non-taggable stores. A cache hit is an optimization, not a permission check or substitute for transactionally fresh reads.
-
-### Validation and operation context
-
-`RepositoryFormRequest` runs repository validation after ordinary Laravel rules pass, then exposes `resolved()`, `resolvedModel()`, and `resolvedCollection()`. Override `repositoryValidationRules()` to return `RepositoryValidationRule` instances; `repositoryValidationData()` can supply transformed input. A `RepositoryValidationService` and request-scoped `ValidationContext` reuse loaded models instead of repeating matching queries.
-
-`ValidationContext` includes `put`, `get`, `getModel`, `requireModel`, `findModel`, `remember`, `models`, `forgetModel`, `findMatching`, `findManyMatching`, `getCollection`, `requireCollection`, `has`, `forget`, `clear`, `snapshot`, `restore`, and `all`.
-
-`OperationContext` is a small immutable container with `has`, `get`, `getOrNull` and `all`; it is not an automatically persisted session or global cache. Use model context to avoid duplicate reads, while still refreshing genuinely time-sensitive eligibility/authorization data.
-
-### Services, actions and transactions
-
-`BaseService` wraps repository operations through protected `findRecord`, `findRecordOrFail`, `recordExists`, `createRecord`, `updateRecord` and `deleteRecord`. Hooks: `beforeCreate`, `afterCreate`, `beforeUpdate`, `afterUpdate`, `beforeDelete`, `afterDelete`. `BaseAction` and the injectable `TransactionManager` support coordinated writes and transaction retries using `LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS`. The package provider binds `LaravelTransactionManager` to that contract.
-
-### Slugs
-
-`InteractsWithSlug` and `SlugGenerator` support multiple distinct slug columns per model, configurable source(s), uniqueness, custom separator/options, manual slugs, and optional regeneration when source attributes change. Slug lookup uses `SlugLookupRepository`. Configure with `slugFields()`; no package-global slug mapping is required. Soft-deleted rows may continue to reserve values according to configured uniqueness behavior.
-
-### Files: storage, processing and lifecycle
-
-`InteractsWithFiles` reads `fileAttributes()` (per-attribute options) and optional model-wide `fileOptions()`. Supported configuration includes `disk`, **model-owned** `directory`, `auto_upload`, `filename`, `image`, `access`, `audit`, `delete_on_replace`, `delete_on_delete`, and `delete_on_soft_delete`. File paths, **not disk names**, are stored in ordinary model columns. The disk is resolved from the field configuration.
-
-`FileStorage` supports `store`, `storeContents`, `delete`, `exists` and `url`; paths/directories/filenames are checked for unsafe segments. `ImageProcessor` can process images through Intervention Image (GD/Imagick), choose original/WebP format, resizing strategy, dimensions, position and quality. File replacement/deletion is coordinated with database transactions via `PendingFileUploads` to clean up failed saves and rollbacks.
-
-Current methods are `getFileUrl($attributeOrPath, $seoName = null)` and `fileAssetUrl($column, $expiration = null)`. Generation uses loaded raw attributes only and does not query SQL or the filesystem. For public files, the path is resolved directly from the disk alias: `/media/products/iphone.webp?v=...`. Version derives from the path and already-loaded model timestamp; uploads never overwrite existing filenames.
-
-When a custom `getFileUrl` SEO name is provided, it **must match the stored physical filename**. Configure names during upload using `filename_from` (string/array, supports already-loaded relations such as `brand.slug`), or `filename` (string/callable). Missing relationship data throws instead of initiating a lazy query. Collision-safe writes use cache locks; multi-node systems must configure a shared atomic-lock-capable cache store (for example, Redis).
-
-To opt into object syntax, cast the path column to `Ak279642\LaravelInfrastructure\Files\FileReferenceCast::class`. You can then call `$product->image->getFileUrl()`, while ordinary uncased string attributes continue working unchanged.
-
-**Media security:** `assets.disk_aliases` exposes only `assets.public_disks` (default `['public']`). Do not store protected documents there. Private assets use encrypted signed references, current model loading, configured guard checks and optional `authorizesAssetField()` ownership enforcement. Removed: `assets.resources`, `assets.legacy_uploads`, `assets.folder_access`, `assets.generic_path_patterns`, the former ID-based routes and generic disk URL endpoint. The fallback 403/404 artwork is still available.
-
-### Storage audit — both disks
-
-The audit groups configured attributes by **disk + model-owned directory**, then collects database references without global visibility scopes. It is a deliberate maintenance command and does use database queries to determine orphans; that is separate from the goal of query-free public media delivery.
-
-```bash
-php artisan infrastructure:storage-audit
-php artisan infrastructure:storage-audit --model=Product
-php artisan infrastructure:storage-audit --delete
-```
-
-It is a dry run by default. To include models in the scan, register them under `storage_audit.models`; ensure each audited field declares an owned directory and a valid disk. The command reads **raw stored values** so file-reference casts do not cause valid paths to be treated as unreferenced. Shared directories are compared against references from *all registered models* before deletion. Always review dry-run output before `--delete`, particularly after moving a private directory.
-
-### Backups
-
-`infrastructure:database-backup` supports an optional `--connection`, configured Laravel destination disk, backup path, retention count, compression, exclusion of data for selected tables, MySQL/MariaDB and PostgreSQL dump executables. Configure `database_backup` options or the corresponding `LARAVEL_INFRASTRUCTURE_BACKUP_*` environment keys. Verify database CLI binaries, filesystem permissions and restoration procedures in production; this command creates backups but does not itself prove recoverability.
-
-### Structured logging and size rotation
-
-Generic package domains in `LogDomain` are `application`, `api`, `webhook`, `jobs`, `business`, and `errors`. Application-specific domains such as IVR, Meta or Google belong in the host application's own enum or string identifiers.
-
-The logging resolver (current `main`) selects a channel named `domain_{domain}` from the **application's** `config/logging.php`, falling back to the package's configured channel or Laravel default if no matching channel exists. For example:
-
-```php
-// config/logging.php — add a channel to the existing channels array
-'domain_business' => [
-    'driver' => 'custom',
-    'via' => \Ak279642\LaravelInfrastructure\Logging\DomainLoggerFactory::class,
-    'name' => 'business',
-    'path' => storage_path('logs/domains/business.log'),
-    'days' => 14,
-    'level' => 'info',
-],
-'domain_ivr' => [
-    'driver' => 'custom',
-    'via' => \Ak279642\LaravelInfrastructure\Logging\DomainLoggerFactory::class,
-    'name' => 'ivr',
-    'path' => storage_path('logs/domains/ivr.log'),
-    'days' => 14,
-    'level' => 'info',
-],
-```
-
-`DomainLoggerFactory` constructs `DailySizeRotatingFileHandler`; its default maximum file size is **100 MiB** and retention defaults to **14 days** unless overridden in configuration. This custom channel rotates by both day and size; Laravel's built-in `daily` channel only rotates by day. Custom channels must be explicitly declared to use the size-rotating handler. Check process permissions and log collection in multi-instance deployments.
-
-`CustomLog` provides `debug`, `info`, `warning`, `error`, `exception`, `businessException`, `serverException`, `enabled`, and `exceptionContext`. Its structured context includes environment, host, optional request ID/method/URL/route/query-key names/IP/user information, and domain. `LogContextRedactor` reduces accidental exposure of sensitive context. `CorrelationId` supports per-request correlation via the `X-Request-ID` header. Do not log raw credentials or assume redaction covers arbitrary secret-shaped strings.
-
-### HTTP response, exception and security inventory
-
-`ApiResponse::success()` and `ApiResponse::error()` create consistent JSON responses; `MessageResponse::make()` is a message-only helper, and `ResourceResponse::make()` accepts resources, collections and pagination. `ApiExceptionRenderer` normalizes API errors and can be toggled with `LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED`.
-
-Provided exception classes: `BaseException`, `AccessForbiddenException`, `BusinessLogicException`, `ConflictException`, `FilterNotAllowedException`, `HttpMethodNotAllowedException`, `HttpRequestException`, `InternalServerException`, `NotFoundException`, `RelationNotAllowedException`, `RepositoryValidationConfigurationException`, `RouteNotFoundException`, `ServiceUnavailableException`, `SortNotAllowedException`, `TooManyRequestsException`, `UnauthorizedException`, and `ValidationException`.
-
-Middleware and security helpers:
-- `RejectSensitivePaths`: blocks attempts to access sensitive files/paths.
-- `SecurityHeaders`: adds defensive HTTP response headers.
-- `RequestCorrelationId`: sets or propagates request correlation metadata.
-- Service provider: registers dependencies, Artisan commands, route middleware aliases, asset routes, exception reporting/rendering hooks, and config publishing.
-
-### Configuration checklist
-
-| Config section | Controls |
-| --- | --- |
-| `transactions` | Transaction retry attempts |
-| `files` | Default disk and image driver |
-| `assets` | Routing prefix/enabled flag, registered model aliases, allowed disks, access rules, fallback images, optional legacy routes |
-| `storage_audit` | Registered models; optional chunk size |
-| `database_backup` | Destination, path, retention, compression, exclusions and dump executables |
-| `responses` | Exception renderer toggle |
-| `logging` | Enabled flag, fallback channel, trace control, exception reporting and correlation settings |
-
-The **authoritative** defaults are in [config/laravel-infrastructure.php](config/laravel-infrastructure.php); override only values your project changes. Host `config/logging.php`, `config/filesystems.php`, `config/cache.php`, guards and application model policies are still owned by your Laravel project.
-
-### Testing and maintenance
-
-The repository contains PHPUnit unit, feature, and architecture tests covering cache keys and concurrency, repositories, query/filter security, validation, file lifecycle, image processing, asset routing/ACLs, transaction behavior, backups, response/exception behavior, and service-provider bindings.
-
-```bash
-composer validate --strict
-composer test
-composer test:unit
-composer test:architecture
-composer lint
-composer analyse
-```
-
-Run these commands on a full clone with Composer dependencies installed. Documentation changes alone do not prove these runtime test suites pass on your deployed PHP/Laravel/database combinations.
-
-## Why use this package?
-
-It centralizes allowlisted repository queries, reusable cache and transaction patterns, safe file processing, slug generation, API formatting, repository-backed validation, and maintenance tasks. This reduces repeated boilerplate between projects, encourages consistent validation and authorization boundaries, and gives teams one implementation to test and improve. It does **not** eliminate the need for indexes, application-level permissions, domain-specific business rules, SQL profiling, or integration tests.
-
-# License
-
-MIT.
-
-## Asset 403/404 images and caching
-
-Missing files use the bundled 404 WebP and denied requests use the bundled 403 WebP. The `render_error_images` setting preserves the image-friendly HTTP 200 response with `X-Asset-Error-Status`; set it false for strict 403/404 HTTP codes. Public files have 24-hour caching and no SQL lookup. Private files use `private, no-store` and require authorization.
-
-## SEO-friendly model asset URLs and cache versions
-
-The stored relative path is the public URL's source of truth. Use `filename_from` on uploads, for example `['name', 'brand.slug', 'category.slug']`, which produces `products/iphone-16-pro-apple-smartphones.webp`. With `'disk_aliases' => ['media' => 'public']`, the URL is `/media/products/iphone-16-pro-apple-smartphones.webp?v=...`.
-
-A file's `?v=` value changes when the stored path or loaded model `updated_at` changes; it is **not** a separate content hash. Filename collisions use numeric suffixes. For existing UUID files, run `infrastructure:media-rename` (dry-run first). The command copies before changing the database record and deliberately leaves original files for auditing, so shared references are not accidentally deleted.
+See [Repositories](docs/repositories.md), [Caching](docs/caching.md), [Files](docs/files.md), and the other topic guides for implementation details. No application-specific authentication, authorization or business models are bundled.
