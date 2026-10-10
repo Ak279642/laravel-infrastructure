@@ -79,23 +79,53 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     public function query(): Builder
     {
         $query = $this->model->newQuery();
-        if (method_exists($this->model, 'infrastructureCacheScopes')) {
-            $scopes = $this->model->infrastructureCacheScopes();
-            $visibility = $this->model->infrastructureVisibilityResolver();
-            if ($visibility !== null) {
-                $query->where(function (Builder $builder) use ($scopes, $visibility): void {
+        if (! method_exists($this->model, 'infrastructureCacheScopes')) {
+            return $query;
+        }
+
+        $scopes = $this->model->infrastructureCacheScopes();
+        $visibility = $this->model->infrastructureVisibilityResolver();
+        $actor = $this->model->infrastructureVisibilityActor();
+
+        // Do not execute an application visibility resolver twice when its
+        // Eloquent global scope already applies it.
+        $globalVisibilityScope = 'App'.'\\Scopes\\VisibilityScope';
+        if ($visibility !== null && class_exists($globalVisibilityScope)
+            && $query->hasGlobalScope($globalVisibilityScope)) {
+            return $query;
+        }
+
+        if (is_object($visibility) && method_exists($visibility, 'apply')) {
+            // Application resolver owns the complete visibility policy.
+            if ($actor === null) {
+                $query->whereRaw('1 = 0');
+                return $query;
+            }
+            return $visibility->apply($query, $this->model, $actor['type'], $actor['id']);
+        }
+
+        if ($visibility instanceof \\Closure) {
+            if ($actor === null && $scopes === []) {
+                $query->whereRaw('1 = 0');
+                return $query;
+            }
+            $query->where(function (Builder $builder) use ($scopes, $visibility, $actor): void {
+                if ($scopes !== []) {
                     $builder->where(function (Builder $owned) use ($scopes): void {
                         foreach ($scopes as $column => $value) {
                             $owned->where($this->model->qualifyColumn($column), $value);
                         }
                     });
-                    $visibility($builder, auth()->user(), $scopes);
-                });
-            } else {
-                foreach ($scopes as $column => $value) {
-                    $query->where($this->model->qualifyColumn($column), $value);
+                } else {
+                    $builder->whereRaw('1 = 0');
                 }
-            }
+                $visibility($builder, auth()->user(), $scopes, $actor);
+            });
+            return $query;
+        }
+
+        foreach ($scopes as $column => $value) {
+            $query->where($this->model->qualifyColumn($column), $value);
         }
 
         return $query;
