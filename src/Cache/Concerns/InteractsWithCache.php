@@ -229,6 +229,17 @@ trait InteractsWithCache
         throw new \\InvalidArgumentException('Invalid visibility resolver.');
     }
 
+    public function infrastructureHasGlobalVisibilityScopes(): bool
+    {
+        foreach ($this->getGlobalScopes() as $scope) {
+            if (! $scope instanceof \Illuminate\Database\Eloquent\SoftDeletingScope) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function cacheTag(): string
     {
         return CacheTag::fromModel(static::class);
@@ -332,7 +343,7 @@ trait InteractsWithCache
     public function getCacheInvalidationTags(): array
     {
         $options = $this->cacheOptions();
-        if ($this->infrastructureVisibilityResolver() !== null) {
+        if ($this->infrastructureVisibilityResolver() !== null || $this->infrastructureHasGlobalVisibilityScopes()) {
             return [static::cacheTag()];
         }
 
