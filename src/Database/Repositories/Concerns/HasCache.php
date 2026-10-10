@@ -176,10 +176,18 @@ trait HasCache
         if ($model instanceof CacheableModel) {
             $relations = $params['with'] ?? [];
             $relations = is_array($relations) ? $relations : [];
+            $dependencies = $model->getCacheDependencyTags(null, $relations);
+            if ($scope !== null) {
+                // Retain related-model dependencies without a broad self-model tag.
+                $dependencies = array_values(array_filter(
+                    $dependencies,
+                    static fn (string $tag): bool => $tag !== $model::cacheTag(),
+                ));
+            }
             $tags = CacheTag::merge(
                 $tags,
                 $scope === null ? [$model::cacheTag()] : [],
-                $scope === null ? $model->getCacheDependencyTags(null, $relations) : [],
+                $dependencies,
             );
         }
 
