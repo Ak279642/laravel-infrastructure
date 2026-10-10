@@ -106,8 +106,10 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             $query->where(function (Builder $builder) use ($scopes, $visibility, $actor): void {
                 if ($scopes !== []) {
                     $builder->where(function (Builder $owned) use ($scopes): void {
+                        $operator = $this->model->infrastructureCacheScopeOperator();
                         foreach ($scopes as $column => $value) {
-                            $owned->where($this->model->qualifyColumn($column), $value);
+                            $method = $operator === 'or' ? 'orWhere' : 'where';
+                            $owned->{$method}($this->model->qualifyColumn($column), $value);
                         }
                     });
                 } else {
@@ -118,8 +120,14 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             return $query;
         }
 
-        foreach ($scopes as $column => $value) {
-            $query->where($this->model->qualifyColumn($column), $value);
+        if ($scopes !== []) {
+            $operator = $this->model->infrastructureCacheScopeOperator();
+            $query->where(function (Builder $builder) use ($scopes, $operator): void {
+                foreach ($scopes as $column => $value) {
+                    $method = $operator === 'or' ? 'orWhere' : 'where';
+                    $builder->{$method}($this->model->qualifyColumn($column), $value);
+                }
+            });
         }
 
         return $query;
@@ -132,7 +140,8 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             : null;
         $broad = method_exists($this->model, 'infrastructureHasGlobalVisibilityScopes')
             && ($this->model->infrastructureHasGlobalVisibilityScopes()
-                || $this->model->infrastructureVisibilityResolver() !== null);
+                || $this->model->infrastructureVisibilityResolver() !== null
+                || $this->model->infrastructureCacheScopeOperator() === 'or');
         $this->getCacheManager()->flushTags([
             $scope === null || $broad ? CacheTag::fromModel($this->model::class) : $scope['tag'],
         ]);
