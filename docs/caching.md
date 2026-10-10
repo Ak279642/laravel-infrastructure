@@ -305,7 +305,8 @@ turning set-based mutations into N individual Eloquent saves. Opt in:
 
 - The package listens to Laravel `QueryExecuted` (SQL **already executed**),
   parses standard INSERT/UPDATE/DELETE/REPLACE/TRUNCATE targets and attaches
-  physical table tags to repository and model-tagged custom cached reads.
+  physical root-model table tags to repository reads and model-tagged custom
+  cached reads without compiling the repository query a second time.
 - On a successful write, the relevant table and declared dependent model tags
   are invalidated. Within transactions, changed tags are deduplicated and
   flushed once after commit; full rollback discards them.
