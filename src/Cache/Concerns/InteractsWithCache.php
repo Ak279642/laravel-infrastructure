@@ -114,7 +114,8 @@ trait InteractsWithCache
         }
 
         $user = auth()->user();
-        if ($user === null) {
+        $actor = $this->infrastructureVisibilityActor();
+        if ($user === null && $actor === null) {
             throw new \RuntimeException('Authenticated cache scope is required.');
         }
 
@@ -124,10 +125,11 @@ trait InteractsWithCache
                 throw new \InvalidArgumentException('Invalid cache scope column.');
             }
             $value = match (true) {
-                $source === 'auth.id' => $user->getAuthIdentifier(),
+                $source === 'auth.id' => $user?->getAuthIdentifier() ?? ($actor['id'] ?? null),
                 is_string($source) && str_starts_with($source, 'auth.') =>
-                    $user->getAttribute(substr($source, 5)),
-                $source instanceof \Closure => $source($user),
+                    $user?->getAttribute(substr($source, 5)) ?? ($actor[substr($source, 5)] ?? null),
+                is_string($source) && str_starts_with($source, 'actor.') => $actor[substr($source, 6)] ?? null,
+                $source instanceof \Closure => $source($user, $actor),
                 default => throw new \InvalidArgumentException('Invalid cache scope resolver.'),
             };
             if (! is_int($value) && (! is_string($value) || $value === '')) {
@@ -183,17 +185,62 @@ trait InteractsWithCache
     }
 
     /**
-     * Visibility resolvers may add OR/global conditions and must return a Builder.
-     * Their cache dependencies cannot be inferred from ownership columns, so
-     * affected caches use conservative model-wide invalidation.
+     * Resolve request-scoped actor metadata without a database query.
+     * Uses an explicit actor_resolver, or the conventional CurrentActor when
+     * present. No application namespace is referenced at compile time.
+     *
+     * @return array<string, mixed>|null
      */
-    public function infrastructureVisibilityResolver(): ?\Closure
+    public function infrastructureVisibilityActor(): ?array
+    {
+        $resolver = $this->cacheOptions()['actor_resolver']
+            ?? ('App'.'\\Support\\Visibility\\CurrentActor');
+        if (is_string($resolver) && class_exists($resolver)) {
+            $resolver = app($resolver);
+        }
+        if (is_object($resolver) && method_exists($resolver, 'resolve')) {
+            $actor = $resolver->resolve();
+            return is_array($actor) && isset($actor['id'], $actor['type'])
+                ? $actor
+                : null;
+        }
+
+        $attributes = request()->attributes;
+        $id = $attributes->get('user_id');
+        $type = $attributes->get('user_type');
+        if ((is_int($id) || (is_string($id) && $id !== ''))
+            && is_string($type) && $type !== '') {
+            return [
+                'id' => $id,
+                'type' => $type === 'user' ? 'api' : $type,
+                'partner_id' => $attributes->get('user')?->partner_id,
+            ];
+        }
+
+        $user = auth()->user();
+        return $user === null ? null : [
+            'id' => $user->getAuthIdentifier(),
+            'type' => 'api',
+        ];
+    }
+
+    /** @return callable|null */
+    public function infrastructureVisibilityResolver(): mixed
     {
         $resolver = $this->cacheOptions()['visibility_resolver'] ?? null;
-        if ($resolver !== null && ! $resolver instanceof \Closure) {
-            throw new \InvalidArgumentException('Visibility resolver must be a closure.');
+        if ($resolver === null) {
+            $resolver = 'App'.'\\Support\\Visibility\\VisibilityResolver';
+            if (! class_exists($resolver)) {
+                return null;
+            }
         }
-        return $resolver;
+        if (is_string($resolver) && class_exists($resolver)) {
+            $resolver = app($resolver);
+        }
+        if ($resolver instanceof \\Closure || (is_object($resolver) && method_exists($resolver, 'apply'))) {
+            return $resolver;
+        }
+        throw new \\InvalidArgumentException('Visibility resolver must be a closure or class with apply().');
     }
 
     public static function cacheTag(): string
@@ -299,7 +346,7 @@ trait InteractsWithCache
     public function getCacheInvalidationTags(): array
     {
         $options = $this->cacheOptions();
-        if (isset($options['visibility_resolver'])) {
+        if ($this->infrastructureVisibilityResolver() !== null) {
             return [static::cacheTag()];
         }
 
