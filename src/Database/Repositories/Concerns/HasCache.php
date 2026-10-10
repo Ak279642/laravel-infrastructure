@@ -149,7 +149,10 @@ trait HasCache
         if (method_exists($model, 'infrastructureCacheScopes')) {
             $params['infrastructure_scopes'] = $model->infrastructureCacheScopes();
             if ($model->infrastructureVisibilityResolver() !== null) {
-                $params['visibility_actor'] = auth()->user()?->getAuthIdentifier();
+                $actor = $model->infrastructureVisibilityActor();
+                $params['visibility_actor'] = $actor === null
+                    ? null
+                    : [$actor['type'] ?? null, $actor['id'] ?? null, $actor['partner_id'] ?? null];
             }
         }
 
