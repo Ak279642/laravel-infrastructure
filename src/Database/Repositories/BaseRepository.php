@@ -594,6 +594,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             || ! $model->exists || $model->getKey() === null
             || $model->isDirty() || $model::class !== $this->model::class
             || $model->getConnectionName() !== $this->model->getConnectionName()) {
+            error_log('LMDBG pre-skip auto='.var_export(config('laravel-infrastructure.auto_invalidation.enabled'), true).' dirty='.($model->isDirty()?'yes':'no').' class='.$model::class.' model='.$this->model::class.' con='.var_export($model->getConnectionName(),true).'/'.var_export($this->model->getConnectionName(),true));
             $model->loadMissing($relations);
 
             return $model;
@@ -607,6 +608,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             if ($related === null
                 || $related->getConnection()->getName() !== $connection->getName()
                 || $related->getConnection()->getDatabaseName() !== $connection->getDatabaseName()) {
+                error_log('LMDBG cross relation '.$relation);
                 $model->loadMissing($relations);
 
                 return $model;
@@ -622,6 +624,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $snapshot = $this->cacheRemember(
             'loadMissing',
             function () use ($model, $relations, $roots): array {
+                error_log('LMDBG callback '.$model::class.' '.implode(',', $relations));
                 $model->loadMissing($relations);
                 $loaded = [];
                 foreach (array_keys($roots) as $root) {
