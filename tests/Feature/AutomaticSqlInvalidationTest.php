@@ -136,12 +136,15 @@ final class AutomaticSqlInvalidationTest extends TestCase
 
         // No watched_items write: the declarative cross-table dependency
         // causes repository cache invalidation without application callbacks.
-        DB::table('watched_pivots')->insert(['label' => 'visibility changed']);
         $cache = app(CacheManager::class);
         $tags = [WatchedItem::cacheTag()];
-        // A cached dependency read refreshed automatically on pivot change.
-        self::assertSame('fresh', $cache->rememberWithDependencies(
-            'watched_pivot_projection', 60, fn (): string => 'fresh', $tags, DB::connection(),
+        self::assertSame('before', $cache->rememberWithDependencies(
+            'watched_pivot_projection', 60, fn (): string => 'before', $tags, DB::connection(),
+        ));
+        DB::table('watched_pivots')->insert(['label' => 'visibility changed']);
+        // A cached dependency read refreshes automatically on pivot change.
+        self::assertSame('after', $cache->rememberWithDependencies(
+            'watched_pivot_projection', 60, fn (): string => 'after', $tags, DB::connection(),
         ));
     }
 }
