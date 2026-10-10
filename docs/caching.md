@@ -334,3 +334,24 @@ turning set-based mutations into N individual Eloquent saves. Opt in:
 **This is automatic invalidation, not automatic caching of `query()`.**
 Repository methods and explicit package cache operations remain the read
 caching boundary.
+
+## Batch read caching without get/put orchestration
+
+For metrics and reports that use a single SQL query for all missing actors,
+use the package's unified `rememberBatch()` API:
+
+```php
+$values = $cache->rememberBatch(
+    'metrics:partner', $partnerIds, 3600,
+    fn (array $missingIds): array => $repository->metricsForPartners($missingIds),
+    fn (int $id): array => [CacheTag::fromModel(ServiceRequest::class), 'partner:'.$id],
+    $repository->getModel()->getConnection(),
+);
+```
+
+It deduplicates IDs, reads cache hits, executes the loader **once for all
+misses**, and populates each missing entry with dependency tags. It preserves
+the first-seen requested ID order and uses the normal after-commit write
+invalidation. It does not hydrate models or introduce per-ID SQL reads.
+On non-taggable stores or open transactions it executes the loader without
+publishing stale or uncommitted values.

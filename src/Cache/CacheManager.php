@@ -271,6 +271,86 @@ final class CacheManager
     }
 
     /**
+     * Populate multiple dependent cache entries with a single loader call for
+     * all misses. Avoids per-entity SQL and exposes one consistent read API.
+     *
+     * The loader receives missing IDs and returns an ID-keyed value array.
+     * The tag resolver is pure metadata, never a database lookup.
+     *
+     * @param list<int|string> $ids
+     * @param callable(list<int|string>): array<int|string,mixed> $loader
+     * @param callable(int|string): list<string> $tagsForId
+     * @return array<int|string,mixed>
+     */
+    public function rememberBatch(
+        string $keyPrefix,
+        array $ids,
+        int $ttl,
+        callable $loader,
+        callable $tagsForId,
+        ?Connection $connection = null,
+    ): array {
+        if ($ttl < 1) {
+            throw new \InvalidArgumentException('Cache TTL must be positive.');
+        }
+
+        $unique = [];
+        foreach ($ids as $id) {
+            if (! is_int($id) && (! is_string($id) || $id === '')) {
+                throw new \InvalidArgumentException('Cache batch IDs must be integers or nonempty strings.');
+            }
+            $unique[(string) $id] = $id;
+        }
+        if ($unique === []) {
+            return [];
+        }
+
+        $values = [];
+        $missing = [];
+        $marker = new \stdClass;
+
+        foreach ($unique as $id) {
+            $value = $this->getWithDependencies(
+                $keyPrefix.':'.$id,
+                $marker,
+                $tagsForId($id),
+                $connection,
+            );
+            if ($value === $marker) {
+                $missing[] = $id;
+            } else {
+                $values[$id] = $value;
+            }
+        }
+
+        if ($missing !== []) {
+            $loaded = $loader($missing);
+            if (! is_array($loaded)) {
+                throw new \UnexpectedValueException('Batch cache loader must return an ID-keyed array.');
+            }
+
+            foreach ($missing as $id) {
+                $value = $loaded[$id] ?? null;
+                $values[$id] = $value;
+                $this->putWithDependencies(
+                    $keyPrefix.':'.$id,
+                    $value,
+                    $ttl,
+                    $tagsForId($id),
+                    $connection,
+                );
+            }
+        }
+
+        $ordered = [];
+        foreach ($unique as $id) {
+            $ordered[$id] = $values[$id];
+        }
+
+        return $ordered;
+    }
+
+    /**
      * Dependency-safe non-computing read for callers that calculate multiple
      * cache misses in a single database query.
      *
