@@ -33,7 +33,6 @@ return [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED', true),
         'public_disks' => ['public'],
         'disk_aliases' => [],
-        'url_ttl_minutes' => 15,
         'render_error_images' => true,
         'error_images' => [403 => null, 404 => null],
     ],
