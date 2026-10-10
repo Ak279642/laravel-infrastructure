@@ -61,6 +61,21 @@ protected function cacheOptions(): array
 
 Every dimension is enforced as a query `WHERE` clause, included in repository cache keys and used for targeted composite ownership tags. Supported value resolvers: `auth.id`, `auth.<attribute>` or a closure accepting the authenticated user and returning a nonempty scalar. Missing credentials or values fail closed. Scope changes invalidate previous and new composite partitions after commit using in-memory attributes, without extra ownership queries.
 
+### Automatic application visibility integration
+
+When the host application provides `App\\Support\\Visibility\\CurrentActor::resolve()` and `App\\Support\\Visibility\\VisibilityResolver::apply(Builder $query, Model $model, ?string $actorType, int|string|null $actorId)`, the package discovers and resolves these classes through Laravel's container. It reads the request actor (`id`, `type`, optional `partner_id`) instead of requiring the default auth guard. An existing `App\\Scopes\\VisibilityScope` Eloquent global scope is not applied twice.
+
+No model configuration is needed for this convention. To opt in explicitly with different class names, use `'actor_resolver' => MyActor::class` and `'visibility_resolver' => MyVisibility::class`. For explicit ownership dimensions sourced from request actor metadata, use:
+
+```php
+protected function cacheOptions(): array
+{
+    return ['scopes' => ['user_id' => 'actor.id']];
+}
+```
+
+Visibility-based cache entries are keyed by actor type, identifier and partner identifier; writes conservatively invalidate the model tag. Authorization/membership changes not accompanied by model writes must invalidate affected caches separately. Application visibility resolution may itself query the database; this package does not add queries for ownership tagging.
+
 For explicitly shared or global records, define an OR visibility resolver:
 
 ```php
