@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Cache\Concerns;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
+use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -68,6 +69,10 @@ trait InteractsWithCache
     private function runInfrastructureCacheObserverAfterCommit(
         string $method,
     ): void {
+        // Request-level memoization must be invalidated immediately, even when
+        // shared tag invalidation is deferred until the transaction commits.
+        RequestReadCache::clear();
+
         if (! $this->usesInfrastructureCache()) {
             return;
         }
