@@ -130,8 +130,11 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $scope = method_exists($this->model, 'infrastructureCacheScope')
             ? $this->model->infrastructureCacheScope()
             : null;
+        $broad = method_exists($this->model, 'infrastructureHasGlobalVisibilityScopes')
+            && ($this->model->infrastructureHasGlobalVisibilityScopes()
+                || $this->model->infrastructureVisibilityResolver() !== null);
         $this->getCacheManager()->flushTags([
-            $scope === null ? CacheTag::fromModel($this->model::class) : $scope['tag'],
+            $scope === null || $broad ? CacheTag::fromModel($this->model::class) : $scope['tag'],
         ]);
     }
 
