@@ -1,231 +1,105 @@
-# Files
+# Files and media
 
-Models extending `BaseModel` can configure automatic uploads through `fileAttributes()`.
+The package's `BaseModel` uses `InteractsWithFiles`; it stores **relative paths only** in your existing database fields. Disks and access come from `fileAttributes()`, not additional database columns.
 
-Published file config is intentionally limited to the default disk and image driver. Directory, lifecycle, image transformation and access behavior belong to the model field.
-
-## File definition
+## Upload configuration
 
 ```php
-protected function fileAttributes(): array
+class Product extends \Ak279642\LaravelInfrastructure\Models\BaseModel
 {
-    return [
-        'document_path' => [
-            'disk' => 'private',
-            'directory' => 'products/documents',
-            'auto_upload' => true,
-            'delete_on_replace' => true,
-            'delete_on_delete' => true,
-            'delete_on_soft_delete' => false,
-            'audit' => true,
-
-            'access' => [
-                'enabled' => true,
-                'signed' => true,
-                'guard' => ['admin', 'web'],
+    protected function fileAttributes(): array
+    {
+        return [
+            'image' => [
+                'directory' => 'products',
+                'filename_from' => ['name', 'brand.slug', 'category.slug'],
+                'image' => ['format' => 'webp', 'width' => 720, 'height' => 720],
             ],
-        ],
-    ];
+            'invoice' => [
+                'disk' => 'private',
+                'directory' => 'invoices',
+                'access' => ['signed' => true, 'guard' => 'web'],
+            ],
+        ];
+    }
 }
 ```
 
-Access supports only:
+If the first upload has a name `iPhone 16 Pro`, loaded `brand.slug=apple` and `category.slug=phones`, it stores `products/iphone-16-pro-apple-phones.webp`. For a collision, it chooses `...-2.webp`, then `...-3.webp`, under an atomic cache lock. Use a **shared Redis lock store** across multiple app servers to prevent concurrent filename races. Explicit `filename` strings and `filename` callbacks are still supported and take priority over `filename_from`; absent both, UUID filenames remain the default.
 
-- `enabled`: false returns 404.
-- `signed`: require a signed URL.
-- `guard`: a guard name or list of guard names. For a list, authentication on any listed guard is sufficient.
-
-There is no role/permission/RBAC logic in asset access.
-
-## Asset URL
-
-Register a short alias:
+No hidden relation loads are allowed for `filename_from`. Reuse models resolved during validation or preload them:
 
 ```php
-'assets' => [
-    'resources' => [
-        'product' => Product::class,
-    ],
+$product->setRelation('brand', $brand);
+$product->setRelation('category', $category);
+$product->image = $request->file('image');
+$product->save();
+```
 
-    'allowed_disks' => [
-        'public',
-        'private',
-    ],
+## Public URLs
+
+```php
+// config/laravel-infrastructure.php
+'assets' => [
+    'disk_aliases' => ['media' => 'public'],
 ],
 ```
 
-Generate the URL:
-
 ```php
-$url = $product->fileAssetUrl(
-    'document_path',
-    now()->addMinutes(5),
-);
+$product->getFileUrl('image');
+$product->fileAssetUrl('image'); // null if the attribute has no stored path
+$product->getFileUrl('products/iphone-16-pro-apple-phones.webp');
 ```
 
-A signed model URL includes the configured resource alias and preserves the file extension. Laravel adds an expiry and signature:
+URL: `/media/products/iphone-16-pro-apple-phones.webp?v=...`. An absent alias defaults to the disk name (for the default disk, `/public/products/...`). The URL exposes the actual relative public path, but never a model ID. If a custom SEO name is passed to `getFileUrl($field, $name)`, it must match the already-stored filename; the package will not generate broken aliases. Change filename at upload or run the migration command.
 
-```text
-/infrastructure/assets/{resource-alias}/10/document_path/document-name.pdf
-?expires=...
-&signature=...
-```
+Public media requests require no database query and are served from the Laravel storage disk. The public route only permits approved static-file extensions and rejects unsafe paths. A public disk is inherently accessible: **never put protected files there**, even if the model configuration sets a guard.
 
-Laravel signs the URL path and expiry. Tampering with either invalidates the link, and requests made after `expires` are rejected.
-
-The URL omits the `model` segment and includes the configured resource alias. It hides the PHP model namespace, filesystem disk and stored path. `AssetsController` resolves the model class from the alias, then resolves the disk and stored path internally from the record and file field. Missing stored files return the package's default 404 image.
-
-## Folder fallback
-
-Generic files that are not tied to a model field can use `assets.folder_access`.
+## Optional object syntax
 
 ```php
-'assets' => [
-    'allowed_disks' => [
-        'public',
-        'private',
-    ],
-
-    'folder_access' => [
-        'private' => [
-            '*' => [
-                'enabled' => false,
-            ],
-
-            'shared/manuals' => [
-                'enabled' => true,
-                'signed' => true,
-                'guard' => 'web',
-            ],
-        ],
-    ],
-],
-```
-
-Rules merge from `*` through parent folders to the most-specific folder. Model field `access` overrides folder fallback.
-
-## Model-owned directory
-
-Model-owned uploads must define a directory either on the field or in the model's `fileOptions()`. There is no global `files.directory` fallback.
-
-```php
-protected function fileOptions(): array
+protected function casts(): array
 {
-    return [
-        'directory' => 'products',
-    ];
+    return ['image' => \Ak279642\LaravelInfrastructure\Files\FileReferenceCast::class];
 }
+
+$product->image->getFileUrl(); // optional: throws only if field isn't a valid file
+(string) $product->image; // stored relative path
 ```
 
-or:
+The cast is opt-in. Noncast columns remain ordinary strings. The upload lifecycle accepts `UploadedFile` values.
+
+## Private files
 
 ```php
-'image_path' => [
-    'directory' => 'products/images',
+'invoice' => [
+    'disk' => 'private',
+    'directory' => 'invoices',
+    'access' => ['signed' => true, 'guard' => 'web'],
 ],
 ```
 
-Missing directory configuration throws before storage.
+Define the private disk outside the web-public directory in your application's `config/filesystems.php`. A private link uses `/_infrastructure/files/{encrypted-token}?expires=...&signature=...`, never `/media/... `. It reloads the model on delivery to verify that the current file path still matches, and checks guards and optional `authorizesAssetField(string $field)` authorization. A private route **can use SQL for authorization**, unlike public media. Configure ownership hooks for customer-specific documents. Private responses use `Cache-Control: private, no-store`.
 
-## File lifecycle
+## Lifecycles, caching and conversions
 
-- successful create/update keeps the new file;
-- replaced old files are deleted after DB commit;
-- failed DB writes remove newly uploaded files;
-- transaction rollback removes newly uploaded files and keeps the previous committed file;
-- delete/force-delete cleanup follows the field options.
+`InteractsWithFiles` auto-uploads `UploadedFile` values on save, cleans up failed/rolled-back uploads, deletes replaced files after successful commits, and respects soft-delete/force-delete options. The active disk comes from model options. `ImageProcessor` supports GD or Imagick, WebP or original format, quality, dimensions, position, and `none`, `scale`, `scale_down`, `resize`, `resize_down`, `cover`, and `cover_down`. Uploads never intentionally overwrite an existing filename. URL generation performs no storage metadata calls; `v` is derived from the path and loaded model timestamp. Public requests currently use 24-hour caching, not immutable caching.
+
+## Repair existing UUID filenames
+
+```bash
+php artisan infrastructure:media-rename 'App\Models\Product'
+php artisan infrastructure:media-rename 'App\Models\Product' --apply
+```
+
+This command scans model fields with `filename_from` on public disks, preloads declared relationships, and proposes the physical SEO filename. It is a **dry run** by default. On `--apply`, it first copies the file, conditionally updates the existing path field, and leaves old files in place to avoid breaking shared references. Review [storage audit](#storage-audit) before cleanup.
 
 ## Storage audit
 
 ```bash
 php artisan infrastructure:storage-audit
+php artisan infrastructure:storage-audit --model=Product
 php artisan infrastructure:storage-audit --delete
 ```
 
-Only explicitly model-owned directories are scanned.
-
-
-## Image processing
-
-The package supports Intervention Image v3 and v4. PHP 8.2 resolves v3; PHP 8.3+ applications may use v4.
-
-Image fields opt into processing directly from `fileAttributes()`. There is no global image enable/disable flag.
-
-```php
-'image_path' => [
-    'disk' => 'public',
-    'directory' => 'products/images',
-
-    'image' => [
-        // Presence of this block enables processing.
-        'driver' => 'gd',
-        'format' => 'webp',
-        'resize' => 'scale_down',
-        'width' => 720,
-        'height' => 720,
-        'quality' => 80,
-        'position' => 'center',
-    ],
-],
-```
-
-Formats:
-
-- `webp`: convert the output to WebP.
-- `original`: keep the decoded image's original format.
-
-Resize modes:
-
-- `none`: encode only.
-- `scale`: preserve aspect ratio and allow upscaling.
-- `scale_down`: preserve aspect ratio and never enlarge.
-- `resize`: force the requested dimensions.
-- `resize_down`: force dimensions but do not exceed the original.
-- `cover`: crop + resize to exact width/height.
-- `cover_down`: crop + resize without enlarging.
-
-`cover` and `cover_down` require both width and height.
-
-`image => true` enables processing with package defaults. Omitting `image` stores the upload without image processing.
-
-The processed output is tracked by the same file lifecycle system, so DB failures and transaction rollbacks remove generated WebP/resized files automatically.
-
-Driver:
-
-```dotenv
-LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER=gd
-```
-
-Use `gd` with `ext-gd` or `imagick` with `ext-imagick`.
-
-
-### SEO filenames and cache versions
-
-Model asset URLs use an SEO-friendly basename instead of the file field name.
-The basename comes from `slug`, `title`, or `name` by default, falling
-back to `{field}-{model-id}` if none is available. The optional `url_name`
-field option selects another model attribute or a callable:
-
-```php
-'image_path' => [
-    'disk' => 'public',
-    'directory' => 'products/images',
-    'url_name' => 'seo_slug',
-],
-```
-
-For a product with `seo_slug = iphone-6-black`, the URL looks like:
-
-```text
-/infrastructure/assets/product/15/image_path/iphone-6-black.webp?v=a91234f0bc11
-```
-
-`v` is a short version digest derived from the stored file path and (when
-available) its modification time. Updating the underlying file changes this
-version, preventing stale browser/cache responses. Old field-name routes such
-as `/product/15/image_path.webp` are **not supported**. The controller
-checks the current SEO filename against the record; outdated names return 404.
-
-The configured file attribute is part of the URL path, not an `attribute` query
-parameter. Different attributes can safely share the same SEO basename and
-extension because the path identifies the field explicitly.
+This optional maintenance command scans explicitly registered models and model-owned directories across both public and private disks. It groups references by disk and directory and reads raw database paths. No disk column is needed. It intentionally executes SQL during an audit; normal public delivery does not.

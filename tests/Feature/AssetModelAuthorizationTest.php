@@ -7,6 +7,7 @@ namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 use Ak279642\LaravelInfrastructure\Models\BaseModel;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
@@ -18,74 +19,73 @@ final class AssetModelAuthorizationTest extends TestCase
         $app['config']->set('database.connections.testing', [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
         ]);
-        $app['config']->set('laravel-infrastructure.assets.resources', [
-            'acl-document' => AssetHookDocument::class,
-        ]);
-        $app['config']->set('laravel-infrastructure.assets.folder_access.public', [
-            '*' => ['signed' => false, 'guard' => null],
-        ]);
+        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['media' => 'public']);
     }
 
     protected function setUp(): void
     {
         parent::setUp();
         Storage::fake('public');
-        Schema::create('asset_hook_documents', static function (Blueprint $table): void {
+        Storage::fake('private');
+        Schema::create('private_media_documents', static function (Blueprint $table): void {
             $table->id();
-            $table->string('file_path')->nullable();
-            $table->boolean('allowed')->default(false);
+            $table->unsignedBigInteger('user_id');
+            $table->string('document')->nullable();
         });
     }
 
-    public function test_model_denial_produces_403_image_despite_existing_file(): void
+    public function test_private_model_link_requires_current_owner_and_signed_url(): void
     {
-        Storage::disk('public')->put('private/diagram.webp', file_get_contents(
-            dirname(__DIR__, 2).'/resources/images/file-not-found.webp'));
-        $record = AssetHookDocument::query()->create([
-            'file_path' => 'private/diagram.webp', 'allowed' => false,
+        Storage::disk('private')->put('contracts/agreement.pdf', 'private content');
+        $document = PrivateMediaDocument::query()->create([
+            'user_id' => 42, 'document' => 'contracts/agreement.pdf',
         ]);
+        $url = $document->fileAssetUrl('document');
+        self::assertNotNull($url);
+        self::assertStringContainsString('/_infrastructure/files/', $url);
+        self::assertStringNotContainsString('/'.$document->id.'/', $url);
+        self::assertStringNotContainsString('contracts/agreement.pdf', $url);
 
-        $this->get($record->fileAssetUrl('file_path'))
-            ->assertOk()
-            ->assertHeader('X-Asset-Error-Status', '403')
-            ->assertHeader('Content-Type', 'image/webp');
-    }
+        $this->get($url)->assertHeader('X-Asset-Error-Status', '403');
 
-    public function test_model_authorization_allows_file_after_check(): void
-    {
-        Storage::disk('public')->put('private/diagram.webp', file_get_contents(
-            dirname(__DIR__, 2).'/resources/images/file-not-found.webp'));
-        $record = AssetHookDocument::query()->create([
-            'file_path' => 'private/diagram.webp', 'allowed' => true,
-        ]);
+        $other = new PrivateMediaUser;
+        $other->id = 99;
+        $this->actingAs($other, 'web');
+        $this->get($url)->assertHeader('X-Asset-Error-Status', '403');
 
-        $this->get($record->fileAssetUrl('file_path'))
-            ->assertOk()
-            ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
+        $owner = new PrivateMediaUser;
+        $owner->id = 42;
+        $this->actingAs($owner, 'web');
+        $this->get($url)->assertOk()
+            ->assertHeader('Cache-Control', 'private, no-store, max-age=0');
+
+        $tampered = preg_replace('/signature=[^&]+/', 'signature=invalid', $url);
+        $this->get($tampered)->assertHeader('X-Asset-Error-Status', '403');
+        $this->get('/media/contracts/agreement.pdf')->assertHeader('X-Asset-Error-Status', '404');
     }
 }
 
-final class AssetHookDocument extends BaseModel
+final class PrivateMediaDocument extends BaseModel
 {
     public $timestamps = false;
-
-    protected $table = 'asset_hook_documents';
-
+    protected $table = 'private_media_documents';
     protected $guarded = [];
 
     protected function fileAttributes(): array
     {
         return [
-            'file_path' => [
-                'disk' => 'public', 'directory' => 'private',
-                'access' => ['signed' => false, 'guard' => null],
+            'document' => [
+                'disk' => 'private',
+                'directory' => 'contracts',
+                'access' => ['guard' => 'web', 'signed' => true],
             ],
         ];
     }
 
     public function authorizesAssetField(string $field): bool
     {
-        return $field === 'file_path' && (bool) $this->getAttribute('allowed');
+        return $field === 'document' && (int) auth('web')->id() === (int) $this->user_id;
     }
 }
+
+final class PrivateMediaUser extends Authenticatable {}

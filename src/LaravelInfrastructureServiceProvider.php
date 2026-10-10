@@ -7,6 +7,7 @@ namespace Ak279642\LaravelInfrastructure;
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Console\Commands\DatabaseBackupCommand;
+use Ak279642\LaravelInfrastructure\Console\Commands\MediaRenameCommand;
 use Ak279642\LaravelInfrastructure\Console\Commands\StorageAuditCommand;
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
 use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
@@ -14,7 +15,8 @@ use Ak279642\LaravelInfrastructure\Exceptions\ApiExceptionRenderer;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Files\ImageProcessor;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
-use Ak279642\LaravelInfrastructure\Http\Controllers\AssetsController;
+use Ak279642\LaravelInfrastructure\Http\Controllers\MediaController;
+use Ak279642\LaravelInfrastructure\Files\MediaUrl;
 use Ak279642\LaravelInfrastructure\Http\Middleware\RejectSensitivePaths;
 use Ak279642\LaravelInfrastructure\Http\Middleware\SecurityHeaders;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
@@ -115,69 +117,24 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         );
 
         if ((bool) config('laravel-infrastructure.assets.enabled', true)) {
-            $prefix = trim(
-                (string) config('laravel-infrastructure.assets.prefix', 'infrastructure/assets'),
-                '/',
-            );
-
-            // Disk paths must use the generic asset route. Resource aliases
-            // are intentionally resolved at request time, not at boot time:
-            // applications/tests may register them after the provider boots.
-            $disks = array_values(array_filter(
-                (array) config('laravel-infrastructure.assets.allowed_disks', ['public']),
-                static fn (mixed $disk): bool => is_string($disk)
-                    && preg_match('/^[A-Za-z0-9_-]+$/D', $disk) === 1,
+            $aliases = MediaUrl::aliases();
+            $aliasPattern = implode('|', array_map(
+                static fn (string $alias): string => preg_quote($alias, '#'),
+                array_keys($aliases),
             ));
-            $diskPattern = implode('|', array_map(
-                static fn (string $disk): string => preg_quote($disk, '#'),
-                $disks,
-            ));
-            $resourcePattern = $diskPattern === ''
-                ? '[A-Za-z0-9_-]+'
-                : '(?!(?:'.$diskPattern.')(?:/|$))[A-Za-z0-9_-]+';
 
-            $router
-                ->get(
-                    $prefix.'/{resource}/{key}/{attribute}/{field}.{extension}',
-                    [AssetsController::class, 'modelField'],
-                )
-                ->where('resource', $resourcePattern)
-                ->where('attribute', '[A-Za-z_][A-Za-z0-9_]*')
-                ->where('field', '[a-z0-9-]+')
-                ->where('extension', '[A-Za-z0-9]{1,20}')
-                ->name('laravel-infrastructure.assets.model.field');
+            $router->get('_infrastructure/files/{token}', [MediaController::class, 'privateFile'])
+                ->where('token', '[A-Za-z0-9_-]+')
+                ->name('laravel-infrastructure.assets.private');
 
-            $router
-                ->get(
-                    $prefix.'/{resource}/{key}/{field}.{extension}',
-                    [AssetsController::class, 'model'],
-                )
-                ->where('resource', $resourcePattern)
-                ->where('field', '[a-z0-9-]+')
-                ->where('extension', '[A-Za-z0-9]{1,20}')
-                ->name('laravel-infrastructure.assets.model');
+            $router->get('_infrastructure/media/missing', [MediaController::class, 'missing'])
+                ->name('laravel-infrastructure.assets.missing');
 
-            $router
-                ->get(
-                    $prefix.'/{disk}/{path}',
-                    AssetsController::class,
-                )
-                ->where('path', '.*')
-                ->name('laravel-infrastructure.assets.show');
-
-            // Invalid asset URLs render the default 404 image, not Laravel HTML.
-            $router->get($prefix, [AssetsController::class, 'notFound']);
-            $router->get($prefix.'/{unmatched}', [AssetsController::class, 'notFound'])
-                ->where('unmatched', '.*');
-
-            $legacy = (array) config('laravel-infrastructure.assets.legacy_uploads', []);
-            if ((bool) ($legacy['enabled'] ?? false)) {
-                $legacyPrefix = trim((string) ($legacy['prefix'] ?? 'uploads'), '/');
-                if ($legacyPrefix !== '' && $legacyPrefix !== $prefix) {
-                    $router->get($legacyPrefix.'/{file}', [AssetsController::class, 'upload'])
-                        ->where('file', '.*')
-                        ->name('uploads');
-                }
+            if ($aliasPattern !== '') {
+                $router->get('{alias}/{path}', [MediaController::class, 'publicFile'])
+                    ->where('alias', '(?:'.$aliasPattern.')')
+                    ->where('path', '.*')
+                    ->name('laravel-infrastructure.assets.public');
             }
         }
 
@@ -185,6 +142,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             $this->commands([
                 DatabaseBackupCommand::class,
                 StorageAuditCommand::class,
+                MediaRenameCommand::class,
             ]);
         }
 

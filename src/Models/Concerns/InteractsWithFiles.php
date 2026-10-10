@@ -10,8 +10,6 @@ use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use DateTimeInterface;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -126,191 +124,24 @@ trait InteractsWithFiles
         return [];
     }
 
-    /**
-     * Get a model file URL without requiring callers to inspect file state.
-     * $imageName changes only the public URL basename, not the stored file.
-     */
-    public function getFileUrl(string $field, ?string $imageName = null): string
+    /** Build links from the loaded file path, without querying the model or storage. */
+    public function getFileUrl(string $fieldOrPath, ?string $seoName = null): string
     {
-        $options = $this->configuredFileAttributes()[$field] ?? [];
-        $path = $this->getAttribute($field);
-        $path = is_string($path) ? $path : '';
-        $access = is_array($options['access'] ?? null) ? $options['access'] : [];
-        $signed = array_key_exists('signed', $access)
-            ? (bool) $access['signed']
-            : (bool) config('laravel-infrastructure.assets.signed', true);
-
-        $name = $imageName !== null && trim($imageName) !== ''
-            ? Str::slug(pathinfo($imageName, PATHINFO_FILENAME))
-            : $this->infrastructureAssetFileName($field, $path);
-        $name = $name !== '' ? $name : Str::slug($field);
-        $extension = $path !== '' ? $this->infrastructureAssetExtension($path) : 'webp';
-        $customExtension = $imageName !== null
-            ? strtolower((string) pathinfo($imageName, PATHINFO_EXTENSION)) : '';
-        if (preg_match('/^[a-z0-9]{1,20}$/', $customExtension) === 1) {
-            $extension = $customExtension;
-        }
-
-        $parameters = [
-            'resource' => $this->infrastructureAssetResourceAlias(),
-            'key' => (string) ($this->getKey() ?? 0),
-            'attribute' => $field,
-            'field' => $name,
-            'extension' => $extension,
-            'v' => $this->infrastructureAssetVersion($field, $path, $options),
-        ];
-
-        return $signed
-            ? URL::temporarySignedRoute(
-                'laravel-infrastructure.assets.model.field',
-                now()->addMinutes(max(1, (int) config('laravel-infrastructure.assets.url_ttl_minutes', 15))),
-                $parameters,
-            )
-            : route('laravel-infrastructure.assets.model.field', $parameters);
+        return app(\Ak279642\LaravelInfrastructure\Files\MediaUrl::class)
+            ->forModel($this, $fieldOrPath, $seoName);
     }
 
-    public function fileAssetUrl(
-        string $column,
-        ?DateTimeInterface $expiration = null,
-    ): ?string {
-        $options = $this->configuredFileAttributes()[$column] ?? null;
-        $path = $this->getAttribute($column);
-
-        if (
-            ! is_array($options)
-            || ! is_string($path)
-            || trim($path) === ''
-            || ! $this->exists
-            || $this->getKey() === null
-        ) {
+    public function fileAssetUrl(string $column, ?DateTimeInterface $expiration = null): ?string
+    {
+        if (! array_key_exists($column, $this->configuredFileAttributes())) {
             return null;
         }
-
-        $access = is_array($options['access'] ?? null)
-            ? $options['access']
-            : [];
-        $signed = array_key_exists('signed', $access)
-            ? (bool) $access['signed']
-            : (bool) config(
-                'laravel-infrastructure.assets.signed',
-                true,
-            );
-
-        $parameters = [
-            'resource' => $this->infrastructureAssetResourceAlias(),
-            'key' => (string) $this->getKey(),
-            'attribute' => $column,
-            'field' => $this->infrastructureAssetFileName($column, $path),
-            'extension' => $this->infrastructureAssetExtension($path),
-            'v' => $this->infrastructureAssetVersion($column, $path, $options),
-        ];
-
-        if (! $signed) {
-            return route(
-                'laravel-infrastructure.assets.model.field',
-                $parameters,
-            );
+        $path = $this->getAttributes()[$column] ?? null;
+        if (! is_string($path) || $path === '') {
+            return null;
         }
-
-        return URL::temporarySignedRoute(
-            'laravel-infrastructure.assets.model.field',
-            $expiration
-                ?? now()->addMinutes(
-                    max(
-                        1,
-                        (int) config(
-                            'laravel-infrastructure.assets.url_ttl_minutes',
-                            15,
-                        ),
-                    ),
-                ),
-            $parameters,
-        );
-    }
-
-    /**
-     * Public asset basename. A configured url_name can name a model attribute
-     * or supply a callable ($model, $column). Otherwise use slug/title/name.
-     * The model key fallback intentionally avoids legacy field-name URLs.
-     */
-    public function infrastructureAssetFileName(string $column, string $path): string
-    {
-        $options = $this->configuredFileAttributes()[$column] ?? [];
-        $source = $options['url_name'] ?? null;
-
-        if (is_callable($source)) {
-            $source = $source($this, $column);
-        } elseif (is_string($source) && $source !== '') {
-            $source = $this->getAttribute($source);
-        } else {
-            $source = $this->getAttribute('slug')
-                ?? $this->getAttribute('title')
-                ?? $this->getAttribute('name');
-        }
-
-        $name = is_scalar($source) ? Str::slug((string) $source) : '';
-
-        return $name !== ''
-            ? $name
-            : Str::slug($column).'-'.$this->getKey();
-    }
-
-    private function infrastructureAssetVersion(string $column, string $path, array $options): string
-    {
-        $disk = (string) ($options['disk']
-            ?? config('laravel-infrastructure.files.disk', 'public'));
-
-        // A filename/path change must invalidate a cached public response.
-        // Also detect overwrites to an existing path when the disk supports it.
-        $modified = '';
-        try {
-            if (Storage::disk($disk)->exists($path)) {
-                $modified = (string) Storage::disk($disk)->lastModified($path);
-            }
-        } catch (Throwable) {
-            // Remote disks may not implement modified-time metadata.
-        }
-
-        return substr(hash('sha256', $column.'|'.$path.'|'.$modified), 0, 12);
-    }
-
-    private function infrastructureAssetExtension(string $path): string
-    {
-        $extension = strtolower(
-            (string) pathinfo($path, PATHINFO_EXTENSION),
-        );
-
-        if (preg_match('/^[a-z0-9]{1,20}$/', $extension) !== 1) {
-            return 'bin';
-        }
-
-        return $extension;
-    }
-
-    private function infrastructureAssetResourceAlias(): string
-    {
-        $resources = (array) config(
-            'laravel-infrastructure.assets.resources',
-            [],
-        );
-
-        foreach ($resources as $alias => $modelClass) {
-            if (
-                ! is_string($alias)
-                || preg_match('/^[A-Za-z0-9_-]+$/', $alias) !== 1
-                || $modelClass !== static::class
-            ) {
-                continue;
-            }
-
-            return $alias;
-        }
-
-        throw new RuntimeException(
-            'No valid asset resource alias is configured for model ['.
-            static::class.
-            ']. Add it to laravel-infrastructure.assets.resources.',
-        );
+        return app(\Ak279642\LaravelInfrastructure\Files\MediaUrl::class)
+            ->forModel($this, $column, null, $expiration);
     }
 
     /**
@@ -429,6 +260,12 @@ trait InteractsWithFiles
             );
 
             $filename = $options['filename'] ?? null;
+            if ($filename === null && isset($options['filename_from'])) {
+                $filename = \Ak279642\LaravelInfrastructure\Files\FilenameFromModel::resolve(
+                    $this,
+                    $options['filename_from'],
+                );
+            }
 
             if (is_callable($filename)) {
                 $filename = $filename($file, $this, $column);
@@ -560,7 +397,7 @@ trait InteractsWithFiles
             }
 
             $oldPath = $this->getRawOriginal($column);
-            $newPath = $this->getAttribute($column);
+            $newPath = $this->getAttributes()[$column] ?? null;
 
             if (
                 ! is_string($oldPath)

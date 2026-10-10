@@ -13,6 +13,6 @@ use Illuminate\Database\Eloquent\Model;
 abstract class BaseModel extends Model implements CacheableModel
 {
     use InteractsWithCache;
-    use InteractsWithFiles;
     use InteractsWithSlug;
+    use InteractsWithFiles;
 }

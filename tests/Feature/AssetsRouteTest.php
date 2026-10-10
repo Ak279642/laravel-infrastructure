@@ -7,10 +7,10 @@ namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 use Ak279642\LaravelInfrastructure\Models\BaseModel;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 
 final class AssetsRouteTest extends TestCase
 {
@@ -18,530 +18,231 @@ final class AssetsRouteTest extends TestCase
     {
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', [
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-            'prefix' => '',
+            'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
         ]);
-
-        $app['config']->set('auth.providers.asset_users', [
-            'driver' => 'eloquent',
-            'model' => AssetGuardUser::class,
-        ]);
-        $app['config']->set('auth.guards.admin', [
-            'driver' => 'session',
-            'provider' => 'asset_users',
-        ]);
-        $app['config']->set('auth.guards.staff', [
-            'driver' => 'session',
-            'provider' => 'asset_users',
-        ]);
-
-        $app['config']->set(
-            'laravel-infrastructure.assets.resources',
-            [
-                'document' => AssetRouteDocument::class,
-            ],
-        );
-
-        $app['config']->set('filesystems.disks.public', [
-            'driver' => 'local',
-            'root' => storage_path(
-                'framework/testing/disks/assets-public',
-            ),
-            'visibility' => 'public',
-        ]);
-
-        $app['config']->set('filesystems.disks.private', [
-            'driver' => 'local',
-            'root' => storage_path(
-                'framework/testing/disks/assets-private',
-            ),
-            'visibility' => 'private',
-        ]);
+        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['media' => 'public']);
+        $app['config']->set('cache.default', 'array');
     }
 
     protected function setUp(): void
     {
         parent::setUp();
-
         Storage::fake('public');
-        Storage::fake('private');
-
-        Schema::create(
-            'asset_route_documents',
-            function (Blueprint $table): void {
-                $table->id();
-                $table->string('file_path')->nullable();
-            },
-        );
-
-        Schema::create(
-            'signed_asset_route_documents',
-            function (Blueprint $table): void {
-                $table->id();
-                $table->string('file_path')->nullable();
-            },
-        );
-
-        Schema::create(
-            'asset_guard_users',
-            function (Blueprint $table): void {
-                $table->id();
-                $table->string('name');
-                $table->string('password')->nullable();
-                $table->rememberToken();
-            },
-        );
+        Schema::create('media_route_brands', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('slug');
+        });
+        Schema::create('media_route_categories', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('slug');
+        });
+        Schema::create('media_slug_products', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->nullable()->unique();
+            $table->string('image')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('media_route_products', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->unsignedBigInteger('brand_id')->nullable();
+            $table->unsignedBigInteger('category_id')->nullable();
+            $table->string('image')->nullable();
+            $table->timestamps();
+        });
     }
 
-    public function test_signed_asset_route_serves_allowed_public_file(): void
+    public function test_filename_from_uses_loaded_relations_without_hidden_queries(): void
     {
-        Storage::disk('public')->put(
-            'products/documents/manual.txt',
-            'manual-content',
-        );
+        $product = new MediaRouteProduct(['name' => 'iPhone 16 Pro']);
+        $brand = new MediaRouteBrand;
+        $brand->slug = 'apple';
+        $brand->save();
+        $category = new MediaRouteCategory;
+        $category->slug = 'smartphones';
+        $category->save();
+        $product->brand_id = $brand->id;
+        $product->setRelation('brand', $brand);
+        $product->category_id = $category->id;
+        $product->setRelation('category', $category);
+        $product->image = UploadedFile::fake()->createWithContent('upload.webp', 'first');
+        $product->save();
 
-        $url = URL::temporarySignedRoute(
-            'laravel-infrastructure.assets.show',
-            now()->addMinutes(5),
-            [
-                'disk' => 'public',
-                'path' => 'products/documents/manual.txt',
-            ],
-        );
+        self::assertSame('products/iphone-16-pro-apple-smartphones.webp', $product->image);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
 
+        $url = $product->getFileUrl('image');
+        self::assertEmpty(DB::getQueryLog());
+        self::assertStringContainsString('/media/products/iphone-16-pro-apple-smartphones.webp?v=', $url);
+        self::assertStringNotContainsString('/'.$product->getKey().'/image/', $url);
         $this->get($url)->assertOk();
+        self::assertEmpty(DB::getQueryLog());
     }
 
-    public function test_unsigned_request_is_rejected_when_signature_is_required(): void
+    public function test_collision_adds_numeric_suffix_without_overwriting_first_file(): void
     {
-        Storage::disk('public')->put(
-            'products/documents/manual.txt',
-            'manual-content',
-        );
+        $first = $this->newProduct('first');
+        $second = $this->newProduct('second');
 
-        $this->get(
-            route(
-                'laravel-infrastructure.assets.show',
-                [
-                    'disk' => 'public',
-                    'path' => 'products/documents/manual.txt',
-                ],
-            ),
-        )->assertOk();
+        self::assertSame('products/iphone-16-pro-apple-smartphones.webp', $first->image);
+        self::assertSame('products/iphone-16-pro-apple-smartphones-2.webp', $second->image);
+        self::assertSame('first', Storage::disk('public')->get($first->image));
+        self::assertSame('second', Storage::disk('public')->get($second->image));
+        $this->get($second->getFileUrl('image'))->assertOk();
     }
 
-    public function test_same_disk_can_have_public_and_guard_protected_folders(): void
+    public function test_existing_uuid_filename_can_be_migrated_with_dry_run_and_apply(): void
     {
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.folder_access.public',
-            [
-                '*' => [
-                    'signed' => false,
-                    'guard' => null,
-                ],
+        $product = new MediaRouteProduct(['name' => 'iPhone 16 Pro']);
+        $brand = new MediaRouteBrand;
+        $brand->slug = 'apple';
+        $brand->save();
+        $category = new MediaRouteCategory;
+        $category->slug = 'smartphones';
+        $category->save();
+        $product->brand_id = $brand->id;
+        $product->setRelation('brand', $brand);
+        $product->category_id = $category->id;
+        $product->setRelation('category', $category);
+        $product->image = 'products/legacy-hash.webp';
+        $product->save();
+        Storage::disk('public')->put($product->image, 'old');
+        $this->artisan('infrastructure:media-rename', ['model' => MediaRouteProduct::class])
+            ->assertSuccessful();
+        self::assertSame('products/legacy-hash.webp', $product->fresh()->image);
 
-                'products/admin' => [
-                    'guard' => 'admin',
-                ],
-            ],
-        );
-
-        Storage::disk('public')->put(
-            'products/images/photo.txt',
-            'photo',
-        );
-        Storage::disk('public')->put(
-            'products/admin/report.txt',
-            'report',
-        );
-
-        $this->get(
-            route(
-                'laravel-infrastructure.assets.show',
-                [
-                    'disk' => 'public',
-                    'path' => 'products/images/photo.txt',
-                ],
-            ),
-        )->assertOk();
-
-        $protectedUrl = route(
-            'laravel-infrastructure.assets.show',
-            [
-                'disk' => 'public',
-                'path' => 'products/admin/report.txt',
-            ],
-        );
-
-        $this->get($protectedUrl)->assertOk();
-
-        $admin = AssetGuardUser::query()->create([
-            'name' => 'Admin',
-        ]);
-
-        $this->actingAs($admin, 'admin');
-
-        $this->get($protectedUrl)->assertOk();
+        $this->artisan('infrastructure:media-rename', [
+            'model' => MediaRouteProduct::class, '--apply' => true,
+        ])->assertSuccessful();
+        self::assertSame('products/iphone-16-pro-apple-smartphones.webp', $product->fresh()->image);
+        Storage::disk('public')->assertExists('products/legacy-hash.webp');
+        Storage::disk('public')->assertExists('products/iphone-16-pro-apple-smartphones.webp');
     }
 
-    public function test_model_file_access_can_require_only_a_guard(): void
+    public function test_optional_reference_cast_supports_file_object_url(): void
     {
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.folder_access.public',
-            [
-                '*' => [
-                    'signed' => true,
-                    'guard' => null,
-                ],
-            ],
+        $plain = $this->newProduct('cast-test');
+        $cast = MediaRouteProductWithFileCast::query()->findOrFail($plain->id);
+        self::assertInstanceOf(
+            \Ak279642\LaravelInfrastructure\Files\FileReference::class,
+            $cast->image,
         );
-
-        Storage::disk('public')->put(
-            'products/private/manual.txt',
-            'manual-content',
-        );
-
-        $document = AssetRouteDocument::query()->create([
-            'file_path' => 'products/private/manual.txt',
-        ]);
-
-        $url = $document->fileAssetUrl('file_path');
-
-        self::assertIsString($url);
-        $urlPath = parse_url($url, PHP_URL_PATH);
-        self::assertIsString($urlPath);
-        self::assertMatchesRegularExpression(
-            '#/infrastructure/assets/[^/]+/'.
-            preg_quote((string) $document->getKey(), '#').
-            '/file_path/file-path-'.$document->getKey().'\\.txt$#',
-            $urlPath,
-        );
-        self::assertStringNotContainsString('/model/', $url);
-        self::assertStringContainsString('/document/', $url);
-        self::assertStringNotContainsString(
-            AssetRouteDocument::class,
-            $url,
-        );
-        self::assertStringNotContainsString(
-            'products/private/manual.txt',
-            $url,
-        );
-        self::assertStringNotContainsString('disk=', $url);
-        self::assertStringNotContainsString('attribute=', $url);
-        self::assertStringNotContainsString('path=', $url);
-
-        $this->get($url)->assertOk();
-
-        $admin = AssetGuardUser::query()->create([
-            'name' => 'Admin',
-        ]);
-
-        $this->actingAs($admin, 'admin');
-
-        $this->get($url)->assertOk();
+        self::assertSame($cast->getFileUrl('image'), $cast->image->getFileUrl());
+        self::assertSame($plain->image, (string) $cast->image);
     }
 
-    public function test_signed_model_asset_url_uses_resource_alias_and_hides_storage_details(): void
+    public function test_unloaded_relationship_fails_without_lazy_query(): void
     {
-        Storage::disk('public')->put(
-            'products/secure/manual.txt',
-            'manual-content',
-        );
-
-        $document = SignedAssetRouteDocument::query()->create([
-            'file_path' => 'products/secure/manual.txt',
-        ]);
-
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.resources.signed-document',
-            SignedAssetRouteDocument::class,
-        );
-
-        $url = $document->fileAssetUrl(
-            'file_path',
-            now()->addMinutes(5),
-        );
-
-        self::assertIsString($url);
-        $urlPath = parse_url($url, PHP_URL_PATH);
-        self::assertIsString($urlPath);
-        self::assertMatchesRegularExpression(
-            '#/infrastructure/assets/signed-document/'.
-            preg_quote((string) $document->getKey(), '#').
-            '/file_path/file-path-'.$document->getKey().'\\.txt$#',
-            $urlPath,
-        );
-        self::assertStringNotContainsString('/model/', $url);
-        self::assertStringContainsString('/signed-document/', $urlPath);
-        self::assertStringContainsString('expires=', $url);
-        self::assertStringContainsString('signature=', $url);
-        self::assertStringNotContainsString(
-            SignedAssetRouteDocument::class,
-            $url,
-        );
-        self::assertStringNotContainsString(
-            'products/secure/manual.txt',
-            $url,
-        );
-        self::assertStringNotContainsString('disk=', $url);
-        self::assertStringNotContainsString('path=', $url);
-
-        $this->get($url)->assertOk();
-        self::assertStringContainsString('v=', $url);
-
-        $tampered = preg_replace(
-            '/signature=[^&]+/',
-            'signature=invalid',
-            $url,
-        );
-
-        self::assertNotSame($url, $tampered);
-
-        $this->get($tampered)->assertOk();
-    }
-
-
-    public function test_old_field_filename_returns_404_and_version_changes_with_file(): void
-    {
-        Storage::disk('public')->put('products/secure/first.webp', 'first');
-
-        $document = SignedAssetRouteDocument::query()->create([
-            'file_path' => 'products/secure/first.webp',
-        ]);
-
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.resources.signed-document',
-            SignedAssetRouteDocument::class,
-        );
-
-        $first = $document->fileAssetUrl('file_path');
-        self::assertIsString($first);
-        self::assertStringContainsString('v=', $first);
-
-        $old = URL::temporarySignedRoute(
-            'laravel-infrastructure.assets.model',
-            now()->addMinutes(5),
-            [
-                'resource' => 'signed-document',
-                'key' => (string) $document->getKey(),
-                'field' => 'file_path',
-                'extension' => 'webp',
-            ],
-        );
-
-        $this->get($old)->assertOk();
-        $this->get($first)->assertOk();
-
-        Storage::disk('public')->put('products/secure/second.webp', 'second');
-        $document->update(['file_path' => 'products/secure/second.webp']);
-        $second = $document->fileAssetUrl('file_path');
-
-        self::assertNotSame($first, $second);
-        $this->get($second)->assertOk();
-    }
-
-    public function test_model_asset_url_requires_configured_resource_alias(): void
-    {
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.resources',
-            [],
-        );
-
-        $document = AssetRouteDocument::query()->create([
-            'file_path' => 'products/private/manual.txt',
-        ]);
+        $product = new MediaRouteProduct(['name' => 'iPhone 16 Pro']);
+        $product->image = UploadedFile::fake()->createWithContent('x.webp', 'x');
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage(
-            'No valid asset resource alias is configured',
-        );
-
-        $document->fileAssetUrl('file_path');
+        $this->expectExceptionMessage('must be loaded');
+        $product->save();
     }
 
-    public function test_expired_model_asset_url_is_rejected(): void
+    public function test_custom_url_name_cannot_point_to_nonexistent_file(): void
     {
-        Storage::disk('public')->put(
-            'products/secure/manual.txt',
-            'manual-content',
-        );
-
-        $document = SignedAssetRouteDocument::query()->create([
-            'file_path' => 'products/secure/manual.txt',
-        ]);
-
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.resources.signed-document',
-            SignedAssetRouteDocument::class,
-        );
-
-        $url = $document->fileAssetUrl(
-            'file_path',
-            now()->subMinute(),
-        );
-
-        self::assertIsString($url);
-
-        $this->get($url)->assertOk();
+        $product = $this->newProduct('bytes');
+        $this->expectException(\InvalidArgumentException::class);
+        $product->getFileUrl('image', 'unrelated-filename');
     }
 
-    public function test_get_file_url_places_attribute_in_path_not_query(): void
+    public function test_only_public_disks_can_be_aliased(): void
     {
-        Storage::disk('public')->put('products/secure/first.webp', 'image-bytes');
-        $document = SignedAssetRouteDocument::query()->create([
-            'file_path' => 'products/secure/first.webp',
-        ]);
-        config()->set('laravel-infrastructure.assets.resources.signed-document', SignedAssetRouteDocument::class);
-
-        $url = $document->getFileUrl('file_path', 'custom-preview');
-        self::assertStringContainsString('/file_path/custom-preview.webp', parse_url($url, PHP_URL_PATH));
-        self::assertStringNotContainsString('attribute=', $url);
-        $this->get($url)->assertOk();
+        config()->set('laravel-infrastructure.assets.disk_aliases', ['private-files' => 'private']);
+        $this->expectException(\RuntimeException::class);
+        \Ak279642\LaravelInfrastructure\Files\MediaUrl::aliases();
     }
 
-    public function test_unsigned_get_file_url_places_attribute_in_path(): void
+    public function test_slug_is_generated_before_file_is_named_during_create(): void
     {
-        Storage::disk('public')->put('products/private/manual.txt', 'manual-content');
-        $document = AssetRouteDocument::query()->create(['file_path' => 'products/private/manual.txt']);
+        $model = new MediaSlugProduct(['name' => 'Camera Drone']);
+        $model->image = UploadedFile::fake()->createWithContent('drone.webp', 'data');
+        $model->save();
 
-        $url = $document->getFileUrl('file_path', 'custom-manual');
-
-        self::assertStringContainsString('/file_path/custom-manual.txt', parse_url($url, PHP_URL_PATH));
-        self::assertStringNotContainsString('attribute=', $url);
-        self::assertStringNotContainsString('signature=', $url);
-        $this->get($url)->assertOk();
+        self::assertSame('camera-drone', $model->slug);
+        self::assertSame('products/camera-drone.webp', $model->image);
     }
 
-    public function test_simple_get_file_url_supports_custom_name_and_missing_files(): void
+    private function newProduct(string $data): MediaRouteProduct
     {
-        $document = SignedAssetRouteDocument::query()->create([
-            'file_path' => 'products/secure/missing.webp',
-        ]);
-        config()->set('laravel-infrastructure.assets.resources.signed-document', SignedAssetRouteDocument::class);
-
-        $url = $document->getFileUrl('file_path', 'my-photo');
-        self::assertStringContainsString('/file_path/my-photo.webp', $url);
-        $this->get($url)->assertOk()
-            ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('X-Asset-Error-Status', '404');
-
-        $document->update(['file_path' => null]);
-        $this->get($document->getFileUrl('file_path'))->assertOk()
-            ->assertHeader('X-Asset-Error-Status', '404');
-    }
-
-    public function test_strict_asset_error_status_is_configurable(): void
-    {
-        config()->set('laravel-infrastructure.assets.render_error_images', false);
-        config()->set('laravel-infrastructure.assets.folder_access.public', [
-            '*' => ['signed' => false, 'guard' => null],
-        ]);
-        $this->get(route('laravel-infrastructure.assets.show', [
-            'disk' => 'public', 'path' => 'missing.webp',
-        ]))->assertNotFound()->assertHeader('Content-Type', 'image/webp');
-    }
-
-    public function test_missing_model_asset_returns_the_default_not_found_image(): void
-    {
-        $document = SignedAssetRouteDocument::query()->create([
-            'file_path' => 'products/secure/missing.webp',
-        ]);
-
-        $this->app['config']->set(
-            'laravel-infrastructure.assets.resources.signed-document',
-            SignedAssetRouteDocument::class,
-        );
-
-        $url = $document->fileAssetUrl('file_path');
-
-        self::assertIsString($url);
-
-        $response = $this->get($url);
-
-        $response->assertOk();
-        $response->assertHeader('Content-Type', 'image/webp');
-        $response->assertHeader(
-            'Content-Length',
-            (string) filesize(
-                dirname(__DIR__, 2).'/resources/images/file-not-found.webp',
-            ),
-        );
-    }
-
-    public function test_asset_route_rejects_disk_not_in_allow_list(): void
-    {
-        Storage::disk('private')->put(
-            'products/documents/private.txt',
-            'secret',
-        );
-
-        $url = URL::temporarySignedRoute(
-            'laravel-infrastructure.assets.show',
-            now()->addMinutes(5),
-            [
-                'disk' => 'private',
-                'path' => 'products/documents/private.txt',
-            ],
-        );
-
-        $this->get($url)->assertOk();
+        $product = new MediaRouteProduct(['name' => 'iPhone 16 Pro']);
+        $brand = new MediaRouteBrand;
+        $brand->slug = 'apple';
+        $brand->save();
+        $category = new MediaRouteCategory;
+        $category->slug = 'smartphones';
+        $category->save();
+        $product->brand_id = $brand->id;
+        $product->setRelation('brand', $brand);
+        $product->category_id = $category->id;
+        $product->setRelation('category', $category);
+        $product->image = UploadedFile::fake()->createWithContent('upload.webp', $data);
+        $product->save();
+        return $product;
     }
 }
 
-final class AssetRouteDocument extends BaseModel
+class MediaRouteProduct extends BaseModel
 {
-    public $timestamps = false;
-
-    protected $table = 'asset_route_documents';
-
+    protected $table = 'media_route_products';
     protected $guarded = [];
+
+    public function brand()
+    {
+        return $this->belongsTo(MediaRouteBrand::class, 'brand_id');
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(MediaRouteCategory::class, 'category_id');
+    }
 
     protected function fileAttributes(): array
     {
         return [
-            'file_path' => [
-                'disk' => 'public',
-                'directory' => 'products/private',
-
-                'access' => [
-                    'signed' => false,
-                    'guard' => ['staff', 'admin'],
-                ],
+            'image' => [
+                'directory' => 'products',
+                'filename_from' => ['name', 'brand.slug', 'category.slug'],
             ],
         ];
     }
 }
 
-final class SignedAssetRouteDocument extends BaseModel
+final class MediaRouteBrand extends \Illuminate\Database\Eloquent\Model
 {
     public $timestamps = false;
+    protected $table = 'media_route_brands';
+}
 
-    protected $table = 'signed_asset_route_documents';
+final class MediaRouteCategory extends \Illuminate\Database\Eloquent\Model
+{
+    public $timestamps = false;
+    protected $table = 'media_route_categories';
+}
 
+final class MediaSlugProduct extends BaseModel
+{
+    protected $table = 'media_slug_products';
     protected $guarded = [];
+
+    protected function slugFields(): array
+    {
+        return ['slug' => ['source' => 'name']];
+    }
 
     protected function fileAttributes(): array
     {
-        return [
-            'file_path' => [
-                'disk' => 'public',
-                'directory' => 'products/secure',
-
-                'access' => [
-                    'signed' => true,
-                    'guard' => null,
-                ],
-            ],
-        ];
+        return ['image' => ['directory' => 'products', 'filename_from' => 'slug']];
     }
 }
 
-final class AssetGuardUser extends Authenticatable
+final class MediaRouteProductWithFileCast extends MediaRouteProduct
 {
-    public $timestamps = false;
-
-    protected $table = 'asset_guard_users';
-
-    protected $guarded = [];
+    protected $casts = [
+        'image' => \Ak279642\LaravelInfrastructure\Files\FileReferenceCast::class,
+    ];
 }

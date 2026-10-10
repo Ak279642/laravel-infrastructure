@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Public media links resolve the configured disk alias and actual relative storage path directly (no model IDs, model resolution, or SQL/file metadata calls during URL generation; no SQL on public file requests).
+- Upload-time `filename_from` accepts scalar attributes and arrays of loaded relationship fields such as `['name', 'brand.slug', 'category.slug']`; existing `filename` callbacks are preserved.
+- Upload filename conflict handling appends `-2`, `-3`, etc., with per-directory cache locks. Distributed deployments should use a shared atomic-lock-capable cache store.
+- Optional `FileReferenceCast` supports `$model->image->getFileUrl()`.
+- `infrastructure:media-rename ModelClass` previews existing UUID filenames; `--apply` copies and updates path columns safely while leaving old files for separate cleanup.
+- Disk aliases via `assets.disk_aliases`, defaulting to disk name when an alias is absent; `assets.public_disks` determines publicly routable disks.
+
+### Changed
+- Private media uses encrypted, short-lived signed URLs that reload the model and recheck configured guards and optional `authorizesAssetField()` ownership rules.
+- Public file responses use filesystem-only lookup and 24-hour browser caching. URL `v` derives from stored path and already-loaded model `updated_at`, not a content hash.
+- Slug generation boots before automatic file uploads in `BaseModel`.
+
+### Removed — breaking change
+- ID-based and generic disk asset routes, legacy `/uploads` route, `assets.resources`, `assets.folder_access`, `assets.generic_path_patterns`, `assets.allowed_disks`, and `assets.legacy_uploads`.
+- Private/protected files must live on a nonpublic disk. Applications should configure `assets.disk_aliases` (for example `['media' => 'public']`) and update old links/route caches. Existing UUID files remain addressable directly, but need a separate rename migration to obtain SEO-friendly physical names.
+
 ## [1.2.2] - 2026-10-07
 
 ### Changed

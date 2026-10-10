@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure\Files;
 
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -31,15 +32,13 @@ final class FileStorage
 
         $filename = $this->normalizeFilename($file, $filename);
 
-        $path = $this->files
-            ->disk($disk)
-            ->putFileAs($directory, $file, $filename);
-
-        if (! is_string($path) || $path === '') {
-            throw new RuntimeException('Unable to store uploaded file.');
-        }
-
-        return $path;
+        return $this->saveWithoutOverwrite($disk, $directory, $filename, function (string $name) use ($disk, $directory, $file): string {
+            $path = $this->files->disk($disk)->putFileAs($directory, $file, $name);
+            if (! is_string($path) || $path === '') {
+                throw new RuntimeException('Unable to store uploaded file.');
+            }
+            return $path;
+        });
     }
 
     public function storeContents(
@@ -64,15 +63,13 @@ final class FileStorage
             $extension,
             $filename,
         );
-        $path = $directory.'/'.$filename;
-
-        if (! $this->files->disk($disk)->put($path, $contents)) {
-            throw new RuntimeException(
-                'Unable to store generated file contents.',
-            );
-        }
-
-        return $path;
+        return $this->saveWithoutOverwrite($disk, $directory, $filename, function (string $name) use ($disk, $directory, $contents): string {
+            $path = $directory.'/'.$name;
+            if (! $this->files->disk($disk)->put($path, $contents)) {
+                throw new RuntimeException('Unable to store generated file contents.');
+            }
+            return $path;
+        });
     }
 
     public function delete(?string $path, ?string $disk = null): bool
@@ -119,6 +116,52 @@ final class FileStorage
         }
 
         return $filesystem->url($path);
+    }
+
+
+    /**
+     * All package uploads to a directory share a cache lock so that collision
+     * checks and writes are serialized. Multi-node deployments need a shared
+     * atomic-lock-capable cache store, such as Redis.
+     */
+    private function saveWithoutOverwrite(string $disk, string $directory, string $filename, callable $write): string
+    {
+        $lock = Cache::lock('infrastructure:upload:'.hash('sha256', $disk.'|'.$directory), 120);
+
+        return $lock->block(30, function () use ($disk, $directory, $filename, $write): string {
+            $filesystem = $this->files->disk($disk);
+            $extension = (string) pathinfo($filename, PATHINFO_EXTENSION);
+            $stem = (string) pathinfo($filename, PATHINFO_FILENAME);
+
+            for ($index = 1; $index <= 10000; $index++) {
+                $candidate = $index === 1 ? $filename : $stem.'-'.$index.
+                    ($extension === '' ? '' : '.'.$extension);
+                if (! $filesystem->exists($directory.'/'.$candidate)) {
+                    return $write($candidate);
+                }
+            }
+
+            throw new RuntimeException('Unable to allocate a unique file name.');
+        });
+    }
+
+    /** Copy a file to a new collision-safe name without deleting its original. */
+    public function copyWithUniqueName(
+        string $oldPath,
+        string $directory,
+        string $filename,
+        string $disk = 'public',
+    ): string {
+        $oldPath = $this->normalizeStoredPath($oldPath);
+        $directory = $this->normalizeDirectory($directory);
+        $filename = $this->normalizeFilenameForExtension('', $filename);
+        return $this->saveWithoutOverwrite($disk, $directory, $filename, function (string $name) use ($disk, $directory, $oldPath): string {
+            $destination = $directory.'/'.$name;
+            if (! $this->files->disk($disk)->copy($oldPath, $destination)) {
+                throw new RuntimeException('Unable to copy media file.');
+            }
+            return $destination;
+        });
     }
 
     private function normalizeStoredPath(string $path): string

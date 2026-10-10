@@ -6,21 +6,12 @@ namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 
 final class AssetResponsesTest extends TestCase
 {
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('laravel-infrastructure.assets.allowed_disks', ['public']);
-        $app['config']->set('laravel-infrastructure.assets.legacy_uploads', [
-            'enabled' => true,
-            'prefix' => 'uploads',
-            'disk' => 'public',
-        ]);
-        $app['config']->set('laravel-infrastructure.assets.folder_access.public', [
-            '*' => ['signed' => false, 'guard' => null],
-        ]);
+        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['media' => 'public']);
     }
 
     protected function setUp(): void
@@ -29,96 +20,28 @@ final class AssetResponsesTest extends TestCase
         Storage::fake('public');
     }
 
-    public function test_asset_cache_policy_requires_no_package_cache_settings(): void
+    public function test_missing_public_file_returns_default_404_image(): void
     {
-        self::assertArrayNotHasKey('cache', config('laravel-infrastructure.assets'));
-    }
-
-    public function test_missing_file_returns_404_image_not_html(): void
-    {
-        $this->get(route('laravel-infrastructure.assets.show', [
-            'disk' => 'public', 'path' => 'missing.webp',
-        ]))->assertOk()
-            ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
-    }
-
-    public function test_access_denied_returns_403_image_not_html(): void
-    {
-        config()->set('laravel-infrastructure.assets.folder_access.public', [
-            '*' => ['signed' => true, 'guard' => null],
-        ]);
-
-        $this->get(route('laravel-infrastructure.assets.show', [
-            'disk' => 'public', 'path' => 'private.webp',
-        ]))->assertOk()
-            ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
-    }
-
-    public function test_missing_route_renders_404_image(): void
-    {
-        $this->get('/infrastructure/assets/invalid')->assertOk()
+        $this->get('/media/products/missing.webp')->assertOk()
+            ->assertHeader('X-Asset-Error-Status', '404')
             ->assertHeader('Content-Type', 'image/webp');
     }
 
-    public function test_custom_global_404_image_override_is_used(): void
+    public function test_public_image_is_cached_and_legacy_route_is_absent(): void
     {
-        config()->set('laravel-infrastructure.assets.error_images.404',
-            dirname(__DIR__, 2).'/resources/images/file-access-denied.webp');
-
-        $this->get(route('laravel-infrastructure.assets.show', [
-            'disk' => 'public', 'path' => 'missing.webp',
-        ]))->assertOk()
-            ->assertHeader('Content-Type', 'image/webp')
-            ->assertHeader('Content-Length', (string) filesize(
-                dirname(__DIR__, 2).'/resources/images/file-access-denied.webp'));
+        Storage::disk('public')->put('products/logo.webp', file_get_contents(
+            dirname(__DIR__, 2).'/resources/images/file-not-found.webp',
+        ));
+        $this->get('/media/products/logo.webp')->assertOk()
+            ->assertHeader('Cache-Control', 'public, max-age=86400');
+        self::assertNull(\Illuminate\Support\Facades\Route::getRoutes()->getByName('laravel-infrastructure.assets.show'));
+        self::assertNull(\Illuminate\Support\Facades\Route::getRoutes()->getByName('uploads'));
     }
 
-    public function test_public_images_support_etag_and_conditional_get(): void
+    public function test_public_route_rejects_hidden_and_executable_files(): void
     {
-        Storage::disk('public')->put('assets/logo.webp', file_get_contents(
-            dirname(__DIR__, 2).'/resources/images/file-not-found.webp'));
-
-        $url = route('laravel-infrastructure.assets.show', [
-            'disk' => 'public', 'path' => 'assets/logo.webp',
-        ]);
-
-        $response = $this->get($url);
-        $response->assertOk()->assertHeader('Cache-Control', 'max-age=86400, public');
-        $etag = $response->headers->get('ETag');
-        self::assertIsString($etag);
-        self::assertNotSame('', $etag);
-
-        $this->withHeaders(['If-None-Match' => $etag])->get($url)->assertStatus(304);
-    }
-
-    public function test_signed_images_remain_uncached_by_default(): void
-    {
-        Storage::disk('public')->put('assets/private.webp', file_get_contents(
-            dirname(__DIR__, 2).'/resources/images/file-not-found.webp'));
-        config()->set('laravel-infrastructure.assets.folder_access.public', [
-            '*' => ['signed' => true, 'guard' => null],
-        ]);
-
-        $url = URL::temporarySignedRoute('laravel-infrastructure.assets.show',
-            now()->addMinutes(5), ['disk' => 'public', 'path' => 'assets/private.webp']);
-
-        $this->get($url)->assertOk()
-            ->assertHeader('Cache-Control', 'max-age=0, no-store, private');
-    }
-
-    public function test_uploads_alias_uses_same_package_access_checks(): void
-    {
-        Storage::disk('public')->put('assets/logo.webp', file_get_contents(
-            dirname(__DIR__, 2).'/resources/images/file-not-found.webp'));
-
-        $this->get(route('uploads', ['file' => 'assets/logo.webp']))->assertOk();
-
-        config()->set('laravel-infrastructure.assets.folder_access.public', [
-            '*' => ['signed' => true, 'guard' => null],
-        ]);
-        $this->get(route('uploads', ['file' => 'assets/logo.webp']))
-            ->assertOk()->assertHeader('Content-Type', 'image/webp');
+        Storage::disk('public')->put('products/script.php', '<?php echo 1;');
+        $this->get('/media/products/script.php')->assertHeader('X-Asset-Error-Status', '404');
+        $this->get('/media/.env')->assertHeader('X-Asset-Error-Status', '404');
     }
 }

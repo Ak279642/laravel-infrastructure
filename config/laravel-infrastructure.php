@@ -27,39 +27,15 @@ return [
         ],
     ],
 
-    // The package registers and handles its own asset URLs and access rules.
+    // Public file URL aliases; a missing alias falls back to the disk name.
+    // Only explicitly listed public disks can ever be routed publicly.
     'assets' => [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED', true),
-        'prefix' => env('LARAVEL_INFRASTRUCTURE_ASSETS_PREFIX', 'infrastructure/assets'),
-
-        // Map a URL alias to your Eloquent model class (e.g. Product::class).
-        'resources' => [],
-
-        // Only these storage disks can be requested through asset URLs.
-        'allowed_disks' => ['public'],
-
-        // Optional per-folder rules: 'public' => ['private' => ['guard' => 'admin']].
-        'folder_access' => [],
-
-        // Optional regex allowlists for generic (non-model) file URLs.
-        'generic_path_patterns' => [],
-
-        // Enable only if existing clients still use /uploads/{file}.
-        'legacy_uploads' => [
-            'enabled' => false,
-            'prefix' => 'uploads',
-            'disk' => 'public',
-        ],
-
-        // Show fallback artwork on direct browser navigation as HTTP 200.
-        // Set false for strict HTTP 403/404 statuses.
+        'public_disks' => ['public'],
+        'disk_aliases' => [],
+        'url_ttl_minutes' => 15,
         'render_error_images' => true,
-
-        // null = the included optimized WebP. Override with an absolute file path.
-        'error_images' => [
-            403 => null,
-            404 => null,
-        ],
+        'error_images' => [403 => null, 404 => null],
     ],
 
     // Models whose stored files should be checked by the storage audit command.
