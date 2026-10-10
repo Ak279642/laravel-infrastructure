@@ -558,8 +558,94 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     public function loadMissing(Model $model, array|string $relations): Model
     {
         $relations = $this->getAllowedRelations($this->normalizeRelations($relations));
-        if ($relations !== []) {
+        if ($relations === []) {
+            return $model;
+        }
+
+        // Cache only complete missing relationship graphs. In particular,
+        // never replace an already-loaded parent relation with a snapshot
+        // just because one of its nested relations was missing.
+        $roots = [];
+        foreach ($relations as $key => $value) {
+            if (! is_int($key) || ! is_string($value)) {
+                $model->loadMissing($relations);
+
+                return $model;
+            }
+            $root = explode('.', $this->canonicalRelationName($value), 2)[0];
+            if ($root === '' || $model->relationLoaded($root)) {
+                $model->loadMissing($relations);
+
+                return $model;
+            }
+            $roots[$root] = true;
+        }
+
+        // Redis tag namespace order matters, not only the hashed cache key.
+        // Canonicalize simple relation lists so equivalent requests share the
+        // same key and the same dependency-tag order.
+        $relations = array_values(array_unique($relations));
+        sort($relations, SORT_STRING);
+
+        // The automatic SQL watcher provides the physical table dependencies
+        // required to invalidate cached relations after scoped model and raw
+        // pivot updates. Without it, never cache a potentially stale graph.
+        if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)
+            || ! $model->exists || $model->getKey() === null
+            || $model->isDirty() || $model::class !== $this->model::class
+            || $model->getConnection()->getName() !== $this->model->getConnection()->getName()
+            || $model->getConnection()->getDatabaseName() !== $this->model->getConnection()->getDatabaseName()) {
             $model->loadMissing($relations);
+
+            return $model;
+        }
+
+        // Cross-connection relations need dependency tags from their own
+        // connections and are intentionally handled by plain Eloquent.
+        $connection = $model->getConnection();
+        foreach ($relations as $relation) {
+            $related = $this->resolveRelatedModel($relation);
+            if ($related === null
+                || $related->getConnection()->getName() !== $connection->getName()
+                || $related->getConnection()->getDatabaseName() !== $connection->getDatabaseName()) {
+                $model->loadMissing($relations);
+
+                return $model;
+            }
+        }
+
+        // The package's standard cache policy controls the mode/TTL. Include
+        // the full model attribute fingerprint: belongsTo keys, morph types,
+        // and relation constraints can vary for the same primary key.
+        // Actor identity prevents one authenticated context from reusing a
+        // relationship graph produced under another actor's global scopes.
+        $actor = app()->bound('request') ? request()->attributes : null;
+        $snapshot = $this->cacheRemember(
+            'loadMissing',
+            function () use ($model, $relations, $roots): array {
+                $model->loadMissing($relations);
+                $loaded = [];
+                foreach (array_keys($roots) as $root) {
+                    $loaded[$root] = $model->getRelation($root);
+                }
+
+                return $loaded;
+            },
+            [
+                'id' => $model->getKey(),
+                'attributes_hash' => hash('sha256', serialize($model->getRawOriginal())),
+                'with' => array_values($relations),
+                'actor_context' => [
+                    $actor?->get('user_type'),
+                    $actor?->get('user_id'),
+                    $actor?->get('partner_id'),
+                    auth()->id(),
+                ],
+            ],
+        );
+
+        foreach ($snapshot as $root => $value) {
+            $model->setRelation($root, $value);
         }
 
         return $model;
