@@ -43,61 +43,138 @@ protected function cacheOptions(): array
 
 For application-wide behavior, change Laravel's cache store. For operation-level bypass use `withoutCache()`. Locks use repository defaults (10-second lock, 3-second wait) and can be adjusted by overriding the repository's protected `$cacheLockSeconds` and `$cacheLockWaitSeconds`.
 
-## Ownership and Eloquent global scopes
+## Ownership, global scopes and query-builder filters
 
-**Already using Eloquent global scopes? No additional configuration is required.** The package respects normal Laravel global scopes without depending on their class names. Scope SQL/bindings and available actor identity contribute to cache keys; models with custom global scopes use conservative model-wide invalidation.
+Repository reads respect Eloquent global scopes automatically. Scoped SQL and
+bindings, along with repository-wide query-builder filters, participate in cache
+keys. Without declared ownership boundaries, the package uses safe model-wide
+invalidation for arbitrary visibility policies.
 
-**No global ownership scope?** Specify the database column and Laravel authentication guard:
+For a single owner, specify a column and optionally a guard:
 
 ```php
 protected function cacheOptions(): array
 {
-    return ['scope' => [
-        'column' => 'partner_id',
-        'guard' => 'partner',
-    ]];
+    return ['scope' => ['column' => 'partner_id', 'guard' => 'partner']];
 }
 ```
 
-This filters by `partner_id = auth('partner')->id()`. A missing authenticated guard or required attribute rejects the scoped read instead of returning unrestricted records.
+The guard is optional and defaults to the current Laravel guard. An optional
+attribute (such as tenant_id) may be resolved instead of the guard's ID.
+Missing required identities fail closed.
 
-**Multiple columns, even with the same guard:** Use `scopes`. By default conditions are combined with **AND**. Set `scope_operator => 'or'` if matching **any** of the columns should grant a match:
+For creator, assignee, or assigner visibility, each short column name resolves
+to the authenticated user's ID:
 
 ```php
 protected function cacheOptions(): array
 {
     return [
-        'scopes' => [
-            ['column' => 'user_id', 'guard' => 'web'],
-            ['column' => 'assigned_to', 'guard' => 'web'],
-            ['column' => 'assigned_by', 'guard' => 'web'],
-        ],
+        'scopes' => ['user_id', 'assigned_to', 'assigned_by'],
         'scope_operator' => 'or',
     ];
 }
 ```
 
-The package groups the OR conditions within parentheses, so any existing Eloquent global scope still applies as an additional condition. With `and`, every column must match the configured actor.
+Legacy explicit guard rules, multiple guards, associative auth/actor sources,
+and the old user/tenant aliases are backward compatible. An OR rule can use
+any active named guard, but never returns unrestricted data when none matches.
 
-**Different guards and a non-ID attribute:**
+Tenant AND ownership requires a grouped alternative visibility declaration:
 
 ```php
 protected function cacheOptions(): array
 {
-    return ['scopes' => [
-        ['column' => 'partner_id', 'guard' => 'partner'],
-        ['column' => 'company_id', 'guard' => 'admin', 'attribute' => 'company_id'],
-    ]];
+    return [
+        'scope' => ['tenant_id' => 'auth.tenant_id'],
+        'visibility' => ['any' => ['user_id', 'assigned_to', 'assigned_by']],
+    ];
 }
 ```
 
-With the default AND operator, both guards must be authenticated. Set `'scope_operator' => 'or'` to match rules for whichever named guards are authenticated; inactive guards are skipped, and a request with **no matching authenticated guard fails closed**. If several named guards are authenticated at once, their rules are OR-combined. Use your existing Eloquent visibility scope for more complex authorization decisions.
+This yields tenant_id = ? AND (user_id = ? OR assigned_to = ? OR
+assigned_by = ?). Tenant/owner pairs are the invalidation dependencies. Writes
+invalidate old and new visibility groups for changed rows; unrelated tenants
+are not flushed.
 
-Existing `scope => 'user' | 'tenant'`, `scope_column`, and `scopes => ['column' => 'auth.id' | 'auth.attribute' | 'actor.id' | Closure]` configurations remain supported. Optional `actor_resolver` and `visibility_resolver` extensions remain available for backward compatibility; they are not auto-detected.
+Already using an Eloquent tenant global scope? It is applied automatically;
+no scope configuration is needed for correct isolation. For precise tenant
+invalidation, declare only the boundary:
 
-**Cache isolation and invalidation:** Resolved column values and AND/OR operator are included in the cache keys. Simple AND ownership scopes use targeted tags for the previous and new owner after writes. OR rules and custom Eloquent global scopes use model-wide invalidation because a record can appear in multiple actors' result sets. Permission or group membership changes that do not write to the cached model require explicit invalidation. Caching does not replace authorization.
+```php
+protected function cacheOptions(): array
+{
+    return ['scope' => 'tenant_id'];
+}
+```
 
-Use Redis or another tagged cache store for persistent repository caches. The package does not cache tagged entries on stores without tag support.
+A column-only scope is a cache-partition marker; it does NOT add a WHERE clause.
+It requires an Eloquent global scope and assumes that scope strictly limits
+results to the named partition. Do not use it for shared cross-tenant records
+or a global scope that only filters status. Such policies require broad
+invalidation or a precise ownership restriction.
+
+Repository-wide query-builder filters also participate in cache identity:
+
+```php
+$openTasks = $tasks->filterQuery(
+    fn (\Illuminate\Database\Eloquent\Builder $query) => $query->where('status', 'open'),
+);
+$openTasks->paginate(perPage: 20);
+```
+
+An application repository can alternatively override
+globalQueryFilter(Builder $query): Builder. Allowed local scope() modifiers
+are also included in the effective query. Compiling SQL and bindings adds
+no database read.
+
+Cache invalidation principles:
+
+- AND partitions use composite tags; OR ownership uses per-column visibility
+  tags; tenant plus OR ownership uses tenant/owner composite tags.
+- Model events capture original and new ownership values and invalidate only
+  potentially affected groups, after the transaction commits.
+- All entries ALSO retain the model tag for guaranteed broad fallback when
+  ownership cannot be safely calculated.
+- Unknown global scopes, custom visibility resolvers, mixed OR partitions with
+  visibility.any, and unbounded policies conservatively use the model tag.
+- Model-level actor_resolver and visibility_resolver remain supported. Changes
+  to permissions or membership outside the cached model need explicit
+  invalidation. Caching is not an authorization replacement.
+- Raw DB::table writes do not fire Eloquent model events: explicitly invalidate
+  the affected cache or use normal model writes.
+- Use Redis or another cache store supporting Laravel tags. Non-taggable
+  stores bypass cached repository reads for correctness.
+
+### Precise invalidation for custom visibility resolvers
+
+A custom class visibility resolver still works with no new configuration and
+uses safe model-wide invalidation by default. For precise invalidation, it may
+optionally implement BOTH of these methods in addition to its existing apply()
+method:
+
+```php
+public function cacheReadTags(Model $model, ?array $actor): array
+{
+    return [$model::cacheTag().':viewer:'.$actor['id']];
+}
+
+public function cacheInvalidationTags(Model $model): array
+{
+    $prefix = $model::cacheTag().':viewer:';
+
+    return [
+        $prefix.$model->getRawOriginal('user_id'),
+        $prefix.$model->getAttribute('user_id'),
+    ];
+}
+```
+
+The values must represent the FULL visibility policy, including shared
+records, group membership, or administrative access if applicable. Invalid or
+empty read tag lists are rejected rather than cached unsafely. Empty write
+tags instead trigger model-wide invalidation. Never opt into targeted tags
+for visibility branches that those tags do not cover.
 
 ## Image caching
 

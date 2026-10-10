@@ -34,11 +34,17 @@ trait HasScopes
      */
     public function scope(string $scope, mixed ...$args): static
     {
-        if (
-            $this->isScopeAllowed($scope)
-            && $this->hasScope($this->query, $scope)
-        ) {
-            $this->query->{$scope}(...$args);
+        if ($this->isScopeAllowed($scope)
+            && $this->hasScope($this->query, $scope)) {
+            // Store scope as a builder modifier; query() must start with a
+            // fresh Eloquent builder so request-specific global scopes apply.
+            $previous = $this->globalQueryCallback;
+            $this->globalQueryCallback = static function (Builder $query) use ($previous, $scope, $args): Builder {
+                $query = $previous === null ? $query : ($previous($query) ?? $query);
+                $query->{$scope}(...$args);
+
+                return $query;
+            };
         }
 
         return $this;

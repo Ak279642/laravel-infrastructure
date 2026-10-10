@@ -879,9 +879,10 @@ foreach ($products->cursor() as $product) {
 
 Use Laravel's configured cache store (Redis recommended for tag invalidation), e.g. `CACHE_STORE=redis`. Repositories cache reads with configurable TTLs, scoped keys and automatic invalidation after writes; `withoutCache()` bypasses one read. See [Caching](docs/caching.md) for full examples.
 
-Laravel's Eloquent global scopes are respected automatically (including application-specific visibility and active-status scopes). Cache keys account for scoped SQL/bindings, and custom global-scope models use conservative model-wide invalidation. No separate visibility resolver or configuration is required.
+Laravel Eloquent global scopes are respected automatically, including their SQL
+and bindings in cache keys. Unknown scopes safely use model-wide invalidation.
 
-For simple ownership without an existing visibility scope, models can opt in using a **column and Laravel guard**:
+For normal ownership:
 
 ```php
 protected function cacheOptions(): array
@@ -890,22 +891,50 @@ protected function cacheOptions(): array
 }
 ```
 
-For multiple columns (including the **same guard**), use `scopes`:
+For creator / assignee / assigner access:
 
 ```php
 protected function cacheOptions(): array
 {
     return [
-        'scopes' => [
-            ['column' => 'user_id', 'guard' => 'web'],
-            ['column' => 'assigned_to', 'guard' => 'web'],
-        ],
-        'scope_operator' => 'or', // default is 'and'
+        'scopes' => ['user_id', 'assigned_to', 'assigned_by'],
+        'scope_operator' => 'or',
     ];
 }
 ```
 
-Global scopes still apply alongside configured ownership. OR rules use model-wide cache invalidation; AND-only ownership rules without global scopes can use targeted invalidation. See [Caching](docs/caching.md) for named guards, custom attributes and legacy configuration.
+For a strict tenant boundary combined with any matching owner:
+
+```php
+protected function cacheOptions(): array
+{
+    return [
+        'scope' => ['tenant_id' => 'auth.tenant_id'],
+        'visibility' => ['any' => ['user_id', 'assigned_to', 'assigned_by']],
+    ];
+}
+```
+
+Writes invalidate affected old/new owner and tenant groups instead of every
+tenant. If an Eloquent global scope already guarantees tenant isolation,
+the optional cache-only marker is simply:
+
+```php
+protected function cacheOptions(): array
+{
+    return ['scope' => 'tenant_id'];
+}
+```
+
+An additional query-builder filter can participate in cache keys:
+
+```php
+$open = $tasks->filterQuery(fn ($query) => $query->where('status', 'open'));
+$open->paginate(perPage: 20);
+```
+
+See [Caching](docs/caching.md) for combinations, guards, custom visibility
+resolvers, safe fallback invalidation, and complete examples.
 
 # Public and private media
 

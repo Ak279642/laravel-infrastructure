@@ -76,51 +76,81 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         return $this->model;
     }
 
+    /**
+     * Add a query-builder filter to every read on a cloned repository instance.
+     * The resulting SQL and bindings participate in the cache identity.
+     */
+    public function filterQuery(callable $filter): static
+    {
+        $repository = clone $this;
+        $previous = $repository->globalQueryCallback;
+        $next = \Closure::fromCallable($filter);
+        $repository->globalQueryCallback = static function (Builder $query) use ($previous, $next): Builder {
+            $query = $previous === null ? $query : ($previous($query) ?? $query);
+
+            return $next($query) ?? $query;
+        };
+
+        return $repository;
+    }
+
+    protected ?\Closure $globalQueryCallback = null;
+
+    /** Override for application-wide repository query restrictions. */
+    protected function globalQueryFilter(Builder $query): Builder
+    {
+        if ($this->globalQueryCallback === null) {
+            return $query;
+        }
+
+        return ($this->globalQueryCallback)($query) ?? $query;
+    }
+
     public function query(): Builder
     {
         $query = $this->model->newQuery();
         if (! method_exists($this->model, 'infrastructureCacheScopes')) {
-            return $query;
+            return $this->globalQueryFilter($query);
         }
 
         $scopes = $this->model->infrastructureCacheScopes();
+        $any = $this->model->infrastructureCacheVisibilityScopes();
         $visibility = $this->model->infrastructureVisibilityResolver();
         $actor = $visibility === null ? null : $this->model->infrastructureVisibilityActor();
+        $marker = $this->model->infrastructureUsesGlobalScopeMarker();
 
-        // Do not execute an application visibility resolver twice when its
-        // Eloquent global scope already applies it.
+        // A column-only marker declares the cache partition of a global
+        // scope; it never replaces the global scope's actual SQL restriction.
+        if ($marker && ! $this->model->infrastructureHasGlobalVisibilityScopes()) {
+            throw new \LogicException('A cache scope column marker requires an Eloquent global scope.');
+        }
+
         if (is_object($visibility) && method_exists($visibility, 'apply')) {
-            // Application resolver owns the complete visibility policy.
             if ($actor === null) {
                 $query->whereRaw('1 = 0');
-                return $query;
+            } else {
+                $query = $visibility->apply($query, $this->model, $actor['type'], $actor['id']);
             }
-            return $visibility->apply($query, $this->model, $actor['type'], $actor['id']);
-        }
-
-        if ($visibility instanceof \Closure) {
+        } elseif ($visibility instanceof \Closure) {
             if ($actor === null && $scopes === []) {
                 $query->whereRaw('1 = 0');
-                return $query;
+            } else {
+                $query->where(function (Builder $builder) use ($scopes, $visibility, $actor, $marker): void {
+                    if ($scopes !== [] && ! $marker) {
+                        $builder->where(function (Builder $owned) use ($scopes): void {
+                            $operator = $this->model->infrastructureCacheScopeOperator();
+                            foreach ($scopes as $column => $value) {
+                                $method = $operator === 'or' ? 'orWhere' : 'where';
+                                $owned->{$method}($this->model->qualifyColumn($column), $value);
+                            }
+                        });
+                    } else {
+                        $builder->whereRaw('1 = 0');
+                    }
+                    $visibility($builder, auth()->user(), $scopes, $actor);
+                });
             }
-            $query->where(function (Builder $builder) use ($scopes, $visibility, $actor): void {
-                if ($scopes !== []) {
-                    $builder->where(function (Builder $owned) use ($scopes): void {
-                        $operator = $this->model->infrastructureCacheScopeOperator();
-                        foreach ($scopes as $column => $value) {
-                            $method = $operator === 'or' ? 'orWhere' : 'where';
-                            $owned->{$method}($this->model->qualifyColumn($column), $value);
-                        }
-                    });
-                } else {
-                    $builder->whereRaw('1 = 0');
-                }
-                $visibility($builder, auth()->user(), $scopes, $actor);
-            });
-            return $query;
-        }
-
-        if ($scopes !== []) {
+        } elseif ($scopes !== [] && ! $marker) {
             $operator = $this->model->infrastructureCacheScopeOperator();
             $query->where(function (Builder $builder) use ($scopes, $operator): void {
                 foreach ($scopes as $column => $value) {
@@ -130,27 +160,52 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             });
         }
 
+        // All alternatives are grouped and always AND-ed with the partition.
+        if ($any !== []) {
+            $query->where(function (Builder $builder) use ($any): void {
+                foreach ($any as $column => $value) {
+                    $builder->orWhere($this->model->qualifyColumn($column), $value);
+                }
+            });
+        }
+
+        $query = $this->globalQueryFilter($query);
+        if ($marker && $query->removedScopes() !== []) {
+            // Removing a global scope may expose rows outside the declared
+            // cache partition, which targeted write tags cannot invalidate.
+            throw new \LogicException('Cannot remove global scopes from a cache-partition marker query.');
+        }
+
         return $query;
     }
 
     public function clearCache(): void
     {
-        $scope = method_exists($this->model, 'infrastructureCacheScope')
-            ? $this->model->infrastructureCacheScope()
-            : null;
-        $broad = method_exists($this->model, 'infrastructureHasGlobalVisibilityScopes')
-            && ($this->model->infrastructureHasGlobalVisibilityScopes()
-                || $this->model->infrastructureVisibilityResolver() !== null
-                || $this->model->infrastructureCacheScopeOperator() === 'or');
-        $this->getCacheManager()->flushTags([
-            $scope === null || $broad ? CacheTag::fromModel($this->model::class) : $scope['tag'],
-        ]);
+        $targeted = method_exists($this->model, 'infrastructureUsesTargetedCacheInvalidation')
+            && $this->model->infrastructureUsesTargetedCacheInvalidation();
+        $tags = $targeted
+            ? $this->model->infrastructureCacheReadTags()
+            : [CacheTag::fromModel($this->model::class)];
+
+        $this->getCacheManager()->flushTags($tags);
+    }
+
+    /** Model event observers already flush the affected old/new groups after commit. */
+    protected function clearCacheAfterModelWrite(): void
+    {
+        if (method_exists($this->model, 'infrastructureCacheReadTags')
+            && $this->model->usesInfrastructureCache()) {
+            return;
+        }
+
+        $this->clearCache();
     }
 
     public function truncate(): void
     {
         $this->model->newQuery()->truncate();
-        $this->clearCache();
+        // Truncate bypasses model events and removes all partitions.
+        $this->getCacheManager()->flushTags([CacheTag::fromModel($this->model::class)]);
     }
 
     public function all(array $columns = ['*']): Collection
@@ -216,7 +271,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     {
         $model = $this->model->newInstance($data);
         $model->save();
-        $this->clearCache();
+        $this->clearCacheAfterModelWrite();
 
         if ($refresh) {
             $model->refresh();
@@ -235,7 +290,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $model = $this->resolveMutationModel($id);
         $model->fill($data);
         $model->save();
-        $this->clearCache();
+        $this->clearCacheAfterModelWrite();
 
         if ($refresh) {
             $model->refresh();
@@ -252,7 +307,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
     public function updateOrCreate(array $attributes, array $values = []): Model
     {
         $model = $this->query()->updateOrCreate($attributes, $values);
-        $this->clearCache();
+        $this->clearCacheAfterModelWrite();
         $this->rememberValidationValue($model);
 
         return $model;
@@ -264,7 +319,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $deleted = (bool) $model->delete();
 
         if ($deleted) {
-            $this->clearCache();
+            $this->clearCacheAfterModelWrite();
             $this->forgetValidationModel($model);
         }
 
@@ -286,7 +341,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
             : (bool) $model->delete();
 
         if ($deleted) {
-            $this->clearCache();
+            $this->clearCacheAfterModelWrite();
             $this->forgetValidationModel($model);
         }
 
@@ -310,7 +365,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryValidati
         $restored = (bool) call_user_func([$model, 'restore']);
 
         if ($restored) {
-            $this->clearCache();
+            $this->clearCacheAfterModelWrite();
             $this->rememberValidationValue($model);
         }
 

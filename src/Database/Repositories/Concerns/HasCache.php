@@ -149,18 +149,30 @@ trait HasCache
         if (method_exists($model, 'infrastructureCacheScopes')) {
             $params['infrastructure_scopes'] = $model->infrastructureCacheScopes();
             $params['scope_operator'] = $model->infrastructureCacheScopeOperator();
-            if ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()
-                || $model->infrastructureCacheScopeOperator() === 'or') {
+            $params['visibility_scopes'] = $model->infrastructureCacheVisibilityScopes();
+            if ($model->infrastructureVisibilityResolver() !== null
+                || $model->infrastructureHasGlobalVisibilityScopes()) {
                 $actor = $model->infrastructureVisibilityActor();
                 $params['visibility_actor'] = $actor === null
                     ? null
                     : [$actor['type'] ?? null, $actor['id'] ?? null, $actor['partner_id'] ?? null];
-                // Eloquent applies global scopes when compiling the query.
-                $scoped = $model->newQuery()->toBase();
-                $params['global_scope_sql'] = $scoped->toSql();
-                $params['global_scope_bindings'] = $scoped->getBindings();
             }
         }
+
+        // Avoid invoking custom visibility callbacks a second time for the
+        // common ownership-only case. An explicit repository query filter or
+        // visibility resolver must be compiled to distinguish its SQL.
+        $customFilter = $this->globalQueryCallback !== null
+            || (new \ReflectionMethod($this, 'globalQueryFilter'))
+                ->getDeclaringClass()->getName() !== \Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository::class;
+        $customVisibility = method_exists($model, 'infrastructureVisibilityResolver')
+            && $model->infrastructureVisibilityResolver() !== null;
+        $query = ($customFilter || $customVisibility
+            ? $this->query()
+            : $model->newQuery())->toBase();
+        $params['effective_sql'] = $query->toSql();
+        $params['effective_bindings'] = $query->getBindings();
+        $params['connection'] = [$model->getConnection()->getName(), $model->getConnection()->getDatabaseName()];
 
         return CacheKey::make(
             'repository:'.strtolower(str_replace('\\', '.', static::class)).':'.$operation,
@@ -174,32 +186,24 @@ trait HasCache
     protected function resolveCacheTags(array $params = []): array
     {
         $model = $this->getModel();
-        $scope = method_exists($model, 'infrastructureCacheScope')
-            ? $model->infrastructureCacheScope()
-            : null;
-        $visibility = method_exists($model, 'infrastructureVisibilityResolver')
-            && ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()
-                || $model->infrastructureCacheScopeOperator() === 'or');
+        $modelTag = CacheTag::fromModel($model::class);
+        $targeted = method_exists($model, 'infrastructureUsesTargetedCacheInvalidation')
+            && $model->infrastructureUsesTargetedCacheInvalidation();
+
+        // Keep the model tag even on targeted entries: unknown permissions,
+        // other dependency changes and explicit full flushes need a safe path.
         $tags = CacheTag::merge(
-            [$scope === null || $visibility ? CacheTag::fromModel($model::class) : $scope['tag']],
+            [$modelTag],
+            $targeted ? $model->infrastructureCacheReadTags() : [],
             $this->extraCacheTags,
         );
 
         if ($model instanceof CacheableModel) {
             $relations = $params['with'] ?? [];
             $relations = is_array($relations) ? $relations : [];
-            $dependencies = $model->getCacheDependencyTags(null, $relations);
-            if ($scope !== null && ! $visibility) {
-                // Retain related-model dependencies without a broad self-model tag.
-                $dependencies = array_values(array_filter(
-                    $dependencies,
-                    static fn (string $tag): bool => $tag !== $model::cacheTag(),
-                ));
-            }
             $tags = CacheTag::merge(
                 $tags,
-                $scope === null || $visibility ? [$model::cacheTag()] : [],
-                $dependencies,
+                $model->getCacheDependencyTags(null, $relations),
             );
         }
 
@@ -209,21 +213,13 @@ trait HasCache
     protected function flushCache(): void
     {
         $model = $this->getModel();
-        $scope = method_exists($model, 'infrastructureCacheScope')
-            ? $model->infrastructureCacheScope()
-            : null;
-        $visibility = method_exists($model, 'infrastructureVisibilityResolver')
-            && ($model->infrastructureVisibilityResolver() !== null || $model->infrastructureHasGlobalVisibilityScopes()
-                || $model->infrastructureCacheScopeOperator() === 'or');
-        $tags = $scope !== null && ! $visibility
-            ? [$scope['tag']]
-            : ($model instanceof CacheableModel
-                ? CacheTag::merge([$model::cacheTag()], $this->extraCacheTags)
-                : CacheTag::merge([CacheTag::fromModel($model::class)], $this->extraCacheTags));
+        $targeted = method_exists($model, 'infrastructureUsesTargetedCacheInvalidation')
+            && $model->infrastructureUsesTargetedCacheInvalidation();
+        $tags = $targeted
+            ? $model->infrastructureCacheReadTags()
+            : [CacheTag::fromModel($model::class)];
 
-        if ($tags !== []) {
-            $this->getCacheManager()->flushTags($tags);
-        }
+        $this->getCacheManager()->flushTags($tags);
     }
 
     protected function getCacheManager(): CacheManager

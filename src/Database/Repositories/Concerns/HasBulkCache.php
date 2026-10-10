@@ -41,7 +41,7 @@ trait HasBulkCache
         }
 
         if ($affected > 0) {
-            $this->clearCache();
+            $this->clearCacheAfterModelWrite();
         }
 
         return $affected;
@@ -65,7 +65,7 @@ trait HasBulkCache
         }
 
         if ($affected > 0) {
-            $this->clearCache();
+            $this->clearCacheAfterModelWrite();
         }
 
         return $affected;
@@ -97,7 +97,7 @@ trait HasBulkCache
         }
 
         if ($affected > 0) {
-            $this->clearCache();
+            $this->clearCacheAfterModelWrite();
         }
 
         return $affected;
@@ -132,7 +132,7 @@ trait HasBulkCache
         }
 
         if ($affected > 0) {
-            $this->clearCache();
+            $this->clearCacheAfterModelWrite();
         }
 
         return $affected;
