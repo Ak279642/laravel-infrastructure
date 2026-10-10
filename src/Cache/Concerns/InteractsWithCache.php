@@ -72,9 +72,11 @@ trait InteractsWithCache
             return;
         }
 
-        $callback = function () use ($method): void {
+        // Snapshot old/new ownership while Eloquent still retains pre-save originals.
+        $tags = $this->getCacheInvalidationTags();
+        $callback = function () use ($method, $tags): void {
             $observer = app(CacheObserver::class);
-            $observer->{$method}($this);
+            $observer->{$method}($this, $tags);
         };
 
         $connection = $this->getConnection();
