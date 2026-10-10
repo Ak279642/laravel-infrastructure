@@ -222,11 +222,11 @@ trait InteractsWithCache
         if (is_string($resolver) && class_exists($resolver)) {
             $resolver = app($resolver);
         }
-        if ($resolver === null || $resolver instanceof \\Closure
+        if ($resolver === null || $resolver instanceof \Closure
             || (is_object($resolver) && method_exists($resolver, 'apply'))) {
             return $resolver;
         }
-        throw new \\InvalidArgumentException('Invalid visibility resolver.');
+        throw new \InvalidArgumentException('Invalid visibility resolver.');
     }
 
     public function infrastructureHasGlobalVisibilityScopes(): bool
