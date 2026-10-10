@@ -23,8 +23,8 @@ final class AutomaticSqlInvalidationTest extends TestCase
         $app['config']->set('database.connections.testing', [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
         ]);
-        $app['config']->set('laravel-infrastructure.cache.auto_invalidation.enabled', true);
-        $app['config']->set('laravel-infrastructure.cache.auto_invalidation.table_dependencies', [
+        $app['config']->set('laravel-infrastructure.auto_invalidation.enabled', true);
+        $app['config']->set('laravel-infrastructure.auto_invalidation.table_dependencies', [
             'watched_pivots' => [WatchedItem::class],
         ]);
 
