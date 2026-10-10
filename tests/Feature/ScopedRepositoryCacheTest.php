@@ -238,6 +238,25 @@ final class ScopedRepositoryCacheTest extends TestCase
         self::assertSame([], $repository->get()->pluck('name')->all());
     }
 
+    public function test_or_rules_can_select_one_of_multiple_guards(): void
+    {
+        $repository = new ScopedCacheRepository(new AlternativeGuardsCacheRecord, app(CacheManager::class));
+
+        try {
+            $repository->count();
+            self::fail('Expected at least one authenticated guard.');
+        } catch (\RuntimeException $e) {
+            self::assertSame('Authenticated cache scope is required.', $e->getMessage());
+        }
+
+        $this->be(new ScopedCacheActor(['id' => 101]), 'partner');
+        self::assertSame(['First'], $repository->get()->pluck('name')->all());
+
+        auth('partner')->logout();
+        $this->be(new ScopedCacheActor(['id' => 10]), 'agent');
+        self::assertSame(['First', 'Second'], $repository->get()->pluck('name')->all());
+    }
+
     public function test_global_scope_and_guard_rules_apply_together(): void
     {
         DB::table('scoped_cache_records')->insert([
@@ -456,5 +475,24 @@ final class GlobalAndGuardCacheRecord extends Model implements CacheableModel
     protected function cacheOptions(): array
     {
         return ['scope' => ['column' => 'user_id', 'guard' => 'partner']];
+    }
+}
+
+final class AlternativeGuardsCacheRecord extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $table = 'scoped_cache_records';
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return [
+            'scopes' => [
+                ['column' => 'user_id', 'guard' => 'partner'],
+                ['column' => 'tenant_id', 'guard' => 'agent'],
+            ],
+            'scope_operator' => 'or',
+        ];
     }
 }
