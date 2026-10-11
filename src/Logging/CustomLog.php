@@ -68,11 +68,29 @@ final class CustomLog
             return false;
         }
 
-        return (bool) config(
-            'laravel-infrastructure.logging.domain_enabled.'.
-            self::domainName($domain),
-            true,
-        );
+        $domains = config('laravel-infrastructure.logging.domain_enabled', []);
+
+        // An empty array retains the existing default: all domains enabled.
+        // A plain list enables only the listed domains (strings or backed enums).
+        if (! is_array($domains) || $domains === []) {
+            return true;
+        }
+
+        $name = self::domainName($domain);
+
+        if (array_is_list($domains)) {
+            foreach ($domains as $allowed) {
+                if (($allowed instanceof BackedEnum ? (string) $allowed->value : $allowed) === $name) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Backwards compatible with existing ['api' => true, 'jobs' => false]
+        // configuration and defaults unspecified domains to enabled.
+        return (bool) ($domains[$name] ?? true);
     }
 
     public static function exceptionContext(

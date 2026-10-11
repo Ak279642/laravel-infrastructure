@@ -76,6 +76,8 @@ return [
         'log_server_exceptions' => true,
         'correlation_header' => 'X-Request-ID',
         'accept_incoming_correlation_id' => true,
+        // [] enables all domains; ['api', 'jobs'] enables only those listed.
+        // Existing ['api' => false] maps are also supported.
         'domain_enabled' => [],
     ],
 ];
