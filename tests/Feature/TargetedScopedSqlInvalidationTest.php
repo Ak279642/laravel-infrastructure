@@ -48,12 +48,14 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('user_id');
             $table->unsignedBigInteger('city_id')->default(10);
+            $table->unsignedBigInteger('agent_id')->nullable();
+            $table->unsignedBigInteger('admin_id')->nullable();
             $table->string('status');
         });
 
         DB::table('targeted_scope_orders')->insert([
-            ['id' => 1, 'user_id' => 1, 'city_id' => 10, 'status' => 'pending'],
-            ['id' => 2, 'user_id' => 2, 'city_id' => 20, 'status' => 'pending'],
+            ['id' => 1, 'user_id' => 1, 'city_id' => 10, 'agent_id' => 9, 'admin_id' => 77, 'status' => 'pending'],
+            ['id' => 2, 'user_id' => 2, 'city_id' => 20, 'agent_id' => 10, 'admin_id' => 88, 'status' => 'pending'],
         ]);
     }
 
@@ -193,6 +195,54 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         self::assertSame(4, $repo->loads);
     }
 
+    public function test_proven_owner_or_agent_branches_selectively_invalidate(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForOwnerOrAgent(1, 9));
+        self::assertSame(['pending'], $repo->statusesForOwnerOrAgent(2, 10));
+        self::assertSame(2, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(1)->update(['status' => 'changed']);
+
+        self::assertSame(['pending'], $repo->statusesForOwnerOrAgent(2, 10));
+        self::assertSame(2, $repo->loads);
+        self::assertSame(['changed'], $repo->statusesForOwnerOrAgent(1, 9));
+        self::assertSame(3, $repo->loads);
+    }
+
+    public function test_direct_admin_id_partition_refreshes_only_affected_admin(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForAdmin(77));
+        self::assertSame(['pending'], $repo->statusesForAdmin(88));
+        self::assertSame(2, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(1)->update(['status' => 'review']);
+
+        self::assertSame(['pending'], $repo->statusesForAdmin(88));
+        self::assertSame(2, $repo->loads);
+        self::assertSame(['review'], $repo->statusesForAdmin(77));
+        self::assertSame(3, $repo->loads);
+    }
+
+    public function test_unrestricted_or_branch_keeps_conservative_invalidation(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending', 'pending'], $repo->statusesForUnsafeOrUser(1));
+        self::assertSame(1, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(2)->update(['status' => 'changed']);
+
+        self::assertSame(['pending'], $repo->statusesForUnsafeOrUser(1));
+        self::assertSame(2, $repo->loads);
+    }
+
     public function test_complex_or_predicates_keep_safe_table_wide_invalidation(): void
     {
         $this->needRedis();
@@ -324,6 +374,41 @@ final class TargetedScopeRepository extends BaseRepository
 
             return array_merge($owned, $this->statuses());
         }, ['owner' => $userId]);
+    }
+
+    public function statusesForOwnerOrAgent(int $userId, int $agentId): array
+    {
+        return $this->cacheRemember('statusesForOwnerOrAgent', function () use ($userId, $agentId): array {
+            $this->loads++;
+
+            return $this->query()
+                ->where('targeted_scope_orders.user_id', $userId)
+                ->orWhere('targeted_scope_orders.agent_id', $agentId)
+                ->orderBy('id')->pluck('status')->all();
+        }, ['user_id' => $userId, 'agent_id' => $agentId]);
+    }
+
+    public function statusesForAdmin(int $adminId): array
+    {
+        return $this->cacheRemember('statusesForAdmin', function () use ($adminId): array {
+            $this->loads++;
+
+            return $this->query()
+                ->where('targeted_scope_orders.admin_id', $adminId)
+                ->orderBy('id')->pluck('status')->all();
+        }, ['admin_id' => $adminId]);
+    }
+
+    public function statusesForUnsafeOrUser(int $userId): array
+    {
+        return $this->cacheRemember('statusesForUnsafeOrUser', function () use ($userId): array {
+            $this->loads++;
+
+            return $this->query()
+                ->where('targeted_scope_orders.user_id', $userId)
+                ->orWhere('targeted_scope_orders.status', 'pending')
+                ->orderBy('id')->pluck('status')->all();
+        }, ['user_id' => $userId]);
     }
 
     public function statusesForComplexOrUser(int $userId): array
