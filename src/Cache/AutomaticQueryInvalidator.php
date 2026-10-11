@@ -39,8 +39,18 @@ final class AutomaticQueryInvalidator
         }
         $dependencies = config('laravel-infrastructure.auto_invalidation.table_dependencies', []);
 
+        // Eloquent's single-row lifecycle supplies exact old/new owner tags.
+        // An untracked SQL write (including INSERT, bulk UPDATE/DELETE, raw
+        // pivot mutation) must also invalidate all targeted partitions that
+        // could be affected; never guess row ownership for those writes.
+        $verified = count($tables) === 1
+            && app(TargetedEloquentWrites::class)->consumes($event, $tables[0]);
+
         foreach ($tables as $table) {
             $tags[] = SqlCacheDependency::tableTag($connection, $table);
+            if (! $verified) {
+                $tags[] = SqlCacheDependency::untrackedTableTag($connection, $table);
+            }
             foreach (($dependencies[$table] ?? []) as $modelOrTag) {
                 if (! is_string($modelOrTag) || $modelOrTag === '') {
                     continue;
