@@ -15,6 +15,7 @@ use Illuminate\Database\Events\QueryExecuted;
  */
 final class SqlReadTracker
 {
+    public const OPAQUE_CACHE_TAG = 'infra:cache:opaque';
     /** @var list<array{tags: array<string, true>, unsafe: bool, cachedDependencies: array<string,true>, queries: list<array{sql:string,bindings:array,connection:\Illuminate\Database\Connection}>}> */
     private array $frames = [];
 
