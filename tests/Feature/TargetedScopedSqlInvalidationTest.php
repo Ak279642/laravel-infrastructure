@@ -52,8 +52,8 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         });
 
         DB::table('targeted_scope_orders')->insert([
-            ['id' => 1, 'user_id' => 1, 'status' => 'pending'],
-            ['id' => 2, 'user_id' => 2, 'status' => 'pending'],
+            ['id' => 1, 'user_id' => 1, 'city_id' => 10, 'status' => 'pending'],
+            ['id' => 2, 'user_id' => 2, 'city_id' => 20, 'status' => 'pending'],
         ]);
     }
 
@@ -126,14 +126,14 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         $repo = $this->unscoped();
 
         self::assertSame(['pending'], $repo->statusesForCities([10]));
-        self::assertSame([], $repo->statusesForCities([20]));
+        self::assertSame(['pending'], $repo->statusesForCities([20]));
         self::assertSame(2, $repo->loads);
 
         UnscopedOrder::query()->findOrFail(1)->update(['status' => 'city-changed']);
 
         self::assertSame([], $repo->statusesForCities([20]));
         self::assertSame(2, $repo->loads);
-        self::assertSame(['city-changed', 'pending'], $repo->statusesForCities([10]));
+        self::assertSame(['city-changed'], $repo->statusesForCities([10]));
         self::assertSame(3, $repo->loads);
     }
 
