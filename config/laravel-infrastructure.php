@@ -79,5 +79,8 @@ return [
         // [] enables all domains; ['api', 'jobs'] enables only those listed.
         // Existing ['api' => false] maps are also supported.
         'domain_enabled' => [],
+        // Optional explicit Laravel log channel for each domain (e.g. 'meta'
+        // => 'marketing_meta'). Unmapped domains use domain_<name> if present.
+        'domain_channels' => [],
     ],
 ];
