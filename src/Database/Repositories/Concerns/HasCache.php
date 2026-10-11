@@ -265,6 +265,7 @@ trait HasCache
         // writes. Compile scoped SQL without executing additional SELECTs.
         if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             $connection = $model->getConnection();
+            $tags[] = SqlCacheDependency::databaseTag($connection);
             $tags[] = SqlCacheDependency::tableTag($connection, $model->getTable());
         }
 
