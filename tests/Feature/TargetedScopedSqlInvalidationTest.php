@@ -171,6 +171,28 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         self::assertSame(3, $repo->loads);
     }
 
+    public function test_nested_cached_cross_owner_read_disables_unsafe_actor_inference(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        // Seed a cached broad root read before the filtered outer operation.
+        self::assertSame(['pending', 'pending'], $repo->statuses());
+        self::assertSame(
+            ['pending', 'pending', 'pending'],
+            $repo->combinedForUser(1),
+        );
+        self::assertSame(3, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(2)->update(['status' => 'done']);
+
+        self::assertSame(
+            ['pending', 'pending', 'done'],
+            $repo->combinedForUser(1),
+        );
+        self::assertSame(5, $repo->loads);
+    }
+
     public function test_complex_or_predicates_keep_safe_table_wide_invalidation(): void
     {
         $this->needRedis();
@@ -290,6 +312,18 @@ final class TargetedScopeRepository extends BaseRepository
             return $this->query()->whereIn('targeted_scope_orders.city_id', $cities)
                 ->orderBy('id')->pluck('status')->all();
         }, ['cities' => $cities]);
+    }
+
+    public function combinedForUser(int $userId): array
+    {
+        return $this->cacheRemember('combinedForUser', function () use ($userId): array {
+            $this->loads++;
+
+            $owned = $this->query()->where('targeted_scope_orders.user_id', $userId)
+                ->orderBy('id')->pluck('status')->all();
+
+            return array_merge($owned, $this->statuses());
+        }, ['owner' => $userId]);
     }
 
     public function statusesForComplexOrUser(int $userId): array
