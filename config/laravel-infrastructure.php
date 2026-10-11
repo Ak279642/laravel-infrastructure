@@ -19,9 +19,8 @@ return [
     // existing cache store; Redis tags are recommended.
     'auto_invalidation' => [
         'enabled' => (bool) env('LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION', false),
-        // Pivot/visibility tables can affect caches for other models.
-        // Keys are physical table names; values are dependent model classes.
-        'table_dependencies' => [],
+        // SQL reads, joins, pivot tables and visibility dependencies are
+        // discovered automatically from query and policy execution.
     ],
 
     // Database transaction retry count.
