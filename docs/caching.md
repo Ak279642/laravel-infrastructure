@@ -437,3 +437,26 @@ repositories that do not extend `BaseRepository`. It uses the same tracker,
 cache store and automatic SQL invalidation system; callers provide no manual
 model tags. It optionally accepts a connection to avoid caching results from
 an open transaction.
+
+### Authorization policy and visibility dependencies
+
+The automatic SQL read tracker also observes database reads made while
+`cacheReadPolicy()`, repository cache tags, and scoped cache-key SQL are
+being prepared. This includes role/permission lookups, admin city/tier
+assignments, and pivot-derived visibility context **when those queries
+execute in the preparation or loader path**.
+
+Apps using these query paths do not need a
+`auto_invalidation.table_dependencies` table-to-model mapping: the package
+captures physical table dependencies itself, invalidates on relevant
+SQL writes after commit, and tracks `belongsToMany` pivot reads.
+The legacy optional map is still accepted for external business
+dependencies not visible to the SQL observer, but is no longer included
+in the default published configuration.
+
+This discovery adds no SQL queries of its own. As with other cache
+mechanisms, reads from external services or actor context calculated
+before the tracked operation cannot be inferred; such state must be
+represented in the cache identity or deliberately excluded from
+persistent caching. Runtime staging checks should include role and
+location permission changes.

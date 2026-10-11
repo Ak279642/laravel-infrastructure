@@ -9,6 +9,7 @@ use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
 use Ak279642\LaravelInfrastructure\Cache\SqlCacheDependency;
+use Ak279642\LaravelInfrastructure\Cache\SqlReadTracker;
 use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Illuminate\Database\Eloquent\Model;
@@ -142,7 +143,24 @@ trait HasCache
             return $callback();
         }
 
-        $policy = $this->cacheReadPolicy($operation, $params);
+        // Repository read policies and visibility-scoped query compilation
+        // can read permission/pivot tables before the loader executes. Capture
+        // those SQL dependencies too; otherwise a policy-only read can leave
+        // a cached response stale when permissions change.
+        $observeDependencies = (bool) config('laravel-infrastructure.auto_invalidation.enabled', false);
+        $policyDependencies = [];
+        $policyUnsafe = false;
+
+        if ($observeDependencies) {
+            $observedPolicy = app(SqlReadTracker::class)->capture(
+                fn (): ?array => $this->cacheReadPolicy($operation, $params),
+            );
+            $policy = $observedPolicy['value'];
+            $policyDependencies = $observedPolicy['tags'];
+            $policyUnsafe = $observedPolicy['unsafe'];
+        } else {
+            $policy = $this->cacheReadPolicy($operation, $params);
+        }
         if ($policy !== null) {
             $mode = $policy['mode'] ?? 'persistent';
             if (! in_array($mode, ['persistent', 'request', 'none'], true)) {
@@ -175,9 +193,30 @@ trait HasCache
             }
         }
 
-        $tags = $this->resolveCacheTags($params);
         $keyParams = $this->normalizeRepositoryCacheParams($params);
-        $key = $this->getCacheKey($operation, $keyParams);
+        if ($observeDependencies) {
+            $observedPreparation = app(SqlReadTracker::class)->capture(
+                fn (): array => [
+                    'tags' => $this->resolveCacheTags($params),
+                    'key' => $this->getCacheKey($operation, $keyParams),
+                ],
+            );
+            $tags = CacheTag::merge(
+                $observedPreparation['value']['tags'],
+                $policyDependencies,
+                $observedPreparation['tags'],
+            );
+            $key = $observedPreparation['value']['key'];
+
+            // Cache preparation must be read-only. Never publish data when
+            // custom policy or visibility resolution performs SQL writes.
+            if ($policyUnsafe || $observedPreparation['unsafe']) {
+                return $callback();
+            }
+        } else {
+            $tags = $this->resolveCacheTags($params);
+            $key = $this->getCacheKey($operation, $keyParams);
+        }
 
         // Repository invalidation is tag based. On non-taggable stores we prefer
         // correctness over serving cache entries that cannot be invalidated safely.

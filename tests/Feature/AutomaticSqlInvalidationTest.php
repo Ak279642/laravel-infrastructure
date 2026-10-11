@@ -11,6 +11,7 @@ use Ak279642\LaravelInfrastructure\Cache\Concerns\InteractsWithCache;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -55,6 +56,16 @@ final class AutomaticSqlInvalidationTest extends TestCase
             $table->id();
             $table->string('label');
         });
+        Schema::create('watched_tags', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+        });
+        Schema::create('watched_item_tag', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('item_id');
+            $table->unsignedBigInteger('tag_id');
+        });
+        DB::table('watched_tags')->insert(['id' => 1, 'name' => 'Important']);
         DB::table('watched_items')->insert([
             'id' => 1, 'name' => 'before',
             'created_at' => now(), 'updated_at' => now(),
@@ -140,6 +151,29 @@ final class AutomaticSqlInvalidationTest extends TestCase
         DB::table('watched_pivots')->insert(['label' => 'new']);
         self::assertSame(1, $repository->pivotCount());
         self::assertSame(2, $repository->pivotQueries);
+    }
+
+    public function test_belongs_to_many_pivot_changes_invalidate_without_table_dependencies(): void
+    {
+        $this->requireTaggedStore();
+        config()->set('laravel-infrastructure.auto_invalidation.table_dependencies', []);
+        $repository = $this->repository();
+
+        self::assertSame([], $repository->tagNames());
+        self::assertSame([], $repository->tagNames());
+        self::assertSame(1, $repository->tagQueries);
+
+        DB::table('watched_item_tag')->insert([
+            'item_id' => 1,
+            'tag_id' => 1,
+        ]);
+
+        self::assertSame(['Important'], $repository->tagNames());
+        self::assertSame(2, $repository->tagQueries);
+
+        DB::table('watched_item_tag')->where('item_id', 1)->delete();
+        self::assertSame([], $repository->tagNames());
+        self::assertSame(3, $repository->tagQueries);
     }
 
     public function test_unrelated_table_writes_preserve_precisely_observed_cache_hits(): void
@@ -259,12 +293,33 @@ final class WatchedItem extends Model implements CacheableModel
 
     protected $table = 'watched_items';
     protected $guarded = [];
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(WatchedTag::class, 'watched_item_tag', 'item_id', 'tag_id');
+    }
+}
+
+final class WatchedTag extends Model
+{
+    protected $table = 'watched_tags';
+    protected $guarded = [];
 }
 
 final class WatchedRepository extends BaseRepository
 {
     public int $pivotQueries = 0;
     public int $nameQueries = 0;
+    public int $tagQueries = 0;
+
+    public function tagNames(): array
+    {
+        return $this->cacheRemember('tagNames', function (): array {
+            $this->tagQueries++;
+
+            return WatchedItem::query()->findOrFail(1)->tags->pluck('name')->all();
+        });
+    }
 
     public function pivotCount(): int
     {
