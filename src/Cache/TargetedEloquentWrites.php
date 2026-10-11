@@ -76,8 +76,8 @@ final class TargetedEloquentWrites
             // Verify the generated single-row Eloquent primary-key predicate;
             // matching the table and key value alone is not enough for bulk SQL.
             $column = preg_quote($expected['column'], '/');
-            $identifier = '(?:[a-zA-Z_][\w$]*\.)?(?:[\x60"]'.$column.'[\x60"]|'.$column.')';
-            if (preg_match('/\bwhere\b[\s\S]*\b'.$identifier.'\s*=\s*\?/i', $sql) !== 1
+            $identifier = '(?:(?:[\x60"]?[a-zA-Z_][\w$]*[\x60"]?)\.)?[\x60"]?'.$column.'[\x60"]?';
+            if (preg_match('/\bwhere\b[\s\S]*'.$identifier.'\s*=\s*\?/i', $sql) !== 1
                 || ! in_array($expected['key'], array_map('strval', $event->bindings), true)) {
                 continue;
             }
