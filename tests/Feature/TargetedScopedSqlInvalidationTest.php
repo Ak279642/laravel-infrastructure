@@ -10,6 +10,7 @@ use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -250,6 +251,26 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         self::assertSame(3, $repo->loads);
     }
 
+    public function test_parenthesized_actor_or_with_city_and_keeps_unrelated_same_city_cache(): void
+    {
+        $this->needRedis();
+        // Two records share a city, but only the first belongs to the actor OR.
+        DB::table('targeted_scope_orders')->where('id', 2)->update(['city_id' => 10]);
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForOwnerOrAgentInCity(1, 9, 10));
+        self::assertSame(1, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(2)->update(['status' => 'unrelated']);
+
+        self::assertSame(['pending'], $repo->statusesForOwnerOrAgentInCity(1, 9, 10));
+        self::assertSame(1, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(1)->update(['status' => 'changed']);
+        self::assertSame(['changed'], $repo->statusesForOwnerOrAgentInCity(1, 9, 10));
+        self::assertSame(2, $repo->loads);
+    }
+
     public function test_direct_admin_id_partition_refreshes_only_affected_admin(): void
     {
         $this->needRedis();
@@ -424,6 +445,21 @@ final class TargetedScopeRepository extends BaseRepository
                 ->orWhere('targeted_scope_orders.agent_id', $agentId)
                 ->orderBy('id')->pluck('status')->all();
         }, ['user_id' => $userId, 'agent_id' => $agentId]);
+    }
+
+    public function statusesForOwnerOrAgentInCity(int $userId, int $agentId, int $cityId): array
+    {
+        return $this->cacheRemember('statusesForOwnerOrAgentInCity', function () use ($userId, $agentId, $cityId): array {
+            $this->loads++;
+
+            return $this->query()
+                ->where(function (Builder $query) use ($userId, $agentId): void {
+                    $query->where('targeted_scope_orders.user_id', $userId)
+                        ->orWhere('targeted_scope_orders.agent_id', $agentId);
+                })
+                ->where('targeted_scope_orders.city_id', $cityId)
+                ->orderBy('id')->pluck('status')->all();
+        }, ['user_id' => $userId, 'agent_id' => $agentId, 'city_id' => $cityId]);
     }
 
     public function statusesForAdmin(int $adminId): array
