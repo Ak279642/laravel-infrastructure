@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
+use Ak279642\LaravelInfrastructure\Cache\ExternalWriteInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\AutomaticQueryInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\SqlReadTracker;
 use Ak279642\LaravelInfrastructure\Cache\TargetedEloquentWrites;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Console\Commands\DatabaseBackupCommand;
+use Ak279642\LaravelInfrastructure\Console\Commands\InvalidateExternalCacheCommand;
 use Ak279642\LaravelInfrastructure\Console\Commands\MediaRenameCommand;
 use Ak279642\LaravelInfrastructure\Console\Commands\StorageAuditCommand;
 use Ak279642\LaravelInfrastructure\Contracts\TransactionManager;
@@ -55,6 +57,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         ));
 
         $this->app->singleton(AutomaticQueryInvalidator::class);
+        $this->app->singleton(ExternalWriteInvalidator::class);
         $this->app->scoped(SqlReadTracker::class);
         $this->app->scoped(TargetedEloquentWrites::class);
 
@@ -158,6 +161,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 DatabaseBackupCommand::class,
+                InvalidateExternalCacheCommand::class,
                 StorageAuditCommand::class,
                 MediaRenameCommand::class,
             ]);
