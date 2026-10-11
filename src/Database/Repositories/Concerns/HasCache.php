@@ -240,6 +240,9 @@ trait HasCache
                 ignoreObservedTags: $targeted
                     ? [SqlCacheDependency::tableTag($model->getConnection(), $model->getTable())]
                     : [],
+                rootConnection: $model->getConnection(),
+                rootTable: $model->getTable(),
+                rootModelTag: CacheTag::fromModel($model::class),
             );
         }
 
