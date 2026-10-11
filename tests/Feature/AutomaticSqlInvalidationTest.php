@@ -162,6 +162,26 @@ final class AutomaticSqlInvalidationTest extends TestCase
         self::assertSame(2, $repository->nameQueries);
     }
 
+    public function test_unknown_target_mutations_invalidate_known_table_reads(): void
+    {
+        $this->requireTaggedStore();
+        config()->set('laravel-infrastructure.auto_invalidation.table_dependencies', []);
+        $repository = $this->repository();
+
+        self::assertSame('before', $repository->itemName());
+        self::assertSame(1, $repository->nameQueries);
+
+        // A CTE mutation has no safe single-table target from the simple SQL
+        // parser. It must flush the broad fallback registered on every read.
+        DB::statement(
+            'WITH target AS (SELECT id FROM watched_items) UPDATE watched_items SET name = ? WHERE id IN (SELECT id FROM target)',
+            ['after-cte'],
+        );
+
+        self::assertSame('after-cte', $repository->itemName());
+        self::assertSame(2, $repository->nameQueries);
+    }
+
     public function test_pivot_dependency_invalidates_cached_parent_model(): void
     {
         $this->requireTaggedStore();
