@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Cache;
 
 use Illuminate\Database\Connection;
+use Illuminate\Database\Eloquent\Model;
 
 /** Compile SQL dependency tags without executing any SQL. */
 final class SqlCacheDependency
@@ -27,6 +28,40 @@ final class SqlCacheDependency
      * reliable per-row Eloquent lifecycle events (bulk/raw/unknown writes).
      * A verified single-row Eloquent event does not invalidate this tag.
      */
+    /**
+     * Hashed physical-table value partition. Used by proven restrictive SQL
+     * reads and Eloquent's before/after row attribute snapshots.
+     */
+    public static function rowColumnTag(
+        Connection $connection,
+        string $table,
+        string $column,
+        string|int $value,
+    ): string {
+        return self::tableTag($connection, $table)
+            .':column:'.strtolower($column).':'.hash('sha256', (string) $value);
+    }
+
+    /** @return list<string> */
+    public static function affectedRowTags(Model $model): array
+    {
+        $connection = $model->getConnection();
+        $table = $model->getTable();
+        $attributes = $model->getAttributes();
+        $original = $model->getRawOriginal();
+        $tags = [];
+
+        foreach (SqlBoundReadPartitions::columns() as $column) {
+            foreach ([$attributes[$column] ?? null, $original[$column] ?? null] as $value) {
+                if (is_string($value) || is_int($value)) {
+                    $tags[] = self::rowColumnTag($connection, $table, $column, $value);
+                }
+            }
+        }
+
+        return CacheTag::tags(...$tags);
+    }
+
     public static function untrackedTableTag(Connection $connection, string $table): string
     {
         return self::tableTag($connection, $table).':untracked-write';
