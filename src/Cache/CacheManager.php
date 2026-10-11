@@ -321,7 +321,7 @@ final class CacheManager
             sort($tags, SORT_STRING);
             $value = $this->store($tags)->get($key, $missing);
             if ($value !== $missing) {
-                app(SqlReadTracker::class)->dependOn($tags);
+                app(SqlReadTracker::class)->dependOnCached($tags);
             }
 
             return $value;
@@ -354,7 +354,17 @@ final class CacheManager
                 $partitions = SqlBoundReadPartitions::tags(
                     $observed['queries'], $rootConnection, $rootTable,
                 );
-                if ($partitions !== []) {
+                $rootTag = SqlCacheDependency::tableTag($rootConnection, $rootTable);
+                $nestedRoot = false;
+                foreach ($observed['cachedDependencies'] as $dependency) {
+                    if ($dependency === $rootModelTag
+                        || $dependency === $rootTag
+                        || str_starts_with($dependency, $rootTag.':')) {
+                        $nestedRoot = true;
+                        break;
+                    }
+                }
+                if ($partitions !== [] && ! $nestedRoot) {
                     $tags = CacheTag::merge(
                         array_values(array_diff($tags, [
                             $rootModelTag,
@@ -375,7 +385,7 @@ final class CacheManager
 
             // Propagate nested cache dependencies to callers even when the
             // nested result did not execute SQL because it was already cached.
-            app(SqlReadTracker::class)->dependOn($tags);
+            app(SqlReadTracker::class)->dependOnCached($tags);
 
             if (! $observed['unsafe']) {
                 // Publish index first: no reader can look up a cache value
@@ -528,7 +538,7 @@ final class CacheManager
                 $missing[] = $id;
             } else {
                 $results[$id] = $value;
-                app(SqlReadTracker::class)->dependOn($tags);
+                app(SqlReadTracker::class)->dependOnCached($tags);
             }
         }
 
@@ -550,7 +560,7 @@ final class CacheManager
                 ];
             }
             sort($tags, SORT_STRING);
-            app(SqlReadTracker::class)->dependOn($tags);
+            app(SqlReadTracker::class)->dependOnCached($tags);
 
             foreach ($missing as $id) {
                 $value = $loaded[$id] ?? null;
