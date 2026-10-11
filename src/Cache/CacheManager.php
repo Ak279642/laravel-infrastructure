@@ -42,6 +42,12 @@ final class CacheManager
 
         $value = $store->get($key, $default);
 
+        // A direct cache lookup inside a repository loader can hide database
+        // dependencies not visible through QueryExecuted.
+        app(SqlReadTracker::class)->dependOnCached(
+            $tags !== [] ? $tags : [SqlReadTracker::OPAQUE_CACHE_TAG],
+        );
+
         // Log::info('Cache GET', [
         //     'key' => $key,
         //     'tags' => $tags,
@@ -169,6 +175,9 @@ final class CacheManager
         // ]);
 
         $store = $this->store($tags);
+        app(SqlReadTracker::class)->dependOnCached(
+            $tags !== [] ? $tags : [SqlReadTracker::OPAQUE_CACHE_TAG],
+        );
 
         $missing = new \stdClass;
         $cached = $store->get($key, $missing);
@@ -216,6 +225,9 @@ final class CacheManager
     ): mixed {
         $key = $this->normalizeKey($key);
         $store = $this->store($tags);
+        app(SqlReadTracker::class)->dependOnCached(
+            $tags !== [] ? $tags : [SqlReadTracker::OPAQUE_CACHE_TAG],
+        );
 
         $missing = new \stdClass;
         $cached = $store->get($key, $missing);
@@ -357,7 +369,8 @@ final class CacheManager
                 $rootTag = SqlCacheDependency::tableTag($rootConnection, $rootTable);
                 $nestedRoot = false;
                 foreach ($observed['cachedDependencies'] as $dependency) {
-                    if ($dependency === $rootModelTag
+                    if ($dependency === SqlReadTracker::OPAQUE_CACHE_TAG
+                        || $dependency === $rootModelTag
                         || $dependency === $rootTag
                         || str_starts_with($dependency, $rootTag.':')) {
                         $nestedRoot = true;
