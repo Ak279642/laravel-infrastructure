@@ -25,6 +25,12 @@ Use the package for infrastructure; keep your business models, migrations, autho
 - [Troubleshooting and limitations](#troubleshooting-and-limitations)
 - [Full public API: repositories and database queries](#full-public-api-repositories-and-database-queries)
 - [Full public API: caching utilities](#full-public-api-caching-utilities)
+- [Full public API: validation, services and application context](#full-public-api-validation-services-and-application-context)
+- [Full public API: model caching and visibility contracts](#full-public-api-model-caching-and-visibility-contracts)
+- [Full public API: file storage and image processing](#full-public-api-file-storage-and-image-processing)
+- [Full public API: slugs and schema metadata](#full-public-api-slugs-and-schema-metadata)
+- [Full public API: HTTP responses, exceptions and observability](#full-public-api-http-responses-exceptions-and-observability)
+- [Full public API: maintenance, backups and configuration](#full-public-api-maintenance-backups-and-configuration)
 - [Complete guides and testing](#complete-guides-and-testing)
 
 ## What is included?
@@ -841,18 +847,18 @@ public function __construct(
 Additional helper methods and signatures:
 
 ~~~php
-$repo->exists(array $filters = []): bool;
-$repo->doesntExist(array $filters = []): bool;
-$repo->count(array $filters = []): int;
-$repo->sum(string $column, array $filters = []);   // number/string/null
-$repo->avg(string $column, array $filters = []);
-$repo->min(string $column, array $filters = []);
-$repo->max(string $column, array $filters = []);
-$repo->pluck(string $column, ?string $key = null, array $filters = []);
-$repo->groupCount(string $column, array $filters = []);
+$repo->exists(['status' => 'active']);
+$repo->doesntExist(['status' => 'archived']);
+$repo->count(['status' => 'active']);
+$repo->sum('price');
+$repo->avg('price');
+$repo->min('price');
+$repo->max('price');
+$repo->pluck('name', 'id');
+$repo->groupCount('status');
 ~~~
 
-The above code illustrates method signatures (remove inline argument type declarations when making actual method calls). All aggregate/selection column identifiers are schema-checked. §findWhereIn()§ preserves first-seen ID order and normalizes numeric primary keys.
+These methods accept validated filter arrays when applicable, and aggregates validate their target columns. All aggregate/selection column identifiers are schema-checked. §findWhereIn()§ preserves first-seen ID order and normalizes numeric primary keys.
 
 ### Query metadata and operator examples
 
@@ -1124,6 +1130,611 @@ Automatic authenticated cache identity recognizes Laravel's authenticated reques
 | Unknown third-party API, time expiry or role context never read in observed operation | Cannot be inferred from SQL; use TTL/context/bypass |
 
 The SQL observer does not run extra SELECTs merely to discover dependencies. It records SQL already executed in an observed read. Nested cached dependencies can propagate to parent loaders.
+
+
+
+## Full public API: validation, services and application context
+
+### RepositoryValidationRule: every available option
+
+Repository validation runs **after** Laravel's normal FormRequest validation passes, so it does not waste database reads for invalid basic input. Rules use an injectable repository class implementing §RepositoryValidationRepository§.
+
+~~~php
+use Ak279642\LaravelInfrastructure\Http\Requests\RepositoryFormRequest;
+use Ak279642\LaravelInfrastructure\Validation\RepositoryValidationRule;
+
+class SaveProductRequest extends RepositoryFormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'category_id' => ['required', 'integer'],
+            'sku' => ['required', 'string'],
+            'tag_ids' => ['sometimes', 'array'],
+            'tag_ids.*' => ['integer'],
+        ];
+    }
+
+    protected function repositoryValidationRules(): array
+    {
+        return [
+            new RepositoryValidationRule(
+                repository: \App\Repositories\CategoryRepository::class,
+                exists: ['category_id'],
+                resolve: [
+                    ['field' => 'category_id', 'as' => 'category', 'with' => ['parent']],
+                ],
+            ),
+
+            new RepositoryValidationRule(
+                repository: \App\Repositories\ProductRepository::class,
+                unique: ['sku'],
+                ignore: $this->route('product')?->getKey(),
+            ),
+
+            new RepositoryValidationRule(
+                repository: \App\Repositories\TagRepository::class,
+                existsIn: ['field' => 'tag_ids', 'column' => 'id', 'values' => 'tag_ids'],
+                resolve: [
+                    ['field' => 'tag_ids', 'as' => 'tags'],
+                ],
+            ),
+        ];
+    }
+}
+~~~
+
+The above assumes your §CategoryRepository§, §ProductRepository§ and §TagRepository§ are concrete, container-resolvable repositories whose models and relations exist.
+
+| Constructor argument | Type | Usage |
+| --- | --- | --- |
+| §repository§ | §string§ | Concrete repository class |
+| §unique§ | §array§ | Input fields to check for duplicates |
+| §exists§ | §array§ | Single-ID existence checks; can include per-field §input§ and §where§ options |
+| §where§ | §array§ | Additional constrained field/value conditions; a value matching an input key can be resolved from input |
+| §existsIn§ | §array§ | Batch existence of an array: §field§, optional §column§, §values§, and §where§ |
+| §resolve§ | §array§ | Named model/collection definitions: §field§, optional §as§, §with§ |
+| §ignore§ | §int\|string\|null§ | Ignore this model key during uniqueness validation (such as an update) |
+
+~~~php
+// In a controller after validation:
+$category = $request->resolvedModel('category', \App\Models\Category::class);
+$tags = $request->resolvedCollection('tags', \App\Models\Tag::class);
+$any = $request->resolved('category');
+
+// A normal repository find can reuse a model already resolved by validation:
+$sameCategory = $categories->findOrFail($category->getKey());
+~~~
+
+Use §repositoryValidationData(Validator $validator): array§ when the repository rules need transformed input. The application can also inject §RepositoryValidationService§ to run §validate($rules, $input, resetContext: true)§ (throws on failure) or §errors(...)§ (returns field-indexed messages) outside a FormRequest.
+
+### ValidationContext: request-local identity map
+
+~~~php
+use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
+
+$context = app(ValidationContext::class);
+$context->put('product', $product);
+$found = $context->get('product');
+$typed = $context->requireModel('product', \App\Models\Product::class);
+$byKey = $context->findModel(\App\Models\Product::class, $product->getKey());
+
+$context->remember($product);
+$models = $context->models(\App\Models\Product::class);
+$matching = $context->findMatching(\App\Models\Product::class, ['status' => 'active']);
+$context->forgetModel($product);
+
+// Manual snapshot operations are useful for advanced orchestration:
+$snapshot = $context->snapshot();
+$context->restore($snapshot);
+~~~
+
+Other public methods: §getModel()§, §findManyMatching()§, §getCollection()§, §requireCollection()§, §has()§, §forget()§, §clear()§ and §all()§. Identity-map mutations respect commit/rollback semantics and are not persistent Redis data.
+
+### BaseService hooks and OperationContext
+
+~~~php
+use Ak279642\LaravelInfrastructure\Services\BaseService;
+
+class ProductService extends BaseService
+{
+    public function __construct(\App\Repositories\ProductRepository $products)
+    {
+        parent::__construct($products);
+    }
+
+    public function create(array $input): \App\Models\Product
+    {
+        return $this->createRecord($input, refresh: true, with: ['category']);
+    }
+
+    public function update(int $id, array $input): \App\Models\Product
+    {
+        return $this->updateRecord($id, $input, refresh: true);
+    }
+
+    public function remove(int $id): bool
+    {
+        return $this->deleteRecord($id);
+    }
+
+    protected function beforeCreate(array $data): array
+    {
+        $data['name'] = trim($data['name']);
+        return $data;
+    }
+
+    protected function afterCreate(
+        \Illuminate\Database\Eloquent\Model $model,
+        array $data,
+    ): \Illuminate\Database\Eloquent\Model {
+        return $model;
+    }
+}
+~~~
+
+Overridable service hooks also include §beforeUpdate($id, $data)§, §afterUpdate($model, $data)§, §beforeDelete($id)§, and §afterDelete($id, $deleted)§. Service query shortcuts include §findRecord()§, §findRecordOrFail()§, §recordExists()§ and §repository()§.
+
+For immutable, typed access to data passed between application operations, use §OperationContext§:
+
+~~~php
+use Ak279642\LaravelInfrastructure\Context\OperationContext;
+
+$ctx = new OperationContext(['order_id' => 15, 'warehouse_id' => 4]);
+
+$ctx->has('order_id');          // true
+$ctx->get('order_id');          // 15; throws if key is missing
+$ctx->getOrNull('not_found');   // null
+$ctx->all();                    // all values
+~~~
+
+Transaction orchestration uses §BaseAction::transactional(callable $callback, ?int $attempts = null)§ and the injectable §TransactionManager§ contract. An Action owns the transaction boundary; do not add a second transaction around the same use case unless the application needs nested transactions.
+
+## Full public API: model caching and visibility contracts
+
+§BaseModel§ implements §CacheableModel§ and includes §InteractsWithCache§, §InteractsWithSlug§ and §InteractsWithFiles§. If you already extend Laravel's Eloquent Model directly, you may opt into the cache concern with the corresponding interface:
+
+~~~php
+use Ak279642\LaravelInfrastructure\Cache\Concerns\InteractsWithCache;
+use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
+use Illuminate\Database\Eloquent\Model;
+
+class Ticket extends Model implements CacheableModel
+{
+    use InteractsWithCache;
+
+    protected $guarded = [];
+
+    protected function cacheOptions(): array
+    {
+        return [
+            'enabled' => true,
+            'scopes' => ['user_id', 'assigned_to'],
+            'scope_operator' => 'or',
+        ];
+    }
+}
+~~~
+
+**Available §cacheOptions()§ keys and behaviors:** §enabled§ switches model caching; §scope§/§scopes§ and §scope_operator§ define ownership restrictions; §visibility.any§ expresses additional grouped OR conditions; §visibility_resolver§ handles complex query policy; §actor_resolver§ customizes resolved actor information. Both normal Laravel global scopes and repository-wide §globalQueryFilter()§ can contribute SQL to cache keys.
+
+Model cache methods available from the concern include §usesInfrastructureCache()§, §cacheTag()§, §getCacheTags()§, §getCacheDependencyTags()§, §getCacheInvalidationTags()§ and §invalidateCache()§, plus public scope/visibility resolution helpers intended for infrastructure integrations. Most applications should only override §cacheOptions()§ and let the observers handle invalidation.
+
+A custom class-based visibility resolver may implement an §apply()§ method to change query visibility and optionally both §cacheReadTags(Model $model, ?array $actor): array§ and §cacheInvalidationTags(Model $model): array§ for precise cache invalidation. Their tags must account for **every** eligible viewer, including shared groups and admin access. If you cannot prove those dependencies, retain the package's conservative model/table fallback.
+
+The SQL-partition inference utility §SqlBoundReadPartitions§ supports selected bound equality/IN predicates for §user_id§, §admin_id§, §assigned_admin_id§, §created_by_admin_id§, §agent_id§, §partner_id§, §owner_id§, §tenant_id§, §created_by§, §assigned_to§, §assigned_by§, §city_id§, and §tier_id§. It rejects unsupported or unbounded reads rather than inventing precise partitions.
+
+## Full public API: file storage and image processing
+
+### FileStorage: use outside Eloquent models
+
+Use the injectable §FileStorage§ for standalone uploads; if the file is owned by a model attribute, prefer §fileAttributes()§ and the model's automatic lifecycle instead.
+
+~~~php
+use Ak279642\LaravelInfrastructure\Files\FileStorage;
+
+$storage = app(FileStorage::class);
+
+// All methods accept optional directory/disk/filename arguments.
+$path = $storage->store($request->file('avatar'), 'users', 'public');
+$raw = $storage->storeContents('hello', 'txt', 'exports', 'local', 'report.txt');
+$remote = $storage->storeFromUrl(
+    'https://example.com/photo.jpg',
+    'imports',
+    'public',
+);
+
+$exists = $storage->exists($path, 'public');
+$url = $storage->url($path, 'public');
+$storage->delete($path, 'public');
+~~~
+
+Other APIs: §downloadUrl(string $url): UploadedFile§ and §copyWithUniqueName(string $oldPath, string $directory, string $filename, string $disk = 'public'): string§. URL imports enforce HTTPS, public host/IP restrictions and bounded downloads; do not pass user-controlled URLs without your application also validating expected origins.
+
+### Model file configuration and lifecycle
+
+~~~php
+protected function fileOptions(): array
+{
+    return [
+        'disk' => 'public',
+    ];
+}
+
+protected function fileAttributes(): array
+{
+    return [
+        'avatar_path' => [
+            'disk' => 'public',
+            'directory' => 'avatars',
+            'auto_upload' => true,
+            'delete_on_replace' => true,
+            'delete_on_delete' => true,
+            'delete_on_soft_delete' => false,
+            'audit' => true,
+            'filename_from' => ['name'],
+            'image' => [
+                'driver' => 'gd',
+                'format' => 'webp',
+                'resize' => 'cover_down',
+                'width' => 400,
+                'height' => 400,
+                'quality' => 80,
+                'position' => 'center',
+            ],
+        ],
+    ];
+}
+~~~
+
+Supported image resize strategies: §none§, §scale§, §scale_down§, §resize§, §resize_down§, §cover§ and §cover_down§. Formats: §webp§ and §original§. §image => true§ enables default processing; omit §image§ to save the raw file.
+
+~~~php
+$user->avatar_path = $request->file('avatar');
+$user->save();
+
+$publicUrl = $user->getFileUrl('avatar_path');
+$optionalUrl = $user->fileAssetUrl('avatar_path'); // null when no path
+$settings = $user->configuredFileAttributes();
+$auditable = $user->auditableFileAttributes();
+~~~
+
+Files are stored as **relative paths** in existing model columns; uploads clean up on failure/rollback, and old files are removed after successful committed replacement. Soft-delete cleanup is configurable separately. File names can be derived from already-loaded model relations, but §filename_from§ must not trigger new relation queries; preload them first.
+
+### FileReference and FileReferenceCast
+
+~~~php
+use Ak279642\LaravelInfrastructure\Files\FileReferenceCast;
+
+protected function casts(): array
+{
+    return ['avatar_path' => FileReferenceCast::class];
+}
+
+// When the model has a stored avatar, the cast returns a FileReference:
+$url = $user->avatar_path?->getFileUrl();
+$path = (string) $user->avatar_path;
+~~~
+
+The cast is **optional**: regular string columns and uploaded-file assignment work without it.
+
+### Public assets, private assets and failure handling
+
+~~~php
+// config/laravel-infrastructure.php (relevant parts)
+'assets' => [
+    'enabled' => true,
+    'public_disks' => ['public'],
+    'disk_aliases' => ['media' => 'public'],
+    'render_error_images' => true,
+    'error_images' => [403 => null, 404 => null],
+],
+~~~
+
+- **Public files:** route §/{alias}/{relative-path}?v=...§ (e.g. §/media/products/phone.webp?v=...§) reads the configured disk without Eloquent database queries. Only disks explicitly in §assets.public_disks§ can be exposed.
+- **Private files:** signed, expiring encrypted tokens use §/_infrastructure/files/{token}§. They intentionally reload the current Eloquent record, verify field/path and require appropriate guard/model authorization. Model hooks such as §authorizesAssetField(string $field)§ should enforce user ownership.
+- **Asset caching:** public file responses use §Cache-Control: public, max-age=86400§; private responses use §private, no-store, max-age=0§.
+- **Error artwork:** by default 403/404 media errors may render built-in WebP artwork with HTTP 200 plus §X-Asset-Error-Status§; set §render_error_images=false§ if you require real HTTP 403/404 status codes.
+- **Safety:** no public filesystem disk for confidential documents. No legacy unscoped §/uploads§ or arbitrary-disk route is registered.
+
+### SEO filename migration, audit and housekeeping
+
+~~~bash
+# Preview before changing any existing paths.
+php artisan infrastructure:media-rename 'App\Models\Product'
+php artisan infrastructure:media-rename 'App\Models\Product' --apply
+
+# Register models in storage_audit.models, then inspect before deleting.
+php artisan infrastructure:storage-audit
+php artisan infrastructure:storage-audit --model=Product
+php artisan infrastructure:storage-audit --delete
+~~~
+
+§media-rename§ copies existing files to safe SEO names, updates the stored model path conditionally and leaves the old files in place. §storage-audit§ identifies unreferenced paths from explicitly registered model-owned directories; deletions are opt-in and should be reviewed first. It uses database reads intentionally.
+
+## Full public API: slugs and schema metadata
+
+### Slug options and lookup
+
+~~~php
+protected function slugFields(): array
+{
+    return [
+        'slug' => [
+            'source' => 'name',
+            'unique' => true,
+            'regenerate_on_update' => false,
+            'separator' => '-',
+            'scope' => ['category_id'],
+        ],
+        'seo_slug' => [
+            'source' => 'seo_title',
+            'unique' => true,
+            'regenerate_on_update' => true,
+        ],
+    ];
+}
+~~~
+
+§slugFields()§ enables independently configured slug columns. The legacy §slugOptions()§ supports single-field §enabled§, §source§, §column§, §unique§, §regenerate_on_update§, §separator§ and §scope§. Manual nonempty slugs can be preserved; database unique indexes remain the concurrency guarantee.
+
+§SlugGenerator::generateFor(Model $model, array $options = []): ?string§ is injectable for advanced workflows, and §SlugLookupRepository::matching($column, $baseSlug, $where, $ignoreId)§ supports suffix collision lookup. Most applications do not need to call these directly—model save hooks run slug creation automatically.
+
+### Shared database schema registry
+
+~~~php
+use Ak279642\LaravelInfrastructure\Database\Schema\SchemaRegistry;
+use Illuminate\Support\Facades\DB;
+
+$schema = app(SchemaRegistry::class);
+$connection = DB::connection();
+
+$isValid = $schema->has($connection, 'products', 'price');
+$columns = $schema->columns($connection, 'products');
+$schema->clear();                 // clear in-process registry
+~~~
+
+The package caches MySQL/MariaDB column metadata as a database-wide snapshot for **one hour**; SQLite/PostgreSQL use per-table metadata with process-local reuse. After adding/removing database columns:
+
+~~~bash
+php artisan cache:clear
+php artisan optimize:clear
+~~~
+
+Long-running queue/Octane workers may also need restarting so they do not retain old in-memory registry state.
+
+## Full public API: HTTP responses, exceptions and observability
+
+### Three response helpers
+
+~~~php
+use Ak279642\LaravelInfrastructure\Http\Responses\ApiResponse;
+use Ak279642\LaravelInfrastructure\Http\Responses\MessageResponse;
+use Ak279642\LaravelInfrastructure\Http\Responses\ResourceResponse;
+
+return ApiResponse::success(
+    data: ['id' => 12],
+    message: 'Created.',
+    status: 201,
+    meta: ['request_type' => 'catalog'],
+);
+
+return ApiResponse::error(
+    message: 'Product could not be saved.',
+    status: 422,
+    errors: ['name' => ['Name is required.']],
+    errorCode: 'PRODUCT_VALIDATION',
+);
+
+return MessageResponse::make('Deleted.', 200);
+return ResourceResponse::make(ProductResource::collection($page), 'Loaded.');
+~~~
+
+§ApiResponse::success()§ includes §success§, §message§, optional §data§, and optional top-level extra metadata. §ApiResponse::error()§ includes §success: false§, §message§, optional §errors§, §error_code§ and §data§. Debug output only appears with §app.debug§ enabled. §ResourceResponse§ can append §pagination§ metadata for Laravel's length-aware, simple and cursor paginator resource collections.
+
+### Exception classes and rendering
+
+The following public exceptions live under §Ak279642\LaravelInfrastructure\Exceptions§:
+
+| Exception class | Intended application situation |
+| --- | --- |
+| §UnauthorizedException§ | Missing/invalid authentication |
+| §AccessForbiddenException§ | Insufficient authorization |
+| §NotFoundException§ | Missing resource |
+| §RouteNotFoundException§ | Missing application route |
+| §HttpMethodNotAllowedException§ | Unsupported HTTP method |
+| §HttpRequestException§ | General HTTP/request failure |
+| §ValidationException§ | Application validation failure |
+| §ConflictException§ | State conflict |
+| §BusinessLogicException§ | Business rule violation |
+| §TooManyRequestsException§ | Throttled/limited request |
+| §ServiceUnavailableException§ | Dependency/service unavailable |
+| §InternalServerException§ | Unexpected server failure |
+| §FilterNotAllowedException§ | Disallowed repository filter |
+| §SortNotAllowedException§ | Disallowed sort |
+| §RelationNotAllowedException§ | Disallowed eager relation |
+| §RepositoryValidationConfigurationException§ | Invalid repository validation setup |
+| §BaseException§ | Parent with status, errors, code, metadata and report/render behavior |
+
+~~~php
+use Ak279642\LaravelInfrastructure\Exceptions\BusinessLogicException;
+
+throw new BusinessLogicException('The requested product is unavailable.');
+~~~
+
+The optional §ApiExceptionRenderer§ uses Laravel's exception handler for JSON/API requests, maps known exceptions to the package response envelope, and avoids exposing sensitive internal details in production. Disable it with §responses.exception_renderer_enabled=false§ if your application already owns this behavior.
+
+### CustomLog, domains, structured context and correlation IDs
+
+~~~php
+use Ak279642\LaravelInfrastructure\Logging\CustomLog;
+use Ak279642\LaravelInfrastructure\Logging\LogDomain;
+use Ak279642\LaravelInfrastructure\Logging\CorrelationId;
+
+CustomLog::debug('Cache miss.', ['key_type' => 'product'], LogDomain::APPLICATION);
+CustomLog::info('Request accepted.', ['resource' => 'products'], LogDomain::API);
+CustomLog::warning('Retry scheduled.', ['attempt' => 2], LogDomain::JOBS);
+CustomLog::error('Sync failed.', ['operation' => 'sync'], LogDomain::ERRORS);
+CustomLog::exception($exception, ['operation' => 'sync']);
+$isEnabled = CustomLog::enabled(LogDomain::APPLICATION);
+
+// Inside an HTTP request:
+$id = CorrelationId::current();
+$header = CorrelationId::headerName(); // defaults to X-Request-ID
+~~~
+
+Built-in §LogDomain§ enum values: §APPLICATION§, §API§, §WEBHOOK§, §JOBS§, §BUSINESS§ and §ERRORS§. Custom string domains and custom string-backed enums work too. §CustomLog::businessException()§, §serverException()§ and §exceptionContext()§ provide specialized reporting/context paths.
+
+§CorrelationId§ has §resolve()§, §current()§, §headerName()§, §set()§ and §isValid()§. §RequestCorrelationId§ middleware accepts valid incoming IDs if configured or creates a UUID, then adds the correlation response header. Logging recursively redacts credentials and sensitive content, limits payload size/depth, and provides daily/size-based rotation. Logging failures are contained to avoid taking down application requests.
+
+### SecurityHeaders and RejectSensitivePaths
+
+The package registers middleware aliases §infrastructure.security-headers§ and §infrastructure.reject-sensitive-paths§, but **does not place them in your application's global stack**. Use them explicitly on routes or register them globally yourself.
+
+§SecurityHeaders§ adds §X-Content-Type-Options: nosniff§, §X-Frame-Options: SAMEORIGIN§ and §Referrer-Policy: strict-origin-when-cross-origin§, while removing common disclosure headers.
+
+§RejectSensitivePaths§ blocks common exposure probes (environment files, source/config files, traversal paths, sensitive framework directories). It returns JSON responses for API contexts and normal Laravel 404 handling for web contexts. This is complementary to authentication, Laravel policies, web-server hardening and CDN/security configuration—not a replacement.
+
+## Full public API: maintenance, backups and configuration
+
+### All shipped Artisan commands
+
+~~~bash
+# Audits registered Eloquent-owned storage directories:
+php artisan infrastructure:storage-audit
+php artisan infrastructure:storage-audit --model=Product
+php artisan infrastructure:storage-audit --delete
+
+# Migration to SEO filenames for publicly routed file fields:
+php artisan infrastructure:media-rename 'App\Models\Product'
+php artisan infrastructure:media-rename 'App\Models\Product' --apply
+
+# Logical database dumps (MySQL/MariaDB and PostgreSQL):
+php artisan infrastructure:database-backup
+php artisan infrastructure:database-backup --connection=pgsql
+
+# After a separate process/client commits to the listed physical tables:
+php artisan infrastructure:cache:invalidate-external orders order_items
+php artisan infrastructure:cache:invalidate-external orders --connection=mysql
+~~~
+
+A direct PHP entry point is also available for external CDC/webhook processors **after the external database transaction commits**:
+
+~~~php
+use Ak279642\LaravelInfrastructure\Cache\ExternalWriteInvalidator;
+use Illuminate\Support\Facades\DB;
+
+$success = app(ExternalWriteInvalidator::class)->invalidateTables(
+    ['orders', 'order_items'],
+    DB::connection(),
+);
+~~~
+
+This uses validated physical table identifiers, not model class names. A successful external invalidation does **not** imply that changes are detected automatically across independent processes.
+
+### Database backup configuration
+
+~~~php
+// config/laravel-infrastructure.php
+'database_backup' => [
+    'disk' => 'local',
+    'path' => 'backups/database',
+    'keep' => 3,
+    'compress' => true,
+    'exclude_data' => ['jobs', 'failed_jobs'],
+    'mysql_dump_binary' => '',
+    'pgsql_dump_binary' => '',
+],
+~~~
+
+Backups use §mysqldump§ or §pg_dump§ (matching the configured connection). They include table definitions and optionally omit *data* for selected tables, can compress with gzip, write to a configured Laravel filesystem disk, and prune older backups. They do not support SQLite or SQL Server. Keep native dump clients installed and verify actual **restores** in your environment.
+
+### Complete published configuration tree
+
+The following is the package's available top-level configuration structure; values shown are representative defaults. Change only what your application needs:
+
+~~~php
+return [
+    'auto_invalidation' => [
+        'enabled' => false, // env LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION
+    ],
+    'transactions' => ['attempts' => 1],
+    'files' => [
+        'disk' => 'public',
+        'image' => ['driver' => 'gd'],
+    ],
+    'assets' => [
+        'enabled' => true,
+        'public_disks' => ['public'],
+        'disk_aliases' => [],
+        'render_error_images' => true,
+        'error_images' => [403 => null, 404 => null],
+    ],
+    'storage_audit' => ['models' => []],
+    'database_backup' => [
+        'disk' => 'local',
+        'path' => 'backups/database',
+        'keep' => 3,
+        'compress' => true,
+        'exclude_data' => [],
+        'mysql_dump_binary' => '',
+        'pgsql_dump_binary' => '',
+    ],
+    'responses' => [
+        'exception_renderer_enabled' => true,
+    ],
+    'logging' => [
+        'enabled' => true,
+        'channel' => null,
+        'exception_trace_enabled' => false,
+        'log_client_exceptions' => false,
+        'log_server_exceptions' => true,
+        'correlation_header' => 'X-Request-ID',
+        'accept_incoming_correlation_id' => true,
+        'domain_enabled' => [],
+    ],
+];
+~~~
+
+Configuration environment overrides and their shipped defaults include:
+
+~~~dotenv
+CACHE_STORE=redis
+LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION=false
+LARAVEL_INFRASTRUCTURE_TRANSACTION_ATTEMPTS=1
+LARAVEL_INFRASTRUCTURE_FILE_DISK=public
+LARAVEL_INFRASTRUCTURE_IMAGE_DRIVER=gd
+LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED=true
+LARAVEL_INFRASTRUCTURE_BACKUP_DISK=local
+LARAVEL_INFRASTRUCTURE_BACKUP_PATH=backups/database
+LARAVEL_INFRASTRUCTURE_BACKUP_KEEP=3
+LARAVEL_INFRASTRUCTURE_BACKUP_COMPRESS=true
+LARAVEL_INFRASTRUCTURE_MYSQLDUMP_BINARY=
+LARAVEL_INFRASTRUCTURE_PG_DUMP_BINARY=
+LARAVEL_INFRASTRUCTURE_EXCEPTION_RENDERER_ENABLED=true
+LARAVEL_INFRASTRUCTURE_LOGGING_ENABLED=true
+LARAVEL_INFRASTRUCTURE_LOG_CHANNEL=
+LARAVEL_INFRASTRUCTURE_EXCEPTION_TRACE=false
+~~~
+
+Laravel supplies the actual cache stores, filesystem disks, connections, routing and authentication. Some class-level defaults (such as filename/asset response behavior, log redaction limits and schema caching) intentionally have **no package environment variable**.
+
+### Tests, code style and compatibility
+
+~~~bash
+composer validate --strict
+composer test
+composer test:unit
+composer test:architecture
+composer lint
+composer analyse
+~~~
+
+- §composer test§ executes PHPUnit; tests include caching, scope invalidation, files, image processing, transaction rollback, validation, responses and security.
+- §composer lint§ runs Laravel Pint in check mode.
+- §composer analyse§ runs PHPStan/Larastan analysis.
+- CI covers supported PHP versions, including PHP 8.2 and PHP 8.3, and tests tag-based behavior with Redis.
+- The package is architecture-scoped: no mandatory §App§ model, database migration, RBAC framework, authentication implementation or separate package cache database is shipped.
 
 
 ## Complete guides and testing
