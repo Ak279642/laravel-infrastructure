@@ -15,7 +15,7 @@ use Illuminate\Database\Events\QueryExecuted;
  */
 final class SqlReadTracker
 {
-    /** @var list<array{tags: array<string, true>, unsafe: bool}> */
+    /** @var list<array{tags: array<string, true>, unsafe: bool, queries: list<array{sql:string,bindings:array,connection:\Illuminate\Database\Connection}>}> */
     private array $frames = [];
 
     public function observe(QueryExecuted $event): void
@@ -49,6 +49,15 @@ final class SqlReadTracker
             );
 
         $tags[] = SqlCacheDependency::databaseTag($event->connection);
+        foreach ($this->frames as &$frame) {
+            $frame['queries'][] = [
+                'sql' => $event->sql,
+                'bindings' => $event->bindings,
+                'connection' => $event->connection,
+            ];
+        }
+        unset($frame);
+
         $this->dependOn($tags);
     }
 
@@ -72,7 +81,7 @@ final class SqlReadTracker
      */
     public function capture(callable $callback): array
     {
-        $this->frames[] = ['tags' => [], 'unsafe' => false];
+        $this->frames[] = ['tags' => [], 'unsafe' => false, 'queries' => []];
 
         try {
             $value = $callback();
@@ -84,6 +93,7 @@ final class SqlReadTracker
             'value' => $value,
             'tags' => array_keys($frame['tags']),
             'unsafe' => $frame['unsafe'],
+            'queries' => $frame['queries'],
         ];
     }
 }
