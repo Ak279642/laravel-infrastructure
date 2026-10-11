@@ -23,9 +23,7 @@ final class TargetedEloquentWrites
     public function expect(Model $model): void
     {
         if (! $model instanceof CacheableModel
-            || ! $model->usesInfrastructureCache()
-            || ! method_exists($model, 'infrastructureUsesTargetedCacheInvalidation')
-            || ! $model->infrastructureUsesTargetedCacheInvalidation()) {
+            || ! $model->usesInfrastructureCache()) {
             return;
         }
 
@@ -36,11 +34,13 @@ final class TargetedEloquentWrites
             return;
         }
 
-        // If the model cannot produce an affected partition, do not suppress
-        // table invalidation. This also handles incomplete composite scopes.
-        $modelTag = CacheTag::fromModel($model::class);
-        $tags = $model->getCacheInvalidationTags();
-        if (array_diff($tags, [$modelTag]) === []) {
+        // Only suppress the generic untracked-write invalidator if Eloquent
+        // will emit concrete old/new owner partition tags after the write.
+        // Normal table and model tags still invalidate unscoped readers.
+        $scopeTags = method_exists($model, 'getCacheInvalidationTags')
+            ? $model->getCacheInvalidationTags() : [];
+        $rowTags = SqlCacheDependency::affectedRowTags($model);
+        if ($rowTags === [] && array_diff($scopeTags, [CacheTag::fromModel($model::class)]) === []) {
             return;
         }
 
