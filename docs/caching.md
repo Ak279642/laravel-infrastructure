@@ -460,3 +460,33 @@ before the tracked operation cannot be inferred; such state must be
 represented in the cache identity or deliberately excluded from
 persistent caching. Runtime staging checks should include role and
 location permission changes.
+
+## Selective invalidation for declared ownership scopes
+
+When automatic invalidation is enabled, repositories whose model declares a
+**trustworthy scoped ownership rule** in `cacheOptions()`, such as
+`['scope' => 'user']`, avoid attaching the model's broad table tag to their
+actor-scoped cached reads. The cache still records precise tags for its
+relations, database connection, and a dedicated *untracked-write* fallback for
+the owning table.
+
+A normal **single-row Eloquent UPDATE/DELETE** with a verified primary-key
+predicate can invalidate the **old and new ownership scope tags** without
+evicting unaffected owner caches. Unscoped reads still carry the broad table
+and model tags, so they refresh normally. Ownership transfers invalidate both
+the former and newly assigned owner. INSERT, bulk SQL, query-builder/raw
+updates, unknown SQL, and ambiguous lifecycle events continue to invalidate
+the untracked-write tag and all potentially affected owners.
+
+**Important safety boundary:** a targeted ownership declaration is a contract
+that every cached loader using that model honors its declared visibility scope.
+Do not enable scope targeting globally on a model if custom cached methods
+deliberately use `withoutGlobalScope()`, cross-owner aggregates, or other
+cross-partition data. Those operations must continue using broad dependencies.
+Arbitrary admin/partner rules based on cities, subscriptions or other complex
+business relationships are *not* inferred as safe ownership partitions.
+They intentionally retain the conservative table-level fallback until an
+explicit, tested business visibility contract is available.
+
+No new application table/model dependency maps are required for normal
+declared ownership scopes.
