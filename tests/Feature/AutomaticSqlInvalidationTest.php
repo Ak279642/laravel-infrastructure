@@ -182,6 +182,56 @@ final class AutomaticSqlInvalidationTest extends TestCase
         self::assertSame(2, $repository->nameQueries);
     }
 
+    public function test_batch_cache_discovers_dependencies_without_manual_model_tags(): void
+    {
+        $this->requireTaggedStore();
+        config()->set('laravel-infrastructure.auto_invalidation.table_dependencies', []);
+        $cache = app(CacheManager::class);
+        $calls = 0;
+        $loader = static function (array $ids) use (&$calls): array {
+            $calls++;
+            $name = DB::table('watched_items')->where('id', 1)->value('name');
+
+            return array_fill_keys($ids, $name);
+        };
+
+        self::assertSame([11 => 'before', 22 => 'before'], $cache->rememberBatch(
+            'watched:metrics', [11, 22], 120, $loader, connection: DB::connection(),
+        ));
+        self::assertSame([22 => 'before', 11 => 'before'], $cache->rememberBatch(
+            'watched:metrics', [22, 11], 120, $loader, connection: DB::connection(),
+        ));
+        self::assertSame(1, $calls);
+
+        DB::table('watched_pivots')->insert(['label' => 'unrelated']);
+        self::assertSame([11 => 'before'], $cache->rememberBatch(
+            'watched:metrics', [11], 120, $loader, connection: DB::connection(),
+        ));
+        self::assertSame(1, $calls);
+
+        DB::table('watched_items')->where('id', 1)->update(['name' => 'after']);
+        self::assertSame([11 => 'after', 22 => 'after'], $cache->rememberBatch(
+            'watched:metrics', [11, 22], 120, $loader, connection: DB::connection(),
+        ));
+        self::assertSame(2, $calls);
+    }
+
+    public function test_batch_cache_with_no_tags_bypasses_persistence_when_watcher_is_disabled(): void
+    {
+        $this->requireTaggedStore();
+        config()->set('laravel-infrastructure.auto_invalidation.enabled', false);
+        $calls = 0;
+        $loader = static function (array $ids) use (&$calls): array {
+            $calls++;
+
+            return array_fill_keys($ids, $calls);
+        };
+
+        $cache = app(CacheManager::class);
+        self::assertSame([1 => 1], $cache->rememberBatch('unwatched:batch', [1], 60, $loader));
+        self::assertSame([1 => 2], $cache->rememberBatch('unwatched:batch', [1], 60, $loader));
+    }
+
     public function test_pivot_dependency_invalidates_cached_parent_model(): void
     {
         $this->requireTaggedStore();
