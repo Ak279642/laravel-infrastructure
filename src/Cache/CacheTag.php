@@ -36,11 +36,18 @@ final class CacheTag
         }
 
         $expanded = $tags;
+        $hasTable = false;
         foreach ($tags as $tag) {
             if (isset(self::$modelTables[$tag])) {
                 $expanded[] = SqlCacheDependency::tableTag($connection, self::$modelTables[$tag]);
+                $hasTable = true;
             }
         }
+        if ($hasTable) {
+            // Unknown SQL writes must invalidate every cached read on the connection.
+            $expanded[] = SqlCacheDependency::databaseTag($connection);
+        }
+
         return self::tags(...$expanded);
     }
 
