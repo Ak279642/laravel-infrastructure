@@ -287,7 +287,7 @@ final class CacheManager
         string $key,
         DateInterval|DateTimeInterface|int|null $ttl,
         callable $callback,
-        array $baseTags,
+        array $baseTags = [],
         int $lockSeconds = 10,
         int $waitSeconds = 3,
         ?Connection $connection = null,
@@ -387,7 +387,7 @@ final class CacheManager
         array $ids,
         int $ttl,
         callable $loader,
-        callable $tagsForId,
+        ?callable $tagsForId = null,
         ?Connection $connection = null,
     ): array {
         if ($ttl < 1) {
@@ -403,6 +403,10 @@ final class CacheManager
         }
         if ($unique === []) {
             return [];
+        }
+
+        if ($tagsForId === null) {
+            return $this->rememberObservedBatch($keyPrefix, array_values($unique), $ttl, $loader, $connection);
         }
 
         $values = [];
@@ -445,6 +449,92 @@ final class CacheManager
         $ordered = [];
         foreach ($unique as $id) {
             $ordered[$id] = $values[$id];
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * Discover batch SQL dependencies once for all misses. Existing entries
+     * are looked up using their persisted physical-table tag index, so callers
+     * no longer have to maintain arrays of related model cache tags.
+     *
+     * @param list<int|string> $ids
+     * @return array<int|string,mixed>
+     */
+    private function rememberObservedBatch(
+        string $keyPrefix,
+        array $ids,
+        int $ttl,
+        callable $loader,
+        ?Connection $connection,
+    ): array {
+        $connection ??= DB::connection();
+        $canCache = (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)
+            && $this->supportsTags()
+            && $connection->transactionLevel() === 0;
+
+        $results = [];
+        $missing = [];
+        $sentinel = new \stdClass;
+
+        foreach ($ids as $id) {
+            $key = $this->normalizeKey($keyPrefix.':'.$id);
+            $meta = '_infra:read-deps:'.hash('sha256', $key);
+            $tags = $canCache ? $this->store->get($meta) : null;
+
+            if (! is_array($tags) || ! array_is_list($tags) || $tags === []) {
+                $missing[] = $id;
+                continue;
+            }
+
+            $tags = CacheTag::tags(...$tags);
+            sort($tags, SORT_STRING);
+            $value = $this->store($tags)->get($key, $sentinel);
+            if ($value === $sentinel) {
+                $missing[] = $id;
+            } else {
+                $results[$id] = $value;
+                app(SqlReadTracker::class)->dependOn($tags);
+            }
+        }
+
+        if ($missing !== []) {
+            $observed = $canCache
+                ? app(SqlReadTracker::class)->capture(fn (): array => $loader($missing))
+                : ['value' => $loader($missing), 'tags' => [], 'unsafe' => true];
+
+            $loaded = $observed['value'];
+            if (! is_array($loaded)) {
+                throw new \UnexpectedValueException('Batch cache loader must return an ID-keyed array.');
+            }
+
+            $tags = CacheTag::tags(...$observed['tags']);
+            if ($tags === []) {
+                $tags = [
+                    SqlCacheDependency::databaseTag($connection),
+                    SqlCacheDependency::unknownReadTag($connection),
+                ];
+            }
+            sort($tags, SORT_STRING);
+            app(SqlReadTracker::class)->dependOn($tags);
+
+            foreach ($missing as $id) {
+                $value = $loaded[$id] ?? null;
+                $results[$id] = $value;
+
+                if ($canCache && ! $observed['unsafe']) {
+                    $key = $this->normalizeKey($keyPrefix.':'.$id);
+                    $meta = '_infra:read-deps:'.hash('sha256', $key);
+                    $this->store->put($meta, $tags, $ttl);
+                    $this->store($tags)->put($key, $value, $ttl);
+                }
+            }
+        }
+
+        $ordered = [];
+        foreach ($ids as $id) {
+            $ordered[$id] = $results[$id];
         }
 
         return $ordered;

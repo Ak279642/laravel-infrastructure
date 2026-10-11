@@ -335,6 +335,22 @@ turning set-based mutations into N individual Eloquent saves. Opt in:
 Repository methods and explicit package cache operations remain the read
 caching boundary.
 
+## Automatic batch dependencies without application model-tag arrays
+
+With automatic invalidation enabled, batch loaders can omit the tag resolver:
+
+```php
+$metrics = $cache->rememberBatch(
+    'metrics:partner', $partnerIds, 3600,
+    fn (array $missingIds): array => $repository->metricsForPartners($missingIds),
+    connection: $repository->getModel()->getConnection(),
+);
+```
+
+The package captures actual SQL read-table dependencies once for **all missing IDs** and stores per-ID dependency metadata and tagged cache values, both with the same TTL. Writes to a relevant table invalidate affected cached values through the existing SQL write observer. No per-ID SQL is added. Nested observed-cache hits propagate their dependencies, and unsafe transaction reads do not populate the shared store.
+
+The older callback-based `tagsForId` form remains supported for backwards compatibility. With automatic invalidation disabled and no tag resolver, batch reads are deliberately uncached.
+
 ## Batch read caching without get/put orchestration
 
 For metrics and reports that use a single SQL query for all missing actors,
