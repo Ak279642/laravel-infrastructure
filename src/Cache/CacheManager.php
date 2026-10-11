@@ -291,6 +291,7 @@ final class CacheManager
         int $lockSeconds = 10,
         int $waitSeconds = 3,
         ?Connection $connection = null,
+        array $ignoreObservedTags = [],
     ): mixed {
         if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)
             || ! $this->supportsTags()
@@ -325,14 +326,18 @@ final class CacheManager
             return $cached;
         }
 
-        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection): mixed {
+        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection, $ignoreObservedTags): mixed {
             $cached = $read();
             if ($cached !== $missing) {
                 return $cached;
             }
 
             $observed = app(SqlReadTracker::class)->capture($callback);
-            $tags = CacheTag::merge($baseTags, $observed['tags']);
+            // Targeted owner-partition reads can skip their root physical
+            // table tag. Raw/bulk writes still invalidate their dedicated
+            // untracked-write fallback. Other relation table tags remain.
+            $observedTags = array_values(array_diff($observed['tags'], $ignoreObservedTags));
+            $tags = CacheTag::merge($baseTags, $observedTags);
             if ($tags === []) {
                 // No SQL dependencies were observed; treat it as opaque.
                 $tags[] = SqlCacheDependency::unknownReadTag($connection ?? DB::connection());
