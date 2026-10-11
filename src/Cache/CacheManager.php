@@ -292,7 +292,9 @@ final class CacheManager
         int $waitSeconds = 3,
         ?Connection $connection = null,
     ): mixed {
-        if (! $this->supportsTags() || ($connection !== null && $connection->transactionLevel() > 0)) {
+        if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)
+            || ! $this->supportsTags()
+            || ($connection !== null && $connection->transactionLevel() > 0)) {
             return $callback();
         }
 
