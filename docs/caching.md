@@ -507,15 +507,54 @@ filtered by a city/tier can therefore refresh while unrelated city/tier
 results stay hot. Cross-partition moves invalidate both sides. No additional
 SQL queries are needed for matching or dependency capture.
 
-This inference deliberately **rejects** queries containing OR, NOT, UNION,
-unknown table aliases, ambiguous or cross-owner SELECTs, and any root-table
-read that cannot prove a restrictive ownership predicate. Global admin
-dashboards and complex partner availability queries are not assumed to be
-owner-scoped; they keep model/table-level invalidation. Invalidation by city
-or tier can refresh more than one admin if they share the same visibility
-partition; exact administrator identities cannot be inferred from row columns
-alone. Raw/bulk SQL and inserts keep the broad fallback.
+This inference supports restrictive AND/OR combinations, including
+`(orders.user_id = ? OR orders.agent_id = ?)`, **only when every OR
+alternative proves a root-table owner partition**. For conjunctions, one
+provably restrictive predicate is enough. It rejects an unrestricted
+alternative such as `(orders.user_id = ? OR orders.status = ?)`,
+and also rejects unsupported NOT, UNION, aliases, CTEs, cross-owner reads,
+or any query it cannot prove safe. These keep model/table-level invalidation.
+
+Direct `admin_id`, `assigned_admin_id`, and `created_by_admin_id`
+columns also support exact per-admin partitions when enforced by the SQL.
+Admin city/tier visibility works at the **shared city/tier partition**
+level; invalidating only one admin ID when several admins can view the same
+changed record would leave stale data. Global dashboards and complex partner
+availability queries keep the conservative fallback. Raw/bulk SQL and inserts
+continue to invalidate affected table dependencies broadly.
 
 No new environment variables or repository `cacheTags()` declarations are
 required. As always, changes written by separate applications or directly
 through MySQL/Redis without Laravel query events need their own invalidation.
+
+### Changes written outside the Laravel application
+
+Database changes from a separate application, external SQL client, bulk
+import or another service **do not dispatch Laravel QueryExecuted events**
+in this process. The package cannot observe them automatically without a
+database-side event source such as a trigger-backed change log, PostgreSQL
+logical decoding, MySQL binlog CDC, or a reliable external writer event.
+
+Once such a source reports a **committed** change, the package can invalidate
+all potentially affected cache entries safely:
+
+```bash
+php artisan infrastructure:cache:invalidate-external orders
+php artisan infrastructure:cache:invalidate-external orders order_items --connection=mysql
+```
+
+A CDC consumer can also invoke:
+
+```php
+app(\Ak279642\LaravelInfrastructure\Cache\ExternalWriteInvalidator::class)
+    ->invalidateTables(['orders', 'order_items'], DB::connection());
+```
+
+The command uses the same broad table and untracked-write tags as normal
+unknown-row SQL mutations; it requires a tag-capable cache store.
+It is **not a trigger installer or automatic CDC reader**. The caller must
+run it after commit, and every external change source must reliably deliver
+the affected table names. If no source delivers an event (or the consumer is
+down without replay), the package cannot guarantee freshness. Exact
+external-row ownership would additionally require a trustworthy old/new
+row-image feed; until then broad table invalidation is the safe behavior.
