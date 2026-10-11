@@ -128,6 +128,37 @@ final class AutomaticSqlInvalidationTest extends TestCase
         self::assertSame('committed', $repository->get()->first()->name);
     }
 
+    public function test_observed_subquery_dependencies_refresh_without_manual_model_tags(): void
+    {
+        $this->requireTaggedStore();
+        $repository = $this->repository();
+
+        self::assertSame(0, $repository->pivotCount());
+        self::assertSame(0, $repository->pivotCount());
+        self::assertSame(1, $repository->pivotQueries);
+
+        DB::table('watched_pivots')->insert(['label' => 'new']);
+        self::assertSame(1, $repository->pivotCount());
+        self::assertSame(2, $repository->pivotQueries);
+    }
+
+    public function test_unrelated_table_writes_preserve_precisely_observed_cache_hits(): void
+    {
+        $this->requireTaggedStore();
+        $repository = $this->repository();
+
+        self::assertSame('before', $repository->itemName());
+        self::assertSame(1, $repository->nameQueries);
+        DB::table('watched_pivots')->insert(['label' => 'unrelated']);
+
+        self::assertSame('before', $repository->itemName());
+        self::assertSame(1, $repository->nameQueries);
+
+        DB::table('watched_items')->where('id', 1)->update(['name' => 'after']);
+        self::assertSame('after', $repository->itemName());
+        self::assertSame(2, $repository->nameQueries);
+    }
+
     public function test_pivot_dependency_invalidates_cached_parent_model(): void
     {
         $this->requireTaggedStore();
@@ -157,4 +188,29 @@ final class WatchedItem extends Model implements CacheableModel
     protected $guarded = [];
 }
 
-final class WatchedRepository extends BaseRepository {}
+final class WatchedRepository extends BaseRepository
+{
+    public int $pivotQueries = 0;
+    public int $nameQueries = 0;
+
+    public function pivotCount(): int
+    {
+        return $this->cacheRemember('observedPivotCount', function (): int {
+            $this->pivotQueries++;
+
+            return (int) DB::table('watched_items')
+                ->selectRaw('(select count(*) from watched_pivots) as pivot_count')
+                ->where('watched_items.id', 1)
+                ->value('pivot_count');
+        });
+    }
+
+    public function itemName(): string
+    {
+        return $this->cacheRemember('observedItemName', function (): string {
+            $this->nameQueries++;
+
+            return (string) DB::table('watched_items')->where('id', 1)->value('name');
+        });
+    }
+}
