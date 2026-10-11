@@ -460,3 +460,62 @@ before the tracked operation cannot be inferred; such state must be
 represented in the cache identity or deliberately excluded from
 persistent caching. Runtime staging checks should include role and
 location permission changes.
+
+## Selective invalidation for declared ownership scopes
+
+When automatic invalidation is enabled, repositories whose model declares a
+**trustworthy scoped ownership rule** in `cacheOptions()`, such as
+`['scope' => 'user']`, avoid attaching the model's broad table tag to their
+actor-scoped cached reads. The cache still records precise tags for its
+relations, database connection, and a dedicated *untracked-write* fallback for
+the owning table.
+
+A normal **single-row Eloquent UPDATE/DELETE** with a verified primary-key
+predicate can invalidate the **old and new ownership scope tags** without
+evicting unaffected owner caches. Unscoped reads still carry the broad table
+and model tags, so they refresh normally. Ownership transfers invalidate both
+the former and newly assigned owner. INSERT, bulk SQL, query-builder/raw
+updates, unknown SQL, and ambiguous lifecycle events continue to invalidate
+the untracked-write tag and all potentially affected owners.
+
+**Important safety boundary:** a targeted ownership declaration is a contract
+that every cached loader using that model honors its declared visibility scope.
+Do not enable scope targeting globally on a model if custom cached methods
+deliberately use `withoutGlobalScope()`, cross-owner aggregates, or other
+cross-partition data. Those operations must continue using broad dependencies.
+Arbitrary admin/partner rules based on cities, subscriptions or other complex
+business relationships are *not* inferred as safe ownership partitions.
+They intentionally retain the conservative table-level fallback until an
+explicit, tested business visibility contract is available.
+
+No new application table/model dependency maps are required for normal
+declared ownership scopes.
+
+### Automatically inferred actor partitions (no model config needed)
+
+The SQL observer can also prove owner partitions directly from the root
+SELECT query without `cacheOptions()` or application-maintained tag arrays.
+For example, a repository read containing the restrictive SQL predicate
+`service_requests.user_id = ?` can be cached under a stable hash of
+`(database, table, user_id, bound value)`. Likewise, well-formed conjunctive
+`agent_id`, `partner_id`, `city_id IN (...)`, and `tier_id IN (...)`
+filters can narrow invalidation to the corresponding partitions.
+
+On single-row Eloquent updates, the package derives **both old and new**
+column partition tags directly from the model's raw attributes. Admin results
+filtered by a city/tier can therefore refresh while unrelated city/tier
+results stay hot. Cross-partition moves invalidate both sides. No additional
+SQL queries are needed for matching or dependency capture.
+
+This inference deliberately **rejects** queries containing OR, NOT, UNION,
+unknown table aliases, ambiguous or cross-owner SELECTs, and any root-table
+read that cannot prove a restrictive ownership predicate. Global admin
+dashboards and complex partner availability queries are not assumed to be
+owner-scoped; they keep model/table-level invalidation. Invalidation by city
+or tier can refresh more than one admin if they share the same visibility
+partition; exact administrator identities cannot be inferred from row columns
+alone. Raw/bulk SQL and inserts keep the broad fallback.
+
+No new environment variables or repository `cacheTags()` declarations are
+required. As always, changes written by separate applications or directly
+through MySQL/Redis without Laravel query events need their own invalidation.

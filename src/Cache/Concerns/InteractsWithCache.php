@@ -6,6 +6,8 @@ namespace Ak279642\LaravelInfrastructure\Cache\Concerns;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
+use Ak279642\LaravelInfrastructure\Cache\TargetedEloquentWrites;
+use Ak279642\LaravelInfrastructure\Cache\SqlCacheDependency;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -40,13 +42,25 @@ trait InteractsWithCache
 
     public static function bootInteractsWithCache(): void
     {
+        // Capture row-level Eloquent write intent before QueryExecuted fires.
+        // The SQL listener still falls back to table-wide invalidation unless
+        // the generated statement proves a single primary-key update/delete.
+        static::updating(static function (self $model): void {
+            app(TargetedEloquentWrites::class)->expect($model);
+        });
+        static::deleting(static function (self $model): void {
+            app(TargetedEloquentWrites::class)->expect($model);
+        });
+
         static::created(function (self $model): void {
             $model->runInfrastructureCacheObserverAfterCommit('created');
         });
         static::updated(function (self $model): void {
+            app(TargetedEloquentWrites::class)->clear($model);
             $model->runInfrastructureCacheObserverAfterCommit('updated');
         });
         static::deleted(function (self $model): void {
+            app(TargetedEloquentWrites::class)->clear($model);
             $model->runInfrastructureCacheObserverAfterCommit('deleted');
         });
 
@@ -54,12 +68,14 @@ trait InteractsWithCache
             static::registerModelEvent(
                 'restored',
                 function (self $model): void {
+                    app(TargetedEloquentWrites::class)->clear($model);
                     $model->runInfrastructureCacheObserverAfterCommit('restored');
                 },
             );
             static::registerModelEvent(
                 'forceDeleted',
                 function (self $model): void {
+                    app(TargetedEloquentWrites::class)->clear($model);
                     $model->runInfrastructureCacheObserverAfterCommit('forceDeleted');
                 },
             );
@@ -78,7 +94,14 @@ trait InteractsWithCache
         }
 
         // Snapshot old/new ownership while Eloquent still retains pre-save originals.
-        $tags = $this->getCacheInvalidationTags();
+        // Unscoped list/detail caches carry the model tag; scoped caches
+        // intentionally do not. Invalidate both without flushing unaffected
+        // owner partitions.
+        $tags = CacheTag::merge(
+            [static::cacheTag()],
+            $this->getCacheInvalidationTags(),
+            SqlCacheDependency::affectedRowTags($this),
+        );
         $callback = function () use ($method, $tags): void {
             $observer = app(CacheObserver::class);
             $observer->{$method}($this, $tags);

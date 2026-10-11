@@ -225,6 +225,11 @@ trait HasCache
         }
 
         if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
+            $model = $this->getModel();
+            $targeted = $model instanceof CacheableModel
+                && $model->infrastructureUsesTargetedCacheInvalidation()
+                && ! $this->hasUnboundedSelfRelation($params);
+
             return $this->getCacheManager()->rememberObserved(
                 key: $key,
                 ttl: $ttlOverride ?? ($this->cacheForever ? null : $this->cacheTtl),
@@ -232,6 +237,12 @@ trait HasCache
                 baseTags: $tags,
                 lockSeconds: max(1, $this->cacheLockSeconds),
                 waitSeconds: max(0, $this->cacheLockWaitSeconds),
+                ignoreObservedTags: $targeted
+                    ? [SqlCacheDependency::tableTag($model->getConnection(), $model->getTable())]
+                    : [],
+                rootConnection: $model->getConnection(),
+                rootTable: $model->getTable(),
+                rootModelTag: CacheTag::fromModel($model::class),
             );
         }
 
@@ -295,8 +306,7 @@ trait HasCache
         // Keep the model tag even on targeted entries: unknown permissions,
         // other dependency changes and explicit full flushes need a safe path.
         $tags = CacheTag::merge(
-            [$modelTag],
-            $targeted ? $model->infrastructureCacheReadTags() : [],
+            $targeted ? $model->infrastructureCacheReadTags() : [$modelTag],
             $this->extraCacheTags,
         );
 
@@ -305,7 +315,14 @@ trait HasCache
         if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             $connection = $model->getConnection();
             $tags[] = SqlCacheDependency::databaseTag($connection);
-            $tags[] = SqlCacheDependency::tableTag($connection, $model->getTable());
+            if ($targeted && ! $this->hasUnboundedSelfRelation($params)) {
+                // Eloquent updates invalidate affected owner scope tags.
+                // Bulk/raw INSERT/UPDATE/DELETE still invalidates this tag.
+                $tags[] = SqlCacheDependency::untrackedTableTag($connection, $model->getTable());
+            } else {
+                $tags[] = SqlCacheDependency::tableTag($connection, $model->getTable());
+                $tags[] = $modelTag;
+            }
         }
 
         if ($model instanceof CacheableModel) {
@@ -313,11 +330,49 @@ trait HasCache
             $relations = is_array($relations) ? $relations : [];
             $tags = CacheTag::merge(
                 $tags,
-                $model->getCacheDependencyTags(null, $relations),
+                $targeted && ! $this->hasUnboundedSelfRelation($params)
+                    ? array_values(array_diff($model->getCacheDependencyTags(null, $relations), [$modelTag]))
+                    : $model->getCacheDependencyTags(null, $relations),
             );
         }
 
         return CacheTag::tags(...$tags);
+    }
+
+    /**
+     * Self-relations can expose rows in different owner partitions.
+     * Keep broad dependencies unless cross-partition membership is proven.
+     */
+    private function hasUnboundedSelfRelation(array $params): bool
+    {
+        $model = $this->getModel();
+        $relations = $params['with'] ?? [];
+        if (! is_array($relations)) {
+            return true;
+        }
+
+        foreach ($relations as $relation) {
+            if (! is_string($relation)) {
+                return true;
+            }
+            $root = explode('.', explode(':', $relation)[0])[0];
+            if (! method_exists($model, $root)) {
+                return true;
+            }
+
+            try {
+                $related = $model->{$root}();
+            } catch (\Throwable) {
+                return true;
+            }
+
+            if (! $related instanceof \Illuminate\Database\Eloquent\Relations\Relation
+                || $related->getRelated()->getTable() === $model->getTable()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function flushCache(): void

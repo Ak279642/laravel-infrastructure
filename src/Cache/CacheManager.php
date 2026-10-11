@@ -42,6 +42,12 @@ final class CacheManager
 
         $value = $store->get($key, $default);
 
+        // A direct cache lookup inside a repository loader can hide database
+        // dependencies not visible through QueryExecuted.
+        app(SqlReadTracker::class)->dependOnCached(
+            $tags !== [] ? $tags : [SqlReadTracker::OPAQUE_CACHE_TAG],
+        );
+
         // Log::info('Cache GET', [
         //     'key' => $key,
         //     'tags' => $tags,
@@ -169,6 +175,9 @@ final class CacheManager
         // ]);
 
         $store = $this->store($tags);
+        app(SqlReadTracker::class)->dependOnCached(
+            $tags !== [] ? $tags : [SqlReadTracker::OPAQUE_CACHE_TAG],
+        );
 
         $missing = new \stdClass;
         $cached = $store->get($key, $missing);
@@ -216,6 +225,9 @@ final class CacheManager
     ): mixed {
         $key = $this->normalizeKey($key);
         $store = $this->store($tags);
+        app(SqlReadTracker::class)->dependOnCached(
+            $tags !== [] ? $tags : [SqlReadTracker::OPAQUE_CACHE_TAG],
+        );
 
         $missing = new \stdClass;
         $cached = $store->get($key, $missing);
@@ -291,6 +303,10 @@ final class CacheManager
         int $lockSeconds = 10,
         int $waitSeconds = 3,
         ?Connection $connection = null,
+        array $ignoreObservedTags = [],
+        ?Connection $rootConnection = null,
+        ?string $rootTable = null,
+        ?string $rootModelTag = null,
     ): mixed {
         if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)
             || ! $this->supportsTags()
@@ -301,7 +317,7 @@ final class CacheManager
         $key = $this->normalizeKey($key);
         $baseTags = CacheTag::tags(...$baseTags);
         sort($baseTags, SORT_STRING);
-        $metaKey = '_infra:read-deps:'.hash('sha256', $key);
+        $metaKey = '_infra:read-deps:v2:'.hash('sha256', $key);
         $missing = new \stdClass;
 
         $read = function () use ($key, $metaKey, $baseTags, $missing): mixed {
@@ -310,11 +326,14 @@ final class CacheManager
                 return $missing;
             }
 
-            $tags = CacheTag::merge($baseTags, $observed);
+            // Index stores the FULL observed tag namespace. Changing the
+            // root read from broad to proven owner-targeted is transparent
+            // on subsequent hits.
+            $tags = CacheTag::tags(...$observed);
             sort($tags, SORT_STRING);
             $value = $this->store($tags)->get($key, $missing);
             if ($value !== $missing) {
-                app(SqlReadTracker::class)->dependOn($tags);
+                app(SqlReadTracker::class)->dependOnCached($tags);
             }
 
             return $value;
@@ -325,14 +344,51 @@ final class CacheManager
             return $cached;
         }
 
-        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection): mixed {
+        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection, $ignoreObservedTags, $rootConnection, $rootTable, $rootModelTag): mixed {
             $cached = $read();
             if ($cached !== $missing) {
                 return $cached;
             }
 
             $observed = app(SqlReadTracker::class)->capture($callback);
-            $tags = CacheTag::merge($baseTags, $observed['tags']);
+            // Targeted owner-partition reads can skip their root physical
+            // table tag. Raw/bulk writes still invalidate their dedicated
+            // untracked-write fallback. Other relation table tags remain.
+            $observedTags = array_values(array_diff($observed['tags'], $ignoreObservedTags));
+            $tags = CacheTag::merge($baseTags, $observedTags);
+
+            // Infer real actor/owner predicates from the SELECTs actually
+            // executed. Only a proven conjunction on *every* root read can
+            // remove broad root dependencies. This covers ordinary Eloquent
+            // global scopes without requiring app-side cache config.
+            if ($rootConnection !== null && $rootTable !== null
+                && $rootModelTag !== null && $ignoreObservedTags === []) {
+                $partitions = SqlBoundReadPartitions::tags(
+                    $observed['queries'], $rootConnection, $rootTable,
+                );
+                $rootTag = SqlCacheDependency::tableTag($rootConnection, $rootTable);
+                $nestedRoot = false;
+                foreach ($observed['cachedDependencies'] as $dependency) {
+                    if ($dependency === SqlReadTracker::OPAQUE_CACHE_TAG
+                        || $dependency === $rootModelTag
+                        || $dependency === $rootTag
+                        || str_starts_with($dependency, $rootTag.':')) {
+                        $nestedRoot = true;
+                        break;
+                    }
+                }
+                if ($partitions !== [] && ! $nestedRoot) {
+                    $tags = CacheTag::merge(
+                        array_values(array_diff($tags, [
+                            $rootModelTag,
+                            SqlCacheDependency::tableTag($rootConnection, $rootTable),
+                        ])),
+                        $partitions,
+                        [SqlCacheDependency::untrackedTableTag($rootConnection, $rootTable)],
+                    );
+                }
+            }
+
             if ($tags === []) {
                 // No SQL dependencies were observed; treat it as opaque.
                 $tags[] = SqlCacheDependency::unknownReadTag($connection ?? DB::connection());
@@ -342,12 +398,12 @@ final class CacheManager
 
             // Propagate nested cache dependencies to callers even when the
             // nested result did not execute SQL because it was already cached.
-            app(SqlReadTracker::class)->dependOn($tags);
+            app(SqlReadTracker::class)->dependOnCached($tags);
 
             if (! $observed['unsafe']) {
                 // Publish index first: no reader can look up a cache value
                 // without knowing the exact tag namespace used to store it.
-                $this->store->put($metaKey, array_values(array_diff($tags, $baseTags)), $ttl);
+                $this->store->put($metaKey, $tags, $ttl);
                 $this->store($tags)->put($key, $observed['value'], $ttl);
             }
 
@@ -495,7 +551,7 @@ final class CacheManager
                 $missing[] = $id;
             } else {
                 $results[$id] = $value;
-                app(SqlReadTracker::class)->dependOn($tags);
+                app(SqlReadTracker::class)->dependOnCached($tags);
             }
         }
 
@@ -517,7 +573,7 @@ final class CacheManager
                 ];
             }
             sort($tags, SORT_STRING);
-            app(SqlReadTracker::class)->dependOn($tags);
+            app(SqlReadTracker::class)->dependOnCached($tags);
 
             foreach ($missing as $id) {
                 $value = $loaded[$id] ?? null;
