@@ -210,6 +210,48 @@ Run `php artisan cache:clear` after schema migrations (especially when adding
 new model fields) so workers fetch the updated schema. No package config
 section or new cache driver is needed.
 
+## Automatic authenticated cache isolation (no operation lists)
+
+Every standard repository read (`get`, `find`, `paginate`, aggregates) and
+every explicit `cacheRemember()` uses the same package-managed cache identity.
+The application does **not** need
+`authenticatedPersistentCacheOperations`,
+`authenticatedPersistentCacheWithoutVisibility`, or an application-level
+`BaseRepository::cacheReadPolicy()` to enable persistent caching for
+authenticated actors.
+
+The package isolates entries using the authenticated subject's class, ID and
+a SHA-256 snapshot of the current Eloquent model attributes. It also uses
+the request's verified actor type, partner ID and partner actor (when present).
+Normal Laravel `Request::user()` / default guard sessions work, as do
+applications whose trusted authentication middleware populates request
+attributes `user`, `user_type`, and `user_id`. If the request attributes
+indicate an actor but the subject is missing or its ID does not match,
+**shared caching is bypassed**. Guests and system jobs get separate cache
+partitions.
+
+The effective SQL/global-scope bindings, operation parameters, repository and
+model identity continue to contribute to the cache key. This is strictly
+cache-key isolation, not authorization; keep applying real Eloquent policies,
+scopes and middleware. SQL-observed dependencies and after-commit invalidation
+continue to operate as before.
+
+**Important limits:**
+
+- Permission decisions from external state or already-resolved request data
+  that never runs within the observed cache operation cannot be inferred.
+  When an authorization dependency is not captured by the actor snapshot,
+  effective SQL or observed SQL reads, explicitly use a short TTL, request-only
+  caching or `withoutCache()`.
+- Time-only validity changes (OTPs, expiring tokens, rate-limit windows) do not
+  emit database writes; disable persistent caching for those models using
+  `cacheOptions(): ['enabled' => false]`, or use time-aware cache keys.
+- Actor model snapshots are hashed into the key (credentials are not embedded
+  as plaintext). Updating actor attributes can reduce hit rates until the
+  new snapshot is stable.
+- This does not expand SQL-read tracking to requests outside the current
+  Laravel process or to arbitrary direct `query()` chains.
+
 ## Request-only caching and application cache policies
 
 Repositories may override `cacheReadPolicy(string $operation, array $params): ?array`.
