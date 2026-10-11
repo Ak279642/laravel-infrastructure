@@ -195,6 +195,44 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         self::assertSame(4, $repo->loads);
     }
 
+    public function test_external_database_write_can_be_invalidated_through_package_command(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForUser(1));
+        self::assertSame(['pending'], $repo->statusesForUser(2));
+        self::assertSame(2, $repo->loads);
+
+        // Bypass Laravel's query-event dispatcher to simulate an external
+        // transaction (e.g. a separate database client / CDC source).
+        DB::connection()->getPdo()->exec(
+            "UPDATE targeted_scope_orders SET status = 'external' WHERE id = 1",
+        );
+
+        self::assertSame(['pending'], $repo->statusesForUser(1));
+        self::assertSame(2, $repo->loads);
+
+        self::assertSame(0, \Illuminate\Support\Facades\Artisan::call(
+            'infrastructure:cache:invalidate-external',
+            ['tables' => ['targeted_scope_orders']],
+        ));
+
+        self::assertSame(['external'], $repo->statusesForUser(1));
+        self::assertSame(['pending'], $repo->statusesForUser(2));
+        self::assertSame(4, $repo->loads);
+    }
+
+    public function test_external_invalidator_rejects_unsafe_table_identifiers(): void
+    {
+        $this->needRedis();
+
+        self::assertSame(1, \Illuminate\Support\Facades\Artisan::call(
+            'infrastructure:cache:invalidate-external',
+            ['tables' => ['targeted_scope_orders;drop table users']],
+        ));
+    }
+
     public function test_proven_owner_or_agent_branches_selectively_invalidate(): void
     {
         $this->needRedis();
