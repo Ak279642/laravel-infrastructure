@@ -60,8 +60,14 @@ final class AuthenticatedCacheContextTest extends TestCase
     {
         $request = $this->request();
         $request->attributes->set('user_type', 'admin');
-        $request->attributes->set('user_id', 10);
         self::assertFalse(AuthenticatedCacheContext::resolve()['cacheable']);
+
+        $request->attributes->set('user_id', 10);
+        self::assertTrue(AuthenticatedCacheContext::resolve()['cacheable']);
+        self::assertSame(
+            '10',
+            AuthenticatedCacheContext::resolve()['identity']['subject']['id'],
+        );
 
         $request->attributes->set('user', $this->actor(11, 3));
         self::assertFalse(AuthenticatedCacheContext::resolve()['cacheable']);
