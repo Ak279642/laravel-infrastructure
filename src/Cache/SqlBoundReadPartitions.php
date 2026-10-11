@@ -21,6 +21,12 @@ final class SqlBoundReadPartitions
         'created_by', 'assigned_to', 'assigned_by', 'city_id', 'tier_id',
     ];
 
+    /** @return list<string> */
+    public static function columns(): array
+    {
+        return self::COLUMNS;
+    }
+
     /**
      * @param list<array{sql:string,bindings:array,connection:Connection}> $queries
      * @return list<string>
