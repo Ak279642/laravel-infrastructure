@@ -182,7 +182,7 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
             ['pending', 'pending', 'pending'],
             $repo->combinedForUser(1),
         );
-        self::assertSame(3, $repo->loads);
+        self::assertSame(2, $repo->loads);
 
         UnscopedOrder::query()->findOrFail(2)->update(['status' => 'done']);
 
@@ -190,7 +190,7 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
             ['pending', 'pending', 'done'],
             $repo->combinedForUser(1),
         );
-        self::assertSame(5, $repo->loads);
+        self::assertSame(4, $repo->loads);
     }
 
     public function test_complex_or_predicates_keep_safe_table_wide_invalidation(): void
