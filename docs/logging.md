@@ -41,3 +41,18 @@ CustomLog::warning(
 ```
 
 The package's `LogDomain` enum and string domains remain supported.
+
+Define separate Laravel channels in the host application's `config/logging.php`:
+
+```php
+'channels' => [
+    'domain_meta' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/meta/meta.log'),
+        'level' => 'info',
+        'days' => 14,
+    ],
+],
+```
+
+`CustomLog` automatically selects `domain_meta` for the `meta` domain. If a channel has another name, map it explicitly using `laravel-infrastructure.logging.domain_channels` (e.g. `['meta' => 'marketing_meta']`). Explicit mapping takes precedence; otherwise `domain_<name>` is used when defined, and the configured fallback channel is used only when no domain channel exists. **A channel name alone does not create a directory:** configure a distinct `path` for each domain. Ordinary Laravel framework logs use the application's `LOG_CHANNEL` independently.
