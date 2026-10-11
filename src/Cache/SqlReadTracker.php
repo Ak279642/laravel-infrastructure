@@ -39,13 +39,16 @@ final class SqlReadTracker
         }
 
         $tables = SqlCacheDependency::readTables($sql);
+        // A broad fallback tag lives on every observed DB read. It is
+        // invalidated only by mutations whose target cannot be parsed.
         $tags = $tables === []
-            ? [SqlCacheDependency::databaseTag($event->connection)]
+            ? [SqlCacheDependency::unknownReadTag($event->connection)]
             : array_map(
                 static fn (string $table): string => SqlCacheDependency::tableTag($event->connection, $table),
                 $tables,
             );
 
+        $tags[] = SqlCacheDependency::databaseTag($event->connection);
         $this->dependOn($tags);
     }
 
