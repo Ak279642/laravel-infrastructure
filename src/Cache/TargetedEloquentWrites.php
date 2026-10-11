@@ -23,6 +23,7 @@ final class TargetedEloquentWrites
     public function expect(Model $model): void
     {
         if (! $model instanceof CacheableModel
+            || ! $model->usesInfrastructureCache()
             || ! method_exists($model, 'infrastructureUsesTargetedCacheInvalidation')
             || ! $model->infrastructureUsesTargetedCacheInvalidation()) {
             return;
