@@ -290,8 +290,9 @@ final class CacheManager
         array $baseTags,
         int $lockSeconds = 10,
         int $waitSeconds = 3,
+        ?Connection $connection = null,
     ): mixed {
-        if (! $this->supportsTags()) {
+        if (! $this->supportsTags() || ($connection !== null && $connection->transactionLevel() > 0)) {
             return $callback();
         }
 
@@ -322,7 +323,7 @@ final class CacheManager
             return $cached;
         }
 
-        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl): mixed {
+        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection): mixed {
             $cached = $read();
             if ($cached !== $missing) {
                 return $cached;
@@ -330,6 +331,9 @@ final class CacheManager
 
             $observed = app(SqlReadTracker::class)->capture($callback);
             $tags = CacheTag::merge($baseTags, $observed['tags']);
+            if ($tags === []) {
+                $tags[] = SqlCacheDependency::databaseTag($connection ?? DB::connection());
+            }
             sort($tags, SORT_STRING);
 
             // Propagate nested cache dependencies to callers even when the
@@ -339,7 +343,7 @@ final class CacheManager
             if (! $observed['unsafe']) {
                 // Publish index first: no reader can look up a cache value
                 // without knowing the exact tag namespace used to store it.
-                $this->store->put($metaKey, $observed['tags'], $ttl);
+                $this->store->put($metaKey, array_values(array_diff($tags, $baseTags)), $ttl);
                 $this->store($tags)->put($key, $observed['value'], $ttl);
             }
 
