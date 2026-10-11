@@ -292,6 +292,9 @@ final class CacheManager
         int $waitSeconds = 3,
         ?Connection $connection = null,
         array $ignoreObservedTags = [],
+        ?Connection $rootConnection = null,
+        ?string $rootTable = null,
+        ?string $rootModelTag = null,
     ): mixed {
         if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)
             || ! $this->supportsTags()
@@ -302,7 +305,7 @@ final class CacheManager
         $key = $this->normalizeKey($key);
         $baseTags = CacheTag::tags(...$baseTags);
         sort($baseTags, SORT_STRING);
-        $metaKey = '_infra:read-deps:'.hash('sha256', $key);
+        $metaKey = '_infra:read-deps:v2:'.hash('sha256', $key);
         $missing = new \stdClass;
 
         $read = function () use ($key, $metaKey, $baseTags, $missing): mixed {
@@ -311,7 +314,10 @@ final class CacheManager
                 return $missing;
             }
 
-            $tags = CacheTag::merge($baseTags, $observed);
+            // Index stores the FULL observed tag namespace. Changing the
+            // root read from broad to proven owner-targeted is transparent
+            // on subsequent hits.
+            $tags = CacheTag::tags(...$observed);
             sort($tags, SORT_STRING);
             $value = $this->store($tags)->get($key, $missing);
             if ($value !== $missing) {
@@ -326,7 +332,7 @@ final class CacheManager
             return $cached;
         }
 
-        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection, $ignoreObservedTags): mixed {
+        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection, $ignoreObservedTags, $rootConnection, $rootTable, $rootModelTag): mixed {
             $cached = $read();
             if ($cached !== $missing) {
                 return $cached;
@@ -338,6 +344,28 @@ final class CacheManager
             // untracked-write fallback. Other relation table tags remain.
             $observedTags = array_values(array_diff($observed['tags'], $ignoreObservedTags));
             $tags = CacheTag::merge($baseTags, $observedTags);
+
+            // Infer real actor/owner predicates from the SELECTs actually
+            // executed. Only a proven conjunction on *every* root read can
+            // remove broad root dependencies. This covers ordinary Eloquent
+            // global scopes without requiring app-side cache config.
+            if ($rootConnection !== null && $rootTable !== null
+                && $rootModelTag !== null && $ignoreObservedTags === []) {
+                $partitions = SqlBoundReadPartitions::tags(
+                    $observed['queries'], $rootConnection, $rootTable,
+                );
+                if ($partitions !== []) {
+                    $tags = CacheTag::merge(
+                        array_values(array_diff($tags, [
+                            $rootModelTag,
+                            SqlCacheDependency::tableTag($rootConnection, $rootTable),
+                        ])),
+                        $partitions,
+                        [SqlCacheDependency::untrackedTableTag($rootConnection, $rootTable)],
+                    );
+                }
+            }
+
             if ($tags === []) {
                 // No SQL dependencies were observed; treat it as opaque.
                 $tags[] = SqlCacheDependency::unknownReadTag($connection ?? DB::connection());
@@ -352,7 +380,7 @@ final class CacheManager
             if (! $observed['unsafe']) {
                 // Publish index first: no reader can look up a cache value
                 // without knowing the exact tag namespace used to store it.
-                $this->store->put($metaKey, array_values(array_diff($tags, $baseTags)), $ttl);
+                $this->store->put($metaKey, $tags, $ttl);
                 $this->store($tags)->put($key, $observed['value'], $ttl);
             }
 
