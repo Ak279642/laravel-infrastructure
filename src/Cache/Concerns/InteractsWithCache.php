@@ -7,6 +7,7 @@ namespace Ak279642\LaravelInfrastructure\Cache\Concerns;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
 use Ak279642\LaravelInfrastructure\Cache\RequestReadCache;
 use Ak279642\LaravelInfrastructure\Cache\TargetedEloquentWrites;
+use Ak279642\LaravelInfrastructure\Cache\SqlCacheDependency;
 use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Observers\CacheObserver;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -96,7 +97,11 @@ trait InteractsWithCache
         // Unscoped list/detail caches carry the model tag; scoped caches
         // intentionally do not. Invalidate both without flushing unaffected
         // owner partitions.
-        $tags = CacheTag::merge([static::cacheTag()], $this->getCacheInvalidationTags());
+        $tags = CacheTag::merge(
+            [static::cacheTag()],
+            $this->getCacheInvalidationTags(),
+            SqlCacheDependency::affectedRowTags($this),
+        );
         $callback = function () use ($method, $tags): void {
             $observer = app(CacheObserver::class);
             $observer->{$method}($this, $tags);
