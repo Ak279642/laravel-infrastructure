@@ -22,6 +22,16 @@ final class SqlCacheDependency
      * Every database write must invalidate it, without flushing all normal
      * table-specific repository cache entries.
      */
+    /**
+     * Targeted owner partitions still depend on writes that do not dispatch
+     * reliable per-row Eloquent lifecycle events (bulk/raw/unknown writes).
+     * A verified single-row Eloquent event does not invalidate this tag.
+     */
+    public static function untrackedTableTag(Connection $connection, string $table): string
+    {
+        return self::tableTag($connection, $table).':untracked-write';
+    }
+
     public static function unknownReadTag(Connection $connection): string
     {
         return self::databaseTag($connection).':unknown-read';
