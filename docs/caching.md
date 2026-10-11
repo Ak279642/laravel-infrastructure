@@ -220,15 +220,17 @@ The application does **not** need
 `BaseRepository::cacheReadPolicy()` to enable persistent caching for
 authenticated actors.
 
-The package isolates entries using the authenticated subject's class, ID and
-a SHA-256 snapshot of the current Eloquent model attributes. It also uses
-the request's verified actor type, partner ID and partner actor (when present).
+The package isolates entries using an authenticated subject's class, ID and
+a SHA-256 snapshot of current Eloquent attributes when a subject model exists.
+It also uses actor type, partner ID and partner actor (when present).
 Normal Laravel `Request::user()` / default guard sessions work, as do
-applications whose trusted authentication middleware populates request
-attributes `user`, `user_type`, and `user_id`. If the request attributes
-indicate an actor but the subject is missing or its ID does not match,
-**shared caching is bypassed**. Guests and system jobs get separate cache
-partitions.
+applications whose **trusted authentication middleware** populates request
+attributes `user_type` and `user_id`, with an optional `user` model.
+If an actor type/ID is incomplete or conflicts with the attached model,
+**shared caching is bypassed**. When only the trusted scalar type/ID is
+available, the package partitions by that pair but cannot fingerprint role or
+status; those changes must be covered by SQL/visibility keys, dependencies, or
+an explicit shorter TTL. Guests and system jobs have separate partitions.
 
 The effective SQL/global-scope bindings, operation parameters, repository and
 model identity continue to contribute to the cache key. This is strictly
