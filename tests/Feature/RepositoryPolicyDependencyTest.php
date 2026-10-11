@@ -10,6 +10,7 @@ use Ak279642\LaravelInfrastructure\Contracts\CacheableModel;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -79,6 +80,24 @@ final class RepositoryPolicyDependencyTest extends TestCase
         self::assertSame(2, $repository->calculationCount);
     }
 
+    public function test_sql_read_during_scoped_cache_key_compilation_is_a_dependency(): void
+    {
+        if (! app(CacheManager::class)->supportsTags()) {
+            self::markTestSkipped('A tag-capable Redis store is required.');
+        }
+
+        $repository = new VisibilityKeyRepository(new PolicyDependencyRecord, app(CacheManager::class));
+
+        self::assertSame('hidden', $repository->keyBasedValue());
+        self::assertSame('hidden', $repository->keyBasedValue());
+        self::assertSame(1, $repository->calculationCount);
+
+        DB::table('policy_test_access')->where('id', 1)->update(['allowed' => true]);
+
+        self::assertSame('visible', $repository->keyBasedValue());
+        self::assertSame(2, $repository->calculationCount);
+    }
+
     public function test_unrelated_writes_do_not_evict_policy_or_model_cache(): void
     {
         if (! app(CacheManager::class)->supportsTags()) {
@@ -130,6 +149,31 @@ final class PolicyDependencyRepository extends BaseRepository
     public function policyBasedValue(): string
     {
         return $this->cacheRemember('policyBasedValue', function (): string {
+            $this->calculationCount++;
+
+            return $this->visible ? 'visible' : 'hidden';
+        });
+    }
+}
+
+
+final class VisibilityKeyRepository extends BaseRepository
+{
+    public int $calculationCount = 0;
+    private bool $visible = false;
+
+    protected function globalQueryFilter(Builder $query): Builder
+    {
+        $this->visible = (bool) DB::table('policy_test_access')
+            ->where('id', 1)
+            ->value('allowed');
+
+        return $query;
+    }
+
+    public function keyBasedValue(): string
+    {
+        return $this->cacheRemember('keyBasedValue', function (): string {
             $this->calculationCount++;
 
             return $this->visible ? 'visible' : 'hidden';
