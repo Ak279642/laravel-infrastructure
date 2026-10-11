@@ -7,6 +7,7 @@ namespace Ak279642\LaravelInfrastructure;
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\AutomaticQueryInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\SqlReadTracker;
+use Ak279642\LaravelInfrastructure\Cache\TargetedEloquentWrites;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Console\Commands\DatabaseBackupCommand;
 use Ak279642\LaravelInfrastructure\Console\Commands\MediaRenameCommand;
@@ -55,6 +56,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
 
         $this->app->singleton(AutomaticQueryInvalidator::class);
         $this->app->scoped(SqlReadTracker::class);
+        $this->app->scoped(TargetedEloquentWrites::class);
 
         $this->app->singleton(CacheObserver::class, fn ($app): CacheObserver => new CacheObserver(
             $app->make(CacheInvalidator::class),
