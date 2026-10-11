@@ -162,12 +162,16 @@ final class CustomLog
 
         $message = (string) LogContextRedactor::redact($message);
 
-        // Generic package domains and application-specific domains are resolved
-        // from channels owned by config/logging.php.
+        // Explicit domain mappings win, followed by convention-based Laravel
+        // channels and finally the package's default channel. The host app
+        // owns every channel definition, path and rotation policy.
+        $mappedChannel = config('laravel-infrastructure.logging.domain_channels.'.$domainName);
         $namedChannel = 'domain_'.$domainName;
-        $channel = config('logging.channels.'.$namedChannel) !== null
-            ? $namedChannel
-            : config('laravel-infrastructure.logging.channel');
+        $channel = is_string($mappedChannel) && $mappedChannel !== ''
+            ? $mappedChannel
+            : (config('logging.channels.'.$namedChannel) !== null
+                ? $namedChannel
+                : config('laravel-infrastructure.logging.channel'));
 
         try {
             $logger = app('log');
