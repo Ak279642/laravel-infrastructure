@@ -54,7 +54,8 @@ final class SqlBoundReadPartitions
             if ($query['connection'] !== $connection
                 || ! preg_match('/^select\b/i', $sql)
                 || preg_match_all($tableMention, $sql) !== 1
-                || preg_match('/\bor\b/i', $sql)
+                || preg_match('/\b(?:or|xor|not|union|intersect|except|case|when|then|else)\b/i', $sql)
+                || str_contains($sql, ';')
                 || ! preg_match('/\bwhere\b([\s\S]*?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)/i', $sql, $whereMatch, PREG_OFFSET_CAPTURE)) {
                 return [];
             }
