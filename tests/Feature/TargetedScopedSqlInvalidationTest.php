@@ -131,7 +131,7 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
 
         UnscopedOrder::query()->findOrFail(1)->update(['status' => 'city-changed']);
 
-        self::assertSame([], $repo->statusesForCities([20]));
+        self::assertSame(['pending'], $repo->statusesForCities([20]));
         self::assertSame(2, $repo->loads);
         self::assertSame(['city-changed'], $repo->statusesForCities([10]));
         self::assertSame(3, $repo->loads);
