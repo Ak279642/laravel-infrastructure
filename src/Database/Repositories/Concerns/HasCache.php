@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Database\Repositories\Concerns;
 
+use Ak279642\LaravelInfrastructure\Cache\AuthenticatedCacheContext;
 use Ak279642\LaravelInfrastructure\Cache\CacheKey;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Cache\CacheTag;
@@ -110,8 +111,9 @@ trait HasCache
      * Return ['mode' => 'request'] for one-request memoization,
      * ['mode' => 'none'] to bypass, or ['mode' => 'persistent',
      * 'params' => [...], 'ttl' => 120] to customize the cache identity/TTL.
-     * The policy must include any authorization context that is not already
-     * represented by Eloquent scopes and their SQL bindings.
+     * The package automatically includes the verified authenticated subject,
+     * role/status snapshot and scoped SQL in cache keys. Add a custom policy
+     * only for authorization state outside those identities or SQL bindings.
      *
      * @return array<string, mixed>|null
      */
@@ -153,14 +155,30 @@ trait HasCache
 
         if ($observeDependencies) {
             $observedPolicy = app(SqlReadTracker::class)->capture(
-                fn (): ?array => $this->cacheReadPolicy($operation, $params),
+                fn (): array => [
+                    'policy' => $this->cacheReadPolicy($operation, $params),
+                    'actor' => AuthenticatedCacheContext::resolve(),
+                ],
             );
-            $policy = $observedPolicy['value'];
+            $policy = $observedPolicy['value']['policy'];
+            $actorContext = $observedPolicy['value']['actor'];
             $policyDependencies = $observedPolicy['tags'];
             $policyUnsafe = $observedPolicy['unsafe'];
         } else {
             $policy = $this->cacheReadPolicy($operation, $params);
+            $actorContext = AuthenticatedCacheContext::resolve();
         }
+
+        // If middleware populated an incomplete/unverified actor, never
+        // publish a shared cache entry. No operation allowlist is necessary.
+        if (! $actorContext['cacheable']) {
+            return $callback();
+        }
+
+        // Subject identity and authorization-relevant model attributes are
+        // isolated for every inherited or custom repository read.
+        $params['__authenticated_actor'] = $actorContext['identity'];
+
         if ($policy !== null) {
             $mode = $policy['mode'] ?? 'persistent';
             if (! in_array($mode, ['persistent', 'request', 'none'], true)) {
