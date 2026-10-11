@@ -47,6 +47,7 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         Schema::create('targeted_scope_orders', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('city_id')->default(10);
             $table->string('status');
         });
 
@@ -100,6 +101,54 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         $this->actor(2);
         self::assertSame(['done'], $repo->statuses());
         self::assertSame(3, $repo->loads);
+    }
+
+    public function test_simple_explicit_owner_sql_is_targeted_without_model_cache_options(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForUser(1));
+        self::assertSame(['pending'], $repo->statusesForUser(2));
+        self::assertSame(2, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(1)->update(['status' => 'changed']);
+
+        self::assertSame(['pending'], $repo->statusesForUser(2));
+        self::assertSame(2, $repo->loads);
+        self::assertSame(['changed'], $repo->statusesForUser(1));
+        self::assertSame(3, $repo->loads);
+    }
+
+    public function test_admin_city_in_predicates_invalidate_only_affected_city_partitions(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForCities([10]));
+        self::assertSame([], $repo->statusesForCities([20]));
+        self::assertSame(2, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(1)->update(['status' => 'city-changed']);
+
+        self::assertSame([], $repo->statusesForCities([20]));
+        self::assertSame(2, $repo->loads);
+        self::assertSame(['city-changed', 'pending'], $repo->statusesForCities([10]));
+        self::assertSame(3, $repo->loads);
+    }
+
+    public function test_complex_or_predicates_keep_safe_table_wide_invalidation(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending', 'pending'], $repo->statusesForComplexOrUser(1));
+        self::assertSame(1, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(2)->update(['status' => 'changed']);
+
+        self::assertSame(['pending', 'changed'], $repo->statusesForComplexOrUser(1));
+        self::assertSame(2, $repo->loads);
     }
 
     public function test_transfer_invalidates_both_old_and_new_owner_partitions(): void
@@ -187,5 +236,36 @@ final class TargetedScopeRepository extends BaseRepository
 
             return $this->query()->orderBy('id')->pluck('status')->all();
         });
+    }
+
+    public function statusesForUser(int $userId): array
+    {
+        return $this->cacheRemember('statusesForUser', function () use ($userId): array {
+            $this->loads++;
+
+            return $this->query()->where('targeted_scope_orders.user_id', $userId)
+                ->orderBy('id')->pluck('status')->all();
+        }, ['owner' => $userId]);
+    }
+
+    public function statusesForCities(array $cities): array
+    {
+        return $this->cacheRemember('statusesForCities', function () use ($cities): array {
+            $this->loads++;
+
+            return $this->query()->whereIn('targeted_scope_orders.city_id', $cities)
+                ->orderBy('id')->pluck('status')->all();
+        }, ['cities' => $cities]);
+    }
+
+    public function statusesForComplexOrUser(int $userId): array
+    {
+        return $this->cacheRemember('statusesForOrUser', function () use ($userId): array {
+            $this->loads++;
+
+            return $this->query()->where('targeted_scope_orders.user_id', $userId)
+                ->orWhere('targeted_scope_orders.user_id', 2)
+                ->orderBy('id')->pluck('status')->all();
+        }, ['owner' => $userId]);
     }
 }
