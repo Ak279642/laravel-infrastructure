@@ -145,6 +145,9 @@ final class AutomaticSqlInvalidationTest extends TestCase
     public function test_unrelated_table_writes_preserve_precisely_observed_cache_hits(): void
     {
         $this->requireTaggedStore();
+        // This regression covers the automatic path without optional
+        // application-declared broad cross-table relationships.
+        config()->set('laravel-infrastructure.auto_invalidation.table_dependencies', []);
         $repository = $this->repository();
 
         self::assertSame('before', $repository->itemName());
@@ -195,7 +198,7 @@ final class WatchedRepository extends BaseRepository
 
     public function pivotCount(): int
     {
-        return $this->cacheRemember('observedPivotCount', function (): int {
+        return (int) $this->cacheRemember('observedPivotCount', function (): int {
             $this->pivotQueries++;
 
             return (int) DB::table('watched_items')
