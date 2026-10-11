@@ -15,7 +15,7 @@ use Illuminate\Database\Events\QueryExecuted;
  */
 final class SqlReadTracker
 {
-    /** @var list<array{tags: array<string, true>, unsafe: bool, queries: list<array{sql:string,bindings:array,connection:\Illuminate\Database\Connection}>}> */
+    /** @var list<array{tags: array<string, true>, unsafe: bool, cachedDependencies: array<string,true>, queries: list<array{sql:string,bindings:array,connection:\Illuminate\Database\Connection}>}> */
     private array $frames = [];
 
     public function observe(QueryExecuted $event): void
@@ -61,6 +61,25 @@ final class SqlReadTracker
         $this->dependOn($tags);
     }
 
+    /**
+     * A nested cache HIT may depend on rows outside the enclosing loader's
+     * executed SQL. Keep its tag footprint separate so a root-table scope
+     * cannot be inferred incorrectly from only the visible outer SELECTs.
+     *
+     * @param list<string> $tags
+     */
+    public function dependOnCached(array $tags): void
+    {
+        $this->dependOn($tags);
+
+        foreach ($this->frames as &$frame) {
+            foreach ($tags as $tag) {
+                $frame['cachedDependencies'][$tag] = true;
+            }
+        }
+        unset($frame);
+    }
+
     /** @param list<string> $tags */
     public function dependOn(array $tags): void
     {
@@ -81,7 +100,7 @@ final class SqlReadTracker
      */
     public function capture(callable $callback): array
     {
-        $this->frames[] = ['tags' => [], 'unsafe' => false, 'queries' => []];
+        $this->frames[] = ['tags' => [], 'unsafe' => false, 'queries' => [], 'cachedDependencies' => []];
 
         try {
             $value = $callback();
@@ -94,6 +113,7 @@ final class SqlReadTracker
             'tags' => array_keys($frame['tags']),
             'unsafe' => $frame['unsafe'],
             'queries' => $frame['queries'],
+            'cachedDependencies' => array_keys($frame['cachedDependencies']),
         ];
     }
 }
