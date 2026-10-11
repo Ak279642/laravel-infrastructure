@@ -132,7 +132,14 @@ final class SqlBoundReadPartitions
             $best = null;
             foreach ($andParts as [$part, $partOffset]) {
                 $proved = self::prove($part, $offset + $partOffset, $sql, $bindings, $root, $connection);
-                if ($proved !== null && ($best === null || count($proved) < count($best))) {
+                // Actor-bound predicates generally select fewer rows than
+                // city/tier filters, even when an actor OR has multiple tags.
+                if ($proved !== null && (
+                    $best === null
+                    || self::priority($proved) < self::priority($best)
+                    || (self::priority($proved) === self::priority($best)
+                        && count($proved) < count($best))
+                )) {
                     $best = $proved;
                 }
             }
@@ -176,6 +183,26 @@ final class SqlBoundReadPartitions
         }
 
         return CacheTag::tags(...$tags);
+    }
+
+    /** @param list<string> $tags */
+    private static function priority(array $tags): int
+    {
+        // Root-column names are embedded in the hashed tag namespace, not
+        // actor values. Lower rank means a narrower typical permission scope.
+        foreach ([
+            'admin_id', 'assigned_admin_id', 'created_by_admin_id',
+            'user_id', 'agent_id', 'partner_id', 'owner_id', 'tenant_id',
+            'assigned_to', 'assigned_by', 'created_by',
+        ] as $column) {
+            foreach ($tags as $tag) {
+                if (str_contains($tag, ':column:'.$column.':')) {
+                    return 0;
+                }
+            }
+        }
+
+        return 1;
     }
 
     /** @return array{string,int} */
