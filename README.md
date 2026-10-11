@@ -23,6 +23,8 @@ Use the package for infrastructure; keep your business models, migrations, autho
 - [Artisan commands and operations](#artisan-commands-and-operations)
 - [Configuration reference](#configuration-reference)
 - [Troubleshooting and limitations](#troubleshooting-and-limitations)
+- [Full public API: repositories and database queries](#full-public-api-repositories-and-database-queries)
+- [Full public API: caching utilities](#full-public-api-caching-utilities)
 - [Complete guides and testing](#complete-guides-and-testing)
 
 ## What is included?
@@ -776,6 +778,353 @@ Other file, logging and database-backup options are documented in their individu
 - **Missing signed private asset:** check URL expiry, guard, model/field ownership policy and whether the stored path changed.
 - **Unexpected database requests:** public file delivery avoids DB reads, but protected delivery intentionally reloads models to authorize access.
 - **Backups fail:** verify the matching native dump client is installed, filesystem disk is writable, and database connection settings are correct.
+
+
+## Full public API: repositories and database queries
+
+The cookbook above shows typical use; the tables below document the actual callable API so you can use the README without reading the implementation.
+
+### Repository construction and configuration
+
+§BaseRepository§ receives an Eloquent model, §CacheManager§ and an optional §ValidationContext§. Define a concrete model constructor for dependency injection:
+
+~~~php
+public function __construct(
+    Product $model,
+    \Ak279642\LaravelInfrastructure\Cache\CacheManager $cache,
+    ?\Ak279642\LaravelInfrastructure\Validation\ValidationContext $context = null,
+) {
+    parent::__construct($model, $cache, $context);
+}
+~~~
+
+| Repository property | Meaning |
+| --- | --- |
+| §$allowedFilters§ | Allowed root-table filter columns |
+| §$allowedRelationFilters§ | Allowed dotted relation columns such as §category.slug§ |
+| §$searchable§ | Root/relation fields eligible for text search |
+| §$allowedSorts§ | Allowed sort columns |
+| §$allowedRelations§ | Allowed eager loads and relation helpers |
+| §$allowedScopes§ | Allowed local scope names |
+| §$defaultRelations§ | Relations loaded by §buildQuery()§ |
+| §$defaultOrder§ | Default column → direction map, overridden by explicit §sort§ |
+| §$strictFilters§ | If §true§, throw on disallowed filters, relations and sorts; otherwise skip them |
+
+### Repository method signatures
+
+| Operation | Signature | Result / behavior |
+| --- | --- | --- |
+| Model | §getModel(): Model§ | Bound Eloquent model |
+| Builder | §query(): Builder§ | Fresh scoped Eloquent builder; not automatically cached |
+| Query restriction | §filterQuery(callable $filter): static§ | New repository clone with a query restriction |
+| All | §all(array $columns = ['*']): Collection§ | Cache-aware collection |
+| Filtered | §get(array $filters = [], array $columns = ['*']): Collection§ | Filtered collection |
+| First | §first(array $filters = [], array $columns = ['*']): ?Model§ | First matching model or §null§ |
+| Required first | §firstOrFail(array $filters = [], array $columns = ['*']): Model§ | First matching model or 404-style exception |
+| Find by key | §find(int\|string $id, array $with = [], array $columns = ['*']): ?Model§ | Nullable model with optional eager loading |
+| Required key | §findOrFail(int\|string $id, array $with = [], array $columns = ['*']): Model§ | Model or not-found exception |
+| Create | §create(array $data, bool $refresh = false, array $with = []): Model§ | Persist one record |
+| Update | §update(int\|string\|Model $id, array $data, bool $refresh = false, array $with = []): Model§ | Update one record |
+| Upsert-like | §updateOrCreate(array $attributes, array $values = []): Model§ | Eloquent update-or-create, not a SQL bulk upsert |
+| Delete | §delete(int\|string\|Model $id): bool§ | Delete one model |
+| Restore | §restore(int\|string\|Model $id): bool§ | Restore when supported |
+| Force delete | §forceDelete(int\|string\|Model $id): bool§ | Permanently delete |
+| Truncate | §truncate(): void§ | Truncate model table and invalidate cache |
+| Bulk update | §bulkUpdate(array $data, array $filters = []): int§ | Save matching hydrated models, returning affected count |
+| Bulk delete | §bulkDelete(array $filters = []): int§ | Delete matching hydrated models |
+| Bulk restore | §bulkRestore(array $filters = []): int§ | Restore soft-deleted models; §0§ for unsupported models |
+| Bulk force delete | §bulkForceDelete(array $filters = []): int§ | Permanently delete matching models |
+| Find with conditions | §findWhere(mixed $id, array $where = [], array $with = []): ?Model§ | Key plus validated additional where fields |
+| Find batch | §findWhereIn(string $field, array $values, array $where = []): Collection§ | Unique matching models in requested identifier order |
+| Duplicate | §findDuplicate(array $fields, int\|string\|null $ignore = null, array $where = []): ?Model§ | Used by repository-backed uniqueness validation |
+
+Additional helper methods and signatures:
+
+~~~php
+$repo->exists(array $filters = []): bool;
+$repo->doesntExist(array $filters = []): bool;
+$repo->count(array $filters = []): int;
+$repo->sum(string $column, array $filters = []);   // number/string/null
+$repo->avg(string $column, array $filters = []);
+$repo->min(string $column, array $filters = []);
+$repo->max(string $column, array $filters = []);
+$repo->pluck(string $column, ?string $key = null, array $filters = []);
+$repo->groupCount(string $column, array $filters = []);
+~~~
+
+The above code illustrates method signatures (remove inline argument type declarations when making actual method calls). All aggregate/selection column identifiers are schema-checked. §findWhereIn()§ preserves first-seen ID order and normalizes numeric primary keys.
+
+### Query metadata and operator examples
+
+~~~php
+$filters = [
+    'status' => 'active',
+    'price' => ['operator' => 'between', 'value' => [100, 500]],
+    'category.slug' => 'electronics',
+    'search' => 'wireless headphones',
+    'search_columns' => ['name', 'category.name'],
+    'with' => ['category'],
+    'with_count' => ['orders'],
+    'scopes' => ['published'],
+    'sort' => ['-created_at', 'price'],
+];
+$items = $products->get($filters);
+
+// Supported equivalent operator shape:
+$items = $products->get(['price' => ['>=', 100]]);
+
+// Alternative sort shape:
+$items = $products->get(['sort_by' => 'price', 'sort_order' => 'desc']);
+~~~
+
+Search splits terms on whitespace, matches allowed root/relation columns and constrains requested §search_columns§ to the configured §$searchable§ list. On PostgreSQL, text search/filter comparisons may use §ILIKE§; on other supported drivers the implementation applies its compatible fallback. For relation filters, use the separate §$allowedRelationFilters§ list **and** allow the relation itself.
+
+Supported operators: §=§, §!=§, §<>§, §>§, §>=§, §<§, §<=§, §like§, §ilike§, §in§, §in_or_null§, §not_in§, §between§, §not_between§, §null§ and §not_null§. Filter operator handling is implemented by the package; it is not a general-purpose raw SQL expression language.
+
+### Sorting, local scopes, relation and streaming helpers
+
+~~~php
+$products->orderBy('price', 'desc')->get();
+$products->orderByDesc('created_at')->get();
+$products->latest('created_at')->get();
+$products->oldest('created_at')->get();
+$products->scope('published')->paginate(perPage: 20);
+
+$products->with(['category'])->get();
+$products->withCount('orders')->get();
+$products->withSum('orders', 'total')->get();   // only if orders.total exists
+$products->withAvg('orders', 'total')->get();   // only if orders.total exists
+
+$product = $products->findOrFail(12);
+$products->load($product, ['category']);
+$products->loadMissing($product, ['category']);
+~~~
+
+For §withSum()§ and §withAvg()§, the related relation and column must exist; unsafe and unsupported nested aggregates are rejected. §scope()§ and sorting modifiers change the repository object's query configuration: use a scoped instance when mixing independent query chains. Only allowed scopes/relations/sorts are executed.
+
+~~~php
+$products->paginate(filters: [], perPage: 15, columns: ['*'],
+    pageName: 'page', page: null, useCache: true, cacheTtl: null);
+$products->simplePaginate(perPage: 15);
+$products->cursorPaginate(perPage: 15);
+$products->chunk(500, function ($rows): void { /* process batch */ });
+foreach ($products->lazy(500) as $row) { /* process */ }
+foreach ($products->cursor() as $row) { /* process */ }
+~~~
+
+## Full public API: caching utilities
+
+These types are injectable services. Normal application repositories do **not** need to use them directly; they are available for reporting, custom SQL and nonrepository workloads.
+
+### CacheManager: storage, tags, locks and atomic operations
+
+~~~php
+use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
+use Ak279642\LaravelInfrastructure\Cache\CacheTag;
+
+$cache = app(CacheManager::class);
+$tags = [CacheTag::fromModel(\App\Models\Product::class)];
+
+$cache->put('catalog:version', 4, CacheTtl::HOUR, $tags);
+$version = $cache->get('catalog:version', 0, $tags);
+$present = $cache->has('catalog:version', $tags);
+$absent = $cache->missing('catalog:version', $tags);
+
+$all = $cache->many(['catalog:version', 'catalog:updated'], $tags);
+$cache->putMany(['catalog:a' => 1, 'catalog:b' => 2], 300, $tags);
+$cache->add('catalog:first-writer', true, 30, $tags);
+$cache->increment('catalog:counter', 1, $tags);
+$cache->decrement('catalog:counter', 1, $tags);
+
+$cached = $cache->remember('catalog:count', CacheTtl::MINUTES_5,
+    fn () => \App\Models\Product::query()->count(), $tags);
+
+$cache->forget('catalog:a', $tags);
+$cache->forgetMany(['catalog:b', 'catalog:version'], $tags);
+$cache->flushTags($tags);
+~~~
+
+Other public storage methods: §forever()§, §putForever()§, §rememberForever()§, §pull()§, §refresh()§, §flushAll()§, §supportsTags()§, §getStore()§, and §lock()§. §flushAll()§ affects the **entire configured cache store**; prefer relevant tags. Store a §null§ value when appropriate—the cache layer distinguishes a missing entry from cached §null§.
+
+**Prevent cache stampedes** with an atomic lock around population:
+
+~~~php
+$value = $cache->rememberLocked(
+    key: 'catalog:expensive-query',
+    ttl: 120,
+    callback: fn () => \App\Models\Product::query()->count(),
+    tags: $tags,
+    lockSeconds: 10,
+    waitSeconds: 3,
+);
+
+$lock = $cache->lock('catalog:exclusive-job', 30);
+if ($lock !== null && $lock->get()) {
+    try {
+        // Protected work.
+    } finally {
+        $lock->release();
+    }
+}
+~~~
+
+The lock-based loader rechecks for values populated by competing workers. Redis/shared lock support is recommended for multiple PHP workers and servers.
+
+### Cache keys, tags, TTL constants and trait helpers
+
+~~~php
+use Ak279642\LaravelInfrastructure\Cache\CacheKey;
+use Ak279642\LaravelInfrastructure\Cache\CacheTag;
+use Ak279642\LaravelInfrastructure\Cache\CacheTtl;
+
+$key = CacheKey::make('metrics', ['tenant' => 7, 'month' => '2026-10']);
+$sortedSetKey = CacheKey::make('reports', [
+    'cities' => CacheKey::unordered([5, 3, 5, 1]),
+]);
+$readable = CacheKey::readable('report', ['status' => 'active']);
+
+$modelTag = CacheTag::fromModel(\App\Models\Product::class);
+$entityTag = CacheTag::entity('product', 12);
+$tags = CacheTag::merge(
+    CacheTag::model('product', 12),
+    [$modelTag, 'catalog'],
+);
+
+$seconds = CacheTtl::SECONDS_30;
+$minutes = CacheTtl::MINUTES_10;
+$hours = CacheTtl::HOURS_6;
+$days = CacheTtl::DAYS_7;
+~~~
+
+§CacheTtl§ also includes §SECOND§, §SECONDS_5§, §SECONDS_10§, §MINUTE§, §MINUTES_2§, §MINUTES_5§, §MINUTES_15§, §MINUTES_30§, §HOUR§, §HOURS_2§, §HOURS_3§, §HOURS_12§, §DAY§, §DAYS_2§, §DAYS_3§, §DAYS_5§, §DAYS_14§, §MONTH§, §MONTHS_3§, §MONTHS_6§, §YEAR§, and aliases §SHORT§ / §MEDIUM§ / §LONG§ / §WEEK§. All TTL constants are **seconds**.
+
+The §Ak279642\LaravelInfrastructure\Cache\Concerns\Cacheable§ trait can be used on application helper classes for protected methods: §cacheGet()§, §cacheMany()§, §cacheHas()§, §cachePut()§, §cacheRemember()§, §cacheRememberForever()§, §cacheForget()§, §cacheInvalidateTags()§, §cacheInvalidateModel()§, §cacheRefresh()§, §cacheLock()§, §cacheManager()§ and §cacheInvalidator()§. It is distinct from the Eloquent model's §InteractsWithCache§ trait.
+
+~~~php
+use Ak279642\LaravelInfrastructure\Cache\Concerns\Cacheable;
+
+class ProductMetrics
+{
+    use Cacheable;
+
+    public function summary(): array
+    {
+        return $this->cacheRemember(
+            'metrics:products:summary',
+            120,
+            fn (): array => ['products' => \App\Models\Product::query()->count()],
+            [\Ak279642\LaravelInfrastructure\Cache\CacheTag::fromModel(\App\Models\Product::class)],
+        );
+    }
+}
+~~~
+
+### CacheInvalidator and transaction-safe invalidation
+
+~~~php
+use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
+use Ak279642\LaravelInfrastructure\Cache\CacheTag;
+use Illuminate\Support\Facades\DB;
+
+$invalidator = app(CacheInvalidator::class);
+$modelTag = CacheTag::fromModel(\App\Models\Product::class);
+
+DB::transaction(function () use ($invalidator, $modelTag): void {
+    DB::table('products')->where('id', 12)->update(['price' => 800]);
+
+    $invalidator->invalidateAfterCommit(
+        [$modelTag],
+        DB::connection(),
+    );
+});
+~~~
+
+The API also includes §forget()§, §forgetMany()§, §invalidateTags()§, §invalidateModel()§, §invalidateScope()§ and §refresh()§. §invalidateAfterCommit()§ clears request memoization immediately and schedules persistent invalidation **after commit**; rollback discards it. This is useful for raw/pivot mutations when the SQL watcher is disabled or the mutation's dependent models cannot be inferred.
+
+### Batched and SQL-dependent cached reads
+
+**Batch loading:** one loader call handles only the IDs missing from cache and returns an ID-keyed array.
+
+~~~php
+use Ak279642\LaravelInfrastructure\Cache\CacheManager;
+use Ak279642\LaravelInfrastructure\Cache\CacheTag;
+use Illuminate\Support\Facades\DB;
+
+$cache = app(CacheManager::class);
+$ids = [12, 18, 12];
+
+$values = $cache->rememberBatch(
+    'product:orders-total', $ids, 600,
+    function (array $missingIds): array {
+        return DB::table('orders')
+            ->whereIn('product_id', $missingIds)
+            ->selectRaw('product_id, SUM(total) AS total')
+            ->groupBy('product_id')
+            ->pluck('total', 'product_id')
+            ->all();
+    },
+    tagsForId: fn (int $id): array => [
+        CacheTag::fromModel(\App\Models\Order::class),
+        CacheTag::entity('product', $id),
+    ],
+    connection: DB::connection(),
+);
+~~~
+
+If you **omit** §tagsForId§, §rememberBatch()§ can discover dependency tables itself **only when automatic SQL invalidation is enabled**. When the watcher is off and no tag resolver is provided, it computes without shared caching. Explicit tag resolvers allow caching under a model/table dependency while the watcher is off.
+
+**One custom SQL value with known dependencies:**
+
+~~~php
+$value = $cache->rememberWithDependencies(
+    'sales:month:2026-10',
+    600,
+    fn () => DB::table('orders')->whereMonth('created_at', 10)->sum('total'),
+    [CacheTag::fromModel(\App\Models\Order::class)],
+    DB::connection(),
+);
+~~~
+
+Related APIs: §getWithDependencies($key, $default, $tags, $connection)§ and §putWithDependencies($key, $value, $ttl, $tags, $connection)§. They avoid reading/writing unsafe shared entries during an active transaction and require nonempty dependencies.
+
+**Discover SQL read dependencies automatically:**
+
+~~~php
+$report = $cache->rememberObserved(
+    key: 'reports:city:5',
+    ttl: 300,
+    callback: fn () => DB::table('orders')
+        ->where('city_id', 5)
+        ->sum('total'),
+    rootConnection: DB::connection(),
+    connection: DB::connection(),
+);
+~~~
+
+§rememberObserved()§ needs §LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION=true§ and a tag-capable store; otherwise it executes the callback. Advanced parameters §baseTags§, §lockSeconds§, §waitSeconds§, §ignoreObservedTags§, §rootTable§, and §rootModelTag§ support repository internals. Do not use §ignoreObservedTags§ to drop dependencies unless you can **prove** a safe bounded read.
+
+### Request cache and cache identity rules
+
+§RequestReadCache::remember($key, $callback)§ memoizes results in the current Laravel request, including §null§; §RequestReadCache::clear()§ discards them. It is not a replacement for persistent Redis caching.
+
+Automatic authenticated cache identity recognizes Laravel's authenticated request user, or trusted authentication middleware's §user_type§ / §user_id§ attributes and optional user/partner models. A partial/mismatched actor model causes the **persistent** cache to be bypassed. The SQL query must still enforce actual user/agent/admin/partner permissions. External permission state requires its own identity dependency or uncached reads.
+
+### Selective SQL partitions and fallback behavior
+
+| Read/write pattern | Package behavior |
+| --- | --- |
+| Conjunctive root filter, e.g. §orders.user_id = ?§ | Can infer a per-owner dependency tag from SQL and bound values |
+| Proven grouped OR, e.g. §(orders.user_id = ? OR orders.agent_id = ?)§ | Can target only involved owner/agent partitions |
+| Shared city/tier readers with bounded predicates | Can target shared city/tier partitions; not necessarily one admin ID |
+| Unrestricted OR, negation, unknown SQL, unbounded dashboards | Conservatively retain broad tags |
+| Single-row Eloquent old/new owner transfer | Invalidates both prior and new partitions when provable |
+| Bulk SQL or raw query-builder writes | Can invalidate broad table/untracked-write tags; cannot infer old owners without additional data |
+| Out-of-process SQL write | Must call external table invalidation (or send committed CDC event to it) |
+| Unknown third-party API, time expiry or role context never read in observed operation | Cannot be inferred from SQL; use TTL/context/bypass |
+
+The SQL observer does not run extra SELECTs merely to discover dependencies. It records SQL already executed in an observed read. Nested cached dependencies can propagate to parent loaders.
+
 
 ## Complete guides and testing
 
