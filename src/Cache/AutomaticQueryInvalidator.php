@@ -31,11 +31,11 @@ final class AutomaticQueryInvalidator
         }
 
         $connection = $event->connection;
-        $tags = [];
+        // Only unknown/opaque read SQL needs a database-wide cache tag.
+        // Flush that fallback tag on every write; ordinary observed reads
+        // carry precise table tags and are unaffected by unrelated tables.
+        $tags = [SqlCacheDependency::databaseTag($connection)];
         $dependencies = config('laravel-infrastructure.auto_invalidation.table_dependencies', []);
-        if ($tables === []) {
-            $tags[] = SqlCacheDependency::databaseTag($connection);
-        }
 
         foreach ($tables as $table) {
             $tags[] = SqlCacheDependency::tableTag($connection, $table);
