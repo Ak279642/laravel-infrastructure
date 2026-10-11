@@ -134,10 +134,23 @@ Child repositories inherit the package's reads, writes, caching, and invalidatio
 
 namespace App\Repositories;
 
+use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Database\Repositories\BaseRepository;
+use Ak279642\LaravelInfrastructure\Validation\ValidationContext;
+use App\Models\Product;
 
 class ProductRepository extends BaseRepository
 {
+    // Bind the abstract BaseRepository model argument to a concrete model.
+    // Laravel can now auto-resolve ProductRepository in controllers/services.
+    public function __construct(
+        Product $model,
+        CacheManager $cache,
+        ?ValidationContext $context = null,
+    ) {
+        parent::__construct($model, $cache, $context);
+    }
+
     protected array $allowedFilters = ['category_id', 'status', 'price'];
     protected array $allowedRelationFilters = ['category.slug'];
     protected array $searchable = ['name', 'category.name'];
@@ -149,7 +162,7 @@ class ProductRepository extends BaseRepository
 }
 ```
 
-The repository is resolved by Laravel's container with its `Product` model and package-provided cache manager. No application-specific base repository or cache-operation whitelist is required.
+The concrete `Product` constructor allows Laravel to auto-resolve the repository in controllers/services. Alternatively, bind `ProductRepository` explicitly in an application service provider. The package registers `CacheManager` and `ValidationContext`; it does **not** guess a repository's model. No application-specific base repository or cache-operation whitelist is required.
 
 ### 3. Inject and use it
 
