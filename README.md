@@ -792,7 +792,7 @@ The cookbook above shows typical use; the tables below document the actual calla
 
 ### Repository construction and configuration
 
-§BaseRepository§ receives an Eloquent model, §CacheManager§ and an optional §ValidationContext§. Define a concrete model constructor for dependency injection:
+`BaseRepository` receives an Eloquent model, `CacheManager` and an optional `ValidationContext`. Define a concrete model constructor for dependency injection:
 
 ~~~php
 public function __construct(
@@ -806,43 +806,43 @@ public function __construct(
 
 | Repository property | Meaning |
 | --- | --- |
-| §$allowedFilters§ | Allowed root-table filter columns |
-| §$allowedRelationFilters§ | Allowed dotted relation columns such as §category.slug§ |
-| §$searchable§ | Root/relation fields eligible for text search |
-| §$allowedSorts§ | Allowed sort columns |
-| §$allowedRelations§ | Allowed eager loads and relation helpers |
-| §$allowedScopes§ | Allowed local scope names |
-| §$defaultRelations§ | Relations loaded by §buildQuery()§ |
-| §$defaultOrder§ | Default column → direction map, overridden by explicit §sort§ |
-| §$strictFilters§ | If §true§, throw on disallowed filters, relations and sorts; otherwise skip them |
+| `$allowedFilters` | Allowed root-table filter columns |
+| `$allowedRelationFilters` | Allowed dotted relation columns such as `category.slug` |
+| `$searchable` | Root/relation fields eligible for text search |
+| `$allowedSorts` | Allowed sort columns |
+| `$allowedRelations` | Allowed eager loads and relation helpers |
+| `$allowedScopes` | Allowed local scope names |
+| `$defaultRelations` | Relations loaded by `buildQuery()` |
+| `$defaultOrder` | Default column → direction map, overridden by explicit `sort` |
+| `$strictFilters` | If `true`, throw on disallowed filters, relations and sorts; otherwise skip them |
 
 ### Repository method signatures
 
 | Operation | Signature | Result / behavior |
 | --- | --- | --- |
-| Model | §getModel(): Model§ | Bound Eloquent model |
-| Builder | §query(): Builder§ | Fresh scoped Eloquent builder; not automatically cached |
-| Query restriction | §filterQuery(callable $filter): static§ | New repository clone with a query restriction |
-| All | §all(array $columns = ['*']): Collection§ | Cache-aware collection |
-| Filtered | §get(array $filters = [], array $columns = ['*']): Collection§ | Filtered collection |
-| First | §first(array $filters = [], array $columns = ['*']): ?Model§ | First matching model or §null§ |
-| Required first | §firstOrFail(array $filters = [], array $columns = ['*']): Model§ | First matching model or 404-style exception |
-| Find by key | §find(int\|string $id, array $with = [], array $columns = ['*']): ?Model§ | Nullable model with optional eager loading |
-| Required key | §findOrFail(int\|string $id, array $with = [], array $columns = ['*']): Model§ | Model or not-found exception |
-| Create | §create(array $data, bool $refresh = false, array $with = []): Model§ | Persist one record |
-| Update | §update(int\|string\|Model $id, array $data, bool $refresh = false, array $with = []): Model§ | Update one record |
-| Upsert-like | §updateOrCreate(array $attributes, array $values = []): Model§ | Eloquent update-or-create, not a SQL bulk upsert |
-| Delete | §delete(int\|string\|Model $id): bool§ | Delete one model |
-| Restore | §restore(int\|string\|Model $id): bool§ | Restore when supported |
-| Force delete | §forceDelete(int\|string\|Model $id): bool§ | Permanently delete |
-| Truncate | §truncate(): void§ | Truncate model table and invalidate cache |
-| Bulk update | §bulkUpdate(array $data, array $filters = []): int§ | Save matching hydrated models, returning affected count |
-| Bulk delete | §bulkDelete(array $filters = []): int§ | Delete matching hydrated models |
-| Bulk restore | §bulkRestore(array $filters = []): int§ | Restore soft-deleted models; §0§ for unsupported models |
-| Bulk force delete | §bulkForceDelete(array $filters = []): int§ | Permanently delete matching models |
-| Find with conditions | §findWhere(mixed $id, array $where = [], array $with = []): ?Model§ | Key plus validated additional where fields |
-| Find batch | §findWhereIn(string $field, array $values, array $where = []): Collection§ | Unique matching models in requested identifier order |
-| Duplicate | §findDuplicate(array $fields, int\|string\|null $ignore = null, array $where = []): ?Model§ | Used by repository-backed uniqueness validation |
+| Model | `getModel(): Model` | Bound Eloquent model |
+| Builder | `query(): Builder` | Fresh scoped Eloquent builder; not automatically cached |
+| Query restriction | `filterQuery(callable $filter): static` | New repository clone with a query restriction |
+| All | `all(array $columns = ['*']): Collection` | Cache-aware collection |
+| Filtered | `get(array $filters = [], array $columns = ['*']): Collection` | Filtered collection |
+| First | `first(array $filters = [], array $columns = ['*']): ?Model` | First matching model or `null` |
+| Required first | `firstOrFail(array $filters = [], array $columns = ['*']): Model` | First matching model or 404-style exception |
+| Find by key | `find(int\|string $id, array $with = [], array $columns = ['*']): ?Model` | Nullable model with optional eager loading |
+| Required key | `findOrFail(int\|string $id, array $with = [], array $columns = ['*']): Model` | Model or not-found exception |
+| Create | `create(array $data, bool $refresh = false, array $with = []): Model` | Persist one record |
+| Update | `update(int\|string\|Model $id, array $data, bool $refresh = false, array $with = []): Model` | Update one record |
+| Upsert-like | `updateOrCreate(array $attributes, array $values = []): Model` | Eloquent update-or-create, not a SQL bulk upsert |
+| Delete | `delete(int\|string\|Model $id): bool` | Delete one model |
+| Restore | `restore(int\|string\|Model $id): bool` | Restore when supported |
+| Force delete | `forceDelete(int\|string\|Model $id): bool` | Permanently delete |
+| Truncate | `truncate(): void` | Truncate model table and invalidate cache |
+| Bulk update | `bulkUpdate(array $data, array $filters = []): int` | Save matching hydrated models, returning affected count |
+| Bulk delete | `bulkDelete(array $filters = []): int` | Delete matching hydrated models |
+| Bulk restore | `bulkRestore(array $filters = []): int` | Restore soft-deleted models; `0` for unsupported models |
+| Bulk force delete | `bulkForceDelete(array $filters = []): int` | Permanently delete matching models |
+| Find with conditions | `findWhere(mixed $id, array $where = [], array $with = []): ?Model` | Key plus validated additional where fields |
+| Find batch | `findWhereIn(string $field, array $values, array $where = []): Collection` | Unique matching models in requested identifier order |
+| Duplicate | `findDuplicate(array $fields, int\|string\|null $ignore = null, array $where = []): ?Model` | Used by repository-backed uniqueness validation |
 
 Additional helper methods and signatures:
 
@@ -858,7 +858,7 @@ $repo->pluck('name', 'id');
 $repo->groupCount('status');
 ~~~
 
-These methods accept validated filter arrays when applicable, and aggregates validate their target columns. All aggregate/selection column identifiers are schema-checked. §findWhereIn()§ preserves first-seen ID order and normalizes numeric primary keys.
+These methods accept validated filter arrays when applicable, and aggregates validate their target columns. All aggregate/selection column identifiers are schema-checked. `findWhereIn()` preserves first-seen ID order and normalizes numeric primary keys.
 
 ### Query metadata and operator examples
 
@@ -883,9 +883,9 @@ $items = $products->get(['price' => ['>=', 100]]);
 $items = $products->get(['sort_by' => 'price', 'sort_order' => 'desc']);
 ~~~
 
-Search splits terms on whitespace, matches allowed root/relation columns and constrains requested §search_columns§ to the configured §$searchable§ list. On PostgreSQL, text search/filter comparisons may use §ILIKE§; on other supported drivers the implementation applies its compatible fallback. For relation filters, use the separate §$allowedRelationFilters§ list **and** allow the relation itself.
+Search splits terms on whitespace, matches allowed root/relation columns and constrains requested `search_columns` to the configured `$searchable` list. On PostgreSQL, text search/filter comparisons may use `ILIKE`; on other supported drivers the implementation applies its compatible fallback. For relation filters, use the separate `$allowedRelationFilters` list **and** allow the relation itself.
 
-Supported operators: §=§, §!=§, §<>§, §>§, §>=§, §<§, §<=§, §like§, §ilike§, §in§, §in_or_null§, §not_in§, §between§, §not_between§, §null§ and §not_null§. Filter operator handling is implemented by the package; it is not a general-purpose raw SQL expression language.
+Supported operators: `=`, `!=`, `<>`, `>`, `>=`, `<`, `<=`, `like`, `ilike`, `in`, `in_or_null`, `not_in`, `between`, `not_between`, `null` and `not_null`. Filter operator handling is implemented by the package; it is not a general-purpose raw SQL expression language.
 
 ### Sorting, local scopes, relation and streaming helpers
 
@@ -906,7 +906,7 @@ $products->load($product, ['category']);
 $products->loadMissing($product, ['category']);
 ~~~
 
-For §withSum()§ and §withAvg()§, the related relation and column must exist; unsafe and unsupported nested aggregates are rejected. §scope()§ and sorting modifiers change the repository object's query configuration: use a scoped instance when mixing independent query chains. Only allowed scopes/relations/sorts are executed.
+For `withSum()` and `withAvg()`, the related relation and column must exist; unsafe and unsupported nested aggregates are rejected. `scope()` and sorting modifiers change the repository object's query configuration: use a scoped instance when mixing independent query chains. Only allowed scopes/relations/sorts are executed.
 
 ~~~php
 $products->paginate(filters: [], perPage: 15, columns: ['*'],
@@ -951,7 +951,7 @@ $cache->forgetMany(['catalog:b', 'catalog:version'], $tags);
 $cache->flushTags($tags);
 ~~~
 
-Other public storage methods: §forever()§, §putForever()§, §rememberForever()§, §pull()§, §refresh()§, §flushAll()§, §supportsTags()§, §getStore()§, and §lock()§. §flushAll()§ affects the **entire configured cache store**; prefer relevant tags. Store a §null§ value when appropriate—the cache layer distinguishes a missing entry from cached §null§.
+Other public storage methods: `forever()`, `putForever()`, `rememberForever()`, `pull()`, `refresh()`, `flushAll()`, `supportsTags()`, `getStore()`, and `lock()`. `flushAll()` affects the **entire configured cache store**; prefer relevant tags. Store a `null` value when appropriate—the cache layer distinguishes a missing entry from cached `null`.
 
 **Prevent cache stampedes** with an atomic lock around population:
 
@@ -1003,9 +1003,9 @@ $hours = CacheTtl::HOURS_6;
 $days = CacheTtl::DAYS_7;
 ~~~
 
-§CacheTtl§ also includes §SECOND§, §SECONDS_5§, §SECONDS_10§, §MINUTE§, §MINUTES_2§, §MINUTES_5§, §MINUTES_15§, §MINUTES_30§, §HOUR§, §HOURS_2§, §HOURS_3§, §HOURS_12§, §DAY§, §DAYS_2§, §DAYS_3§, §DAYS_5§, §DAYS_14§, §MONTH§, §MONTHS_3§, §MONTHS_6§, §YEAR§, and aliases §SHORT§ / §MEDIUM§ / §LONG§ / §WEEK§. All TTL constants are **seconds**.
+`CacheTtl` also includes `SECOND`, `SECONDS_5`, `SECONDS_10`, `MINUTE`, `MINUTES_2`, `MINUTES_5`, `MINUTES_15`, `MINUTES_30`, `HOUR`, `HOURS_2`, `HOURS_3`, `HOURS_12`, `DAY`, `DAYS_2`, `DAYS_3`, `DAYS_5`, `DAYS_14`, `MONTH`, `MONTHS_3`, `MONTHS_6`, `YEAR`, and aliases `SHORT` / `MEDIUM` / `LONG` / `WEEK`. All TTL constants are **seconds**.
 
-The §Ak279642\LaravelInfrastructure\Cache\Concerns\Cacheable§ trait can be used on application helper classes for protected methods: §cacheGet()§, §cacheMany()§, §cacheHas()§, §cachePut()§, §cacheRemember()§, §cacheRememberForever()§, §cacheForget()§, §cacheInvalidateTags()§, §cacheInvalidateModel()§, §cacheRefresh()§, §cacheLock()§, §cacheManager()§ and §cacheInvalidator()§. It is distinct from the Eloquent model's §InteractsWithCache§ trait.
+The `Ak279642\LaravelInfrastructure\Cache\Concerns\Cacheable` trait can be used on application helper classes for protected methods: `cacheGet()`, `cacheMany()`, `cacheHas()`, `cachePut()`, `cacheRemember()`, `cacheRememberForever()`, `cacheForget()`, `cacheInvalidateTags()`, `cacheInvalidateModel()`, `cacheRefresh()`, `cacheLock()`, `cacheManager()` and `cacheInvalidator()`. It is distinct from the Eloquent model's `InteractsWithCache` trait.
 
 ~~~php
 use Ak279642\LaravelInfrastructure\Cache\Concerns\Cacheable;
@@ -1046,7 +1046,7 @@ DB::transaction(function () use ($invalidator, $modelTag): void {
 });
 ~~~
 
-The API also includes §forget()§, §forgetMany()§, §invalidateTags()§, §invalidateModel()§, §invalidateScope()§ and §refresh()§. §invalidateAfterCommit()§ clears request memoization immediately and schedules persistent invalidation **after commit**; rollback discards it. This is useful for raw/pivot mutations when the SQL watcher is disabled or the mutation's dependent models cannot be inferred.
+The API also includes `forget()`, `forgetMany()`, `invalidateTags()`, `invalidateModel()`, `invalidateScope()` and `refresh()`. `invalidateAfterCommit()` clears request memoization immediately and schedules persistent invalidation **after commit**; rollback discards it. This is useful for raw/pivot mutations when the SQL watcher is disabled or the mutation's dependent models cannot be inferred.
 
 ### Batched and SQL-dependent cached reads
 
@@ -1078,7 +1078,7 @@ $values = $cache->rememberBatch(
 );
 ~~~
 
-If you **omit** §tagsForId§, §rememberBatch()§ can discover dependency tables itself **only when automatic SQL invalidation is enabled**. When the watcher is off and no tag resolver is provided, it computes without shared caching. Explicit tag resolvers allow caching under a model/table dependency while the watcher is off.
+If you **omit** `tagsForId`, `rememberBatch()` can discover dependency tables itself **only when automatic SQL invalidation is enabled**. When the watcher is off and no tag resolver is provided, it computes without shared caching. Explicit tag resolvers allow caching under a model/table dependency while the watcher is off.
 
 **One custom SQL value with known dependencies:**
 
@@ -1092,7 +1092,7 @@ $value = $cache->rememberWithDependencies(
 );
 ~~~
 
-Related APIs: §getWithDependencies($key, $default, $tags, $connection)§ and §putWithDependencies($key, $value, $ttl, $tags, $connection)§. They avoid reading/writing unsafe shared entries during an active transaction and require nonempty dependencies.
+Related APIs: `getWithDependencies($key, $default, $tags, $connection)` and `putWithDependencies($key, $value, $ttl, $tags, $connection)`. They avoid reading/writing unsafe shared entries during an active transaction and require nonempty dependencies.
 
 **Discover SQL read dependencies automatically:**
 
@@ -1108,20 +1108,20 @@ $report = $cache->rememberObserved(
 );
 ~~~
 
-§rememberObserved()§ needs §LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION=true§ and a tag-capable store; otherwise it executes the callback. Advanced parameters §baseTags§, §lockSeconds§, §waitSeconds§, §ignoreObservedTags§, §rootTable§, and §rootModelTag§ support repository internals. Do not use §ignoreObservedTags§ to drop dependencies unless you can **prove** a safe bounded read.
+`rememberObserved()` needs `LARAVEL_INFRASTRUCTURE_AUTO_INVALIDATION=true` and a tag-capable store; otherwise it executes the callback. Advanced parameters `baseTags`, `lockSeconds`, `waitSeconds`, `ignoreObservedTags`, `rootTable`, and `rootModelTag` support repository internals. Do not use `ignoreObservedTags` to drop dependencies unless you can **prove** a safe bounded read.
 
 ### Request cache and cache identity rules
 
-§RequestReadCache::remember($key, $callback)§ memoizes results in the current Laravel request, including §null§; §RequestReadCache::clear()§ discards them. It is not a replacement for persistent Redis caching.
+`RequestReadCache::remember($key, $callback)` memoizes results in the current Laravel request, including `null`; `RequestReadCache::clear()` discards them. It is not a replacement for persistent Redis caching.
 
-Automatic authenticated cache identity recognizes Laravel's authenticated request user, or trusted authentication middleware's §user_type§ / §user_id§ attributes and optional user/partner models. A partial/mismatched actor model causes the **persistent** cache to be bypassed. The SQL query must still enforce actual user/agent/admin/partner permissions. External permission state requires its own identity dependency or uncached reads.
+Automatic authenticated cache identity recognizes Laravel's authenticated request user, or trusted authentication middleware's `user_type` / `user_id` attributes and optional user/partner models. A partial/mismatched actor model causes the **persistent** cache to be bypassed. The SQL query must still enforce actual user/agent/admin/partner permissions. External permission state requires its own identity dependency or uncached reads.
 
 ### Selective SQL partitions and fallback behavior
 
 | Read/write pattern | Package behavior |
 | --- | --- |
-| Conjunctive root filter, e.g. §orders.user_id = ?§ | Can infer a per-owner dependency tag from SQL and bound values |
-| Proven grouped OR, e.g. §(orders.user_id = ? OR orders.agent_id = ?)§ | Can target only involved owner/agent partitions |
+| Conjunctive root filter, e.g. `orders.user_id = ?` | Can infer a per-owner dependency tag from SQL and bound values |
+| Proven grouped OR, e.g. `(orders.user_id = ? OR orders.agent_id = ?)` | Can target only involved owner/agent partitions |
 | Shared city/tier readers with bounded predicates | Can target shared city/tier partitions; not necessarily one admin ID |
 | Unrestricted OR, negation, unknown SQL, unbounded dashboards | Conservatively retain broad tags |
 | Single-row Eloquent old/new owner transfer | Invalidates both prior and new partitions when provable |
@@ -1137,7 +1137,7 @@ The SQL observer does not run extra SELECTs merely to discover dependencies. It 
 
 ### RepositoryValidationRule: every available option
 
-Repository validation runs **after** Laravel's normal FormRequest validation passes, so it does not waste database reads for invalid basic input. Rules use an injectable repository class implementing §RepositoryValidationRepository§.
+Repository validation runs **after** Laravel's normal FormRequest validation passes, so it does not waste database reads for invalid basic input. Rules use an injectable repository class implementing `RepositoryValidationRepository`.
 
 ~~~php
 use Ak279642\LaravelInfrastructure\Http\Requests\RepositoryFormRequest;
@@ -1184,17 +1184,17 @@ class SaveProductRequest extends RepositoryFormRequest
 }
 ~~~
 
-The above assumes your §CategoryRepository§, §ProductRepository§ and §TagRepository§ are concrete, container-resolvable repositories whose models and relations exist.
+The above assumes your `CategoryRepository`, `ProductRepository` and `TagRepository` are concrete, container-resolvable repositories whose models and relations exist.
 
 | Constructor argument | Type | Usage |
 | --- | --- | --- |
-| §repository§ | §string§ | Concrete repository class |
-| §unique§ | §array§ | Input fields to check for duplicates |
-| §exists§ | §array§ | Single-ID existence checks; can include per-field §input§ and §where§ options |
-| §where§ | §array§ | Additional constrained field/value conditions; a value matching an input key can be resolved from input |
-| §existsIn§ | §array§ | Batch existence of an array: §field§, optional §column§, §values§, and §where§ |
-| §resolve§ | §array§ | Named model/collection definitions: §field§, optional §as§, §with§ |
-| §ignore§ | §int\|string\|null§ | Ignore this model key during uniqueness validation (such as an update) |
+| `repository` | `string` | Concrete repository class |
+| `unique` | `array` | Input fields to check for duplicates |
+| `exists` | `array` | Single-ID existence checks; can include per-field `input` and `where` options |
+| `where` | `array` | Additional constrained field/value conditions; a value matching an input key can be resolved from input |
+| `existsIn` | `array` | Batch existence of an array: `field`, optional `column`, `values`, and `where` |
+| `resolve` | `array` | Named model/collection definitions: `field`, optional `as`, `with` |
+| `ignore` | `int\|string\|null` | Ignore this model key during uniqueness validation (such as an update) |
 
 ~~~php
 // In a controller after validation:
@@ -1206,7 +1206,7 @@ $any = $request->resolved('category');
 $sameCategory = $categories->findOrFail($category->getKey());
 ~~~
 
-Use §repositoryValidationData(Validator $validator): array§ when the repository rules need transformed input. The application can also inject §RepositoryValidationService§ to run §validate($rules, $input, resetContext: true)§ (throws on failure) or §errors(...)§ (returns field-indexed messages) outside a FormRequest.
+Use `repositoryValidationData(Validator $validator): array` when the repository rules need transformed input. The application can also inject `RepositoryValidationService` to run `validate($rules, $input, resetContext: true)` (throws on failure) or `errors(...)` (returns field-indexed messages) outside a FormRequest.
 
 ### ValidationContext: request-local identity map
 
@@ -1229,7 +1229,7 @@ $snapshot = $context->snapshot();
 $context->restore($snapshot);
 ~~~
 
-Other public methods: §getModel()§, §findManyMatching()§, §getCollection()§, §requireCollection()§, §has()§, §forget()§, §clear()§ and §all()§. Identity-map mutations respect commit/rollback semantics and are not persistent Redis data.
+Other public methods: `getModel()`, `findManyMatching()`, `getCollection()`, `requireCollection()`, `has()`, `forget()`, `clear()` and `all()`. Identity-map mutations respect commit/rollback semantics and are not persistent Redis data.
 
 ### BaseService hooks and OperationContext
 
@@ -1273,9 +1273,9 @@ class ProductService extends BaseService
 }
 ~~~
 
-Overridable service hooks also include §beforeUpdate($id, $data)§, §afterUpdate($model, $data)§, §beforeDelete($id)§, and §afterDelete($id, $deleted)§. Service query shortcuts include §findRecord()§, §findRecordOrFail()§, §recordExists()§ and §repository()§.
+Overridable service hooks also include `beforeUpdate($id, $data)`, `afterUpdate($model, $data)`, `beforeDelete($id)`, and `afterDelete($id, $deleted)`. Service query shortcuts include `findRecord()`, `findRecordOrFail()`, `recordExists()` and `repository()`.
 
-For immutable, typed access to data passed between application operations, use §OperationContext§:
+For immutable, typed access to data passed between application operations, use `OperationContext`:
 
 ~~~php
 use Ak279642\LaravelInfrastructure\Context\OperationContext;
@@ -1288,11 +1288,11 @@ $ctx->getOrNull('not_found');   // null
 $ctx->all();                    // all values
 ~~~
 
-Transaction orchestration uses §BaseAction::transactional(callable $callback, ?int $attempts = null)§ and the injectable §TransactionManager§ contract. An Action owns the transaction boundary; do not add a second transaction around the same use case unless the application needs nested transactions.
+Transaction orchestration uses `BaseAction::transactional(callable $callback, ?int $attempts = null)` and the injectable `TransactionManager` contract. An Action owns the transaction boundary; do not add a second transaction around the same use case unless the application needs nested transactions.
 
 ## Full public API: model caching and visibility contracts
 
-§BaseModel§ implements §CacheableModel§ and includes §InteractsWithCache§, §InteractsWithSlug§ and §InteractsWithFiles§. If you already extend Laravel's Eloquent Model directly, you may opt into the cache concern with the corresponding interface:
+`BaseModel` implements `CacheableModel` and includes `InteractsWithCache`, `InteractsWithSlug` and `InteractsWithFiles`. If you already extend Laravel's Eloquent Model directly, you may opt into the cache concern with the corresponding interface:
 
 ~~~php
 use Ak279642\LaravelInfrastructure\Cache\Concerns\InteractsWithCache;
@@ -1316,19 +1316,19 @@ class Ticket extends Model implements CacheableModel
 }
 ~~~
 
-**Available §cacheOptions()§ keys and behaviors:** §enabled§ switches model caching; §scope§/§scopes§ and §scope_operator§ define ownership restrictions; §visibility.any§ expresses additional grouped OR conditions; §visibility_resolver§ handles complex query policy; §actor_resolver§ customizes resolved actor information. Both normal Laravel global scopes and repository-wide §globalQueryFilter()§ can contribute SQL to cache keys.
+**Available `cacheOptions()` keys and behaviors:** `enabled` switches model caching; `scope`/`scopes` and `scope_operator` define ownership restrictions; `visibility.any` expresses additional grouped OR conditions; `visibility_resolver` handles complex query policy; `actor_resolver` customizes resolved actor information. Both normal Laravel global scopes and repository-wide `globalQueryFilter()` can contribute SQL to cache keys.
 
-Model cache methods available from the concern include §usesInfrastructureCache()§, §cacheTag()§, §getCacheTags()§, §getCacheDependencyTags()§, §getCacheInvalidationTags()§ and §invalidateCache()§, plus public scope/visibility resolution helpers intended for infrastructure integrations. Most applications should only override §cacheOptions()§ and let the observers handle invalidation.
+Model cache methods available from the concern include `usesInfrastructureCache()`, `cacheTag()`, `getCacheTags()`, `getCacheDependencyTags()`, `getCacheInvalidationTags()` and `invalidateCache()`, plus public scope/visibility resolution helpers intended for infrastructure integrations. Most applications should only override `cacheOptions()` and let the observers handle invalidation.
 
-A custom class-based visibility resolver may implement an §apply()§ method to change query visibility and optionally both §cacheReadTags(Model $model, ?array $actor): array§ and §cacheInvalidationTags(Model $model): array§ for precise cache invalidation. Their tags must account for **every** eligible viewer, including shared groups and admin access. If you cannot prove those dependencies, retain the package's conservative model/table fallback.
+A custom class-based visibility resolver may implement an `apply()` method to change query visibility and optionally both `cacheReadTags(Model $model, ?array $actor): array` and `cacheInvalidationTags(Model $model): array` for precise cache invalidation. Their tags must account for **every** eligible viewer, including shared groups and admin access. If you cannot prove those dependencies, retain the package's conservative model/table fallback.
 
-The SQL-partition inference utility §SqlBoundReadPartitions§ supports selected bound equality/IN predicates for §user_id§, §admin_id§, §assigned_admin_id§, §created_by_admin_id§, §agent_id§, §partner_id§, §owner_id§, §tenant_id§, §created_by§, §assigned_to§, §assigned_by§, §city_id§, and §tier_id§. It rejects unsupported or unbounded reads rather than inventing precise partitions.
+The SQL-partition inference utility `SqlBoundReadPartitions` supports selected bound equality/IN predicates for `user_id`, `admin_id`, `assigned_admin_id`, `created_by_admin_id`, `agent_id`, `partner_id`, `owner_id`, `tenant_id`, `created_by`, `assigned_to`, `assigned_by`, `city_id`, and `tier_id`. It rejects unsupported or unbounded reads rather than inventing precise partitions.
 
 ## Full public API: file storage and image processing
 
 ### FileStorage: use outside Eloquent models
 
-Use the injectable §FileStorage§ for standalone uploads; if the file is owned by a model attribute, prefer §fileAttributes()§ and the model's automatic lifecycle instead.
+Use the injectable `FileStorage` for standalone uploads; if the file is owned by a model attribute, prefer `fileAttributes()` and the model's automatic lifecycle instead.
 
 ~~~php
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
@@ -1349,7 +1349,7 @@ $url = $storage->url($path, 'public');
 $storage->delete($path, 'public');
 ~~~
 
-Other APIs: §downloadUrl(string $url): UploadedFile§ and §copyWithUniqueName(string $oldPath, string $directory, string $filename, string $disk = 'public'): string§. URL imports enforce HTTPS, public host/IP restrictions and bounded downloads; do not pass user-controlled URLs without your application also validating expected origins.
+Other APIs: `downloadUrl(string $url): UploadedFile` and `copyWithUniqueName(string $oldPath, string $directory, string $filename, string $disk = 'public'): string`. URL imports enforce HTTPS, public host/IP restrictions and bounded downloads; do not pass user-controlled URLs without your application also validating expected origins.
 
 ### Model file configuration and lifecycle
 
@@ -1387,7 +1387,7 @@ protected function fileAttributes(): array
 }
 ~~~
 
-Supported image resize strategies: §none§, §scale§, §scale_down§, §resize§, §resize_down§, §cover§ and §cover_down§. Formats: §webp§ and §original§. §image => true§ enables default processing; omit §image§ to save the raw file.
+Supported image resize strategies: `none`, `scale`, `scale_down`, `resize`, `resize_down`, `cover` and `cover_down`. Formats: `webp` and `original`. `image => true` enables default processing; omit `image` to save the raw file.
 
 ~~~php
 $user->avatar_path = $request->file('avatar');
@@ -1399,7 +1399,7 @@ $settings = $user->configuredFileAttributes();
 $auditable = $user->auditableFileAttributes();
 ~~~
 
-Files are stored as **relative paths** in existing model columns; uploads clean up on failure/rollback, and old files are removed after successful committed replacement. Soft-delete cleanup is configurable separately. File names can be derived from already-loaded model relations, but §filename_from§ must not trigger new relation queries; preload them first.
+Files are stored as **relative paths** in existing model columns; uploads clean up on failure/rollback, and old files are removed after successful committed replacement. Soft-delete cleanup is configurable separately. File names can be derived from already-loaded model relations, but `filename_from` must not trigger new relation queries; preload them first.
 
 ### FileReference and FileReferenceCast
 
@@ -1431,11 +1431,11 @@ The cast is **optional**: regular string columns and uploaded-file assignment wo
 ],
 ~~~
 
-- **Public files:** route §/{alias}/{relative-path}?v=...§ (e.g. §/media/products/phone.webp?v=...§) reads the configured disk without Eloquent database queries. Only disks explicitly in §assets.public_disks§ can be exposed.
-- **Private files:** signed, expiring encrypted tokens use §/_infrastructure/files/{token}§. They intentionally reload the current Eloquent record, verify field/path and require appropriate guard/model authorization. Model hooks such as §authorizesAssetField(string $field)§ should enforce user ownership.
-- **Asset caching:** public file responses use §Cache-Control: public, max-age=86400§; private responses use §private, no-store, max-age=0§.
-- **Error artwork:** by default 403/404 media errors may render built-in WebP artwork with HTTP 200 plus §X-Asset-Error-Status§; set §render_error_images=false§ if you require real HTTP 403/404 status codes.
-- **Safety:** no public filesystem disk for confidential documents. No legacy unscoped §/uploads§ or arbitrary-disk route is registered.
+- **Public files:** route `/{alias}/{relative-path}?v=...` (e.g. `/media/products/phone.webp?v=...`) reads the configured disk without Eloquent database queries. Only disks explicitly in `assets.public_disks` can be exposed.
+- **Private files:** signed, expiring encrypted tokens use `/_infrastructure/files/{token}`. They intentionally reload the current Eloquent record, verify field/path and require appropriate guard/model authorization. Model hooks such as `authorizesAssetField(string $field)` should enforce user ownership.
+- **Asset caching:** public file responses use `Cache-Control: public, max-age=86400`; private responses use `private, no-store, max-age=0`.
+- **Error artwork:** by default 403/404 media errors may render built-in WebP artwork with HTTP 200 plus `X-Asset-Error-Status`; set `render_error_images=false` if you require real HTTP 403/404 status codes.
+- **Safety:** no public filesystem disk for confidential documents. No legacy unscoped `/uploads` or arbitrary-disk route is registered.
 
 ### SEO filename migration, audit and housekeeping
 
@@ -1450,7 +1450,7 @@ php artisan infrastructure:storage-audit --model=Product
 php artisan infrastructure:storage-audit --delete
 ~~~
 
-§media-rename§ copies existing files to safe SEO names, updates the stored model path conditionally and leaves the old files in place. §storage-audit§ identifies unreferenced paths from explicitly registered model-owned directories; deletions are opt-in and should be reviewed first. It uses database reads intentionally.
+`media-rename` copies existing files to safe SEO names, updates the stored model path conditionally and leaves the old files in place. `storage-audit` identifies unreferenced paths from explicitly registered model-owned directories; deletions are opt-in and should be reviewed first. It uses database reads intentionally.
 
 ## Full public API: slugs and schema metadata
 
@@ -1476,9 +1476,9 @@ protected function slugFields(): array
 }
 ~~~
 
-§slugFields()§ enables independently configured slug columns. The legacy §slugOptions()§ supports single-field §enabled§, §source§, §column§, §unique§, §regenerate_on_update§, §separator§ and §scope§. Manual nonempty slugs can be preserved; database unique indexes remain the concurrency guarantee.
+`slugFields()` enables independently configured slug columns. The legacy `slugOptions()` supports single-field `enabled`, `source`, `column`, `unique`, `regenerate_on_update`, `separator` and `scope`. Manual nonempty slugs can be preserved; database unique indexes remain the concurrency guarantee.
 
-§SlugGenerator::generateFor(Model $model, array $options = []): ?string§ is injectable for advanced workflows, and §SlugLookupRepository::matching($column, $baseSlug, $where, $ignoreId)§ supports suffix collision lookup. Most applications do not need to call these directly—model save hooks run slug creation automatically.
+`SlugGenerator::generateFor(Model $model, array $options = []): ?string` is injectable for advanced workflows, and `SlugLookupRepository::matching($column, $baseSlug, $where, $ignoreId)` supports suffix collision lookup. Most applications do not need to call these directly—model save hooks run slug creation automatically.
 
 ### Shared database schema registry
 
@@ -1530,31 +1530,31 @@ return MessageResponse::make('Deleted.', 200);
 return ResourceResponse::make(ProductResource::collection($page), 'Loaded.');
 ~~~
 
-§ApiResponse::success()§ includes §success§, §message§, optional §data§, and optional top-level extra metadata. §ApiResponse::error()§ includes §success: false§, §message§, optional §errors§, §error_code§ and §data§. Debug output only appears with §app.debug§ enabled. §ResourceResponse§ can append §pagination§ metadata for Laravel's length-aware, simple and cursor paginator resource collections.
+`ApiResponse::success()` includes `success`, `message`, optional `data`, and optional top-level extra metadata. `ApiResponse::error()` includes `success: false`, `message`, optional `errors`, `error_code` and `data`. Debug output only appears with `app.debug` enabled. `ResourceResponse` can append `pagination` metadata for Laravel's length-aware, simple and cursor paginator resource collections.
 
 ### Exception classes and rendering
 
-The following public exceptions live under §Ak279642\LaravelInfrastructure\Exceptions§:
+The following public exceptions live under `Ak279642\LaravelInfrastructure\Exceptions`:
 
 | Exception class | Intended application situation |
 | --- | --- |
-| §UnauthorizedException§ | Missing/invalid authentication |
-| §AccessForbiddenException§ | Insufficient authorization |
-| §NotFoundException§ | Missing resource |
-| §RouteNotFoundException§ | Missing application route |
-| §HttpMethodNotAllowedException§ | Unsupported HTTP method |
-| §HttpRequestException§ | General HTTP/request failure |
-| §ValidationException§ | Application validation failure |
-| §ConflictException§ | State conflict |
-| §BusinessLogicException§ | Business rule violation |
-| §TooManyRequestsException§ | Throttled/limited request |
-| §ServiceUnavailableException§ | Dependency/service unavailable |
-| §InternalServerException§ | Unexpected server failure |
-| §FilterNotAllowedException§ | Disallowed repository filter |
-| §SortNotAllowedException§ | Disallowed sort |
-| §RelationNotAllowedException§ | Disallowed eager relation |
-| §RepositoryValidationConfigurationException§ | Invalid repository validation setup |
-| §BaseException§ | Parent with status, errors, code, metadata and report/render behavior |
+| `UnauthorizedException` | Missing/invalid authentication |
+| `AccessForbiddenException` | Insufficient authorization |
+| `NotFoundException` | Missing resource |
+| `RouteNotFoundException` | Missing application route |
+| `HttpMethodNotAllowedException` | Unsupported HTTP method |
+| `HttpRequestException` | General HTTP/request failure |
+| `ValidationException` | Application validation failure |
+| `ConflictException` | State conflict |
+| `BusinessLogicException` | Business rule violation |
+| `TooManyRequestsException` | Throttled/limited request |
+| `ServiceUnavailableException` | Dependency/service unavailable |
+| `InternalServerException` | Unexpected server failure |
+| `FilterNotAllowedException` | Disallowed repository filter |
+| `SortNotAllowedException` | Disallowed sort |
+| `RelationNotAllowedException` | Disallowed eager relation |
+| `RepositoryValidationConfigurationException` | Invalid repository validation setup |
+| `BaseException` | Parent with status, errors, code, metadata and report/render behavior |
 
 ~~~php
 use Ak279642\LaravelInfrastructure\Exceptions\BusinessLogicException;
@@ -1562,7 +1562,7 @@ use Ak279642\LaravelInfrastructure\Exceptions\BusinessLogicException;
 throw new BusinessLogicException('The requested product is unavailable.');
 ~~~
 
-The optional §ApiExceptionRenderer§ uses Laravel's exception handler for JSON/API requests, maps known exceptions to the package response envelope, and avoids exposing sensitive internal details in production. Disable it with §responses.exception_renderer_enabled=false§ if your application already owns this behavior.
+The optional `ApiExceptionRenderer` uses Laravel's exception handler for JSON/API requests, maps known exceptions to the package response envelope, and avoids exposing sensitive internal details in production. Disable it with `responses.exception_renderer_enabled=false` if your application already owns this behavior.
 
 ### CustomLog, domains, structured context and correlation IDs
 
@@ -1583,17 +1583,17 @@ $id = CorrelationId::current();
 $header = CorrelationId::headerName(); // defaults to X-Request-ID
 ~~~
 
-Built-in §LogDomain§ enum values: §APPLICATION§, §API§, §WEBHOOK§, §JOBS§, §BUSINESS§ and §ERRORS§. Custom string domains and custom string-backed enums work too. §CustomLog::businessException()§, §serverException()§ and §exceptionContext()§ provide specialized reporting/context paths.
+Built-in `LogDomain` enum values: `APPLICATION`, `API`, `WEBHOOK`, `JOBS`, `BUSINESS` and `ERRORS`. Custom string domains and custom string-backed enums work too. `CustomLog::businessException()`, `serverException()` and `exceptionContext()` provide specialized reporting/context paths.
 
-§CorrelationId§ has §resolve()§, §current()§, §headerName()§, §set()§ and §isValid()§. §RequestCorrelationId§ middleware accepts valid incoming IDs if configured or creates a UUID, then adds the correlation response header. Logging recursively redacts credentials and sensitive content, limits payload size/depth, and provides daily/size-based rotation. Logging failures are contained to avoid taking down application requests.
+`CorrelationId` has `resolve()`, `current()`, `headerName()`, `set()` and `isValid()`. `RequestCorrelationId` middleware accepts valid incoming IDs if configured or creates a UUID, then adds the correlation response header. Logging recursively redacts credentials and sensitive content, limits payload size/depth, and provides daily/size-based rotation. Logging failures are contained to avoid taking down application requests.
 
 ### SecurityHeaders and RejectSensitivePaths
 
-The package registers middleware aliases §infrastructure.security-headers§ and §infrastructure.reject-sensitive-paths§, but **does not place them in your application's global stack**. Use them explicitly on routes or register them globally yourself.
+The package registers middleware aliases `infrastructure.security-headers` and `infrastructure.reject-sensitive-paths`, but **does not place them in your application's global stack**. Use them explicitly on routes or register them globally yourself.
 
-§SecurityHeaders§ adds §X-Content-Type-Options: nosniff§, §X-Frame-Options: SAMEORIGIN§ and §Referrer-Policy: strict-origin-when-cross-origin§, while removing common disclosure headers.
+`SecurityHeaders` adds `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` and `Referrer-Policy: strict-origin-when-cross-origin`, while removing common disclosure headers.
 
-§RejectSensitivePaths§ blocks common exposure probes (environment files, source/config files, traversal paths, sensitive framework directories). It returns JSON responses for API contexts and normal Laravel 404 handling for web contexts. This is complementary to authentication, Laravel policies, web-server hardening and CDN/security configuration—not a replacement.
+`RejectSensitivePaths` blocks common exposure probes (environment files, source/config files, traversal paths, sensitive framework directories). It returns JSON responses for API contexts and normal Laravel 404 handling for web contexts. This is complementary to authentication, Laravel policies, web-server hardening and CDN/security configuration—not a replacement.
 
 ## Full public API: maintenance, backups and configuration
 
@@ -1647,7 +1647,7 @@ This uses validated physical table identifiers, not model class names. A success
 ],
 ~~~
 
-Backups use §mysqldump§ or §pg_dump§ (matching the configured connection). They include table definitions and optionally omit *data* for selected tables, can compress with gzip, write to a configured Laravel filesystem disk, and prune older backups. They do not support SQLite or SQL Server. Keep native dump clients installed and verify actual **restores** in your environment.
+Backups use `mysqldump` or `pg_dump` (matching the configured connection). They include table definitions and optionally omit *data* for selected tables, can compress with gzip, write to a configured Laravel filesystem disk, and prune older backups. They do not support SQLite or SQL Server. Keep native dump clients installed and verify actual **restores** in your environment.
 
 ### Complete published configuration tree
 
@@ -1730,11 +1730,11 @@ composer lint
 composer analyse
 ~~~
 
-- §composer test§ executes PHPUnit; tests include caching, scope invalidation, files, image processing, transaction rollback, validation, responses and security.
-- §composer lint§ runs Laravel Pint in check mode.
-- §composer analyse§ runs PHPStan/Larastan analysis.
+- `composer test` executes PHPUnit; tests include caching, scope invalidation, files, image processing, transaction rollback, validation, responses and security.
+- `composer lint` runs Laravel Pint in check mode.
+- `composer analyse` runs PHPStan/Larastan analysis.
 - CI covers supported PHP versions, including PHP 8.2 and PHP 8.3, and tests tag-based behavior with Redis.
-- The package is architecture-scoped: no mandatory §App§ model, database migration, RBAC framework, authentication implementation or separate package cache database is shipped.
+- The package is architecture-scoped: no mandatory `App` model, database migration, RBAC framework, authentication implementation or separate package cache database is shipped.
 
 
 ## Complete guides and testing
