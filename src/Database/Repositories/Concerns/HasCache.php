@@ -185,6 +185,17 @@ trait HasCache
             return $callback();
         }
 
+        if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
+            return $this->getCacheManager()->rememberObserved(
+                key: $key,
+                ttl: $ttlOverride ?? ($this->cacheForever ? null : $this->cacheTtl),
+                callback: $callback,
+                baseTags: $tags,
+                lockSeconds: max(1, $this->cacheLockSeconds),
+                waitSeconds: max(0, $this->cacheLockWaitSeconds),
+            );
+        }
+
         return $this->getCacheManager()->rememberLocked(
             key: $key,
             ttl: $ttlOverride ?? ($this->cacheForever ? null : $this->cacheTtl),
@@ -254,7 +265,6 @@ trait HasCache
         // writes. Compile scoped SQL without executing additional SELECTs.
         if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             $connection = $model->getConnection();
-            $tags[] = SqlCacheDependency::databaseTag($connection);
             $tags[] = SqlCacheDependency::tableTag($connection, $model->getTable());
         }
 
