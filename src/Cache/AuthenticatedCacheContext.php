@@ -35,12 +35,21 @@ final class AuthenticatedCacheContext
         // Support applications that resolve API/session actors into request
         // attributes instead of using Laravel's default guard.
         if ($actor !== null || $actorId !== null || $actorType !== null) {
-            $subject = self::subject($actor);
-            if ($subject === null
-                || ! is_string($actorType)
+            if (! is_string($actorType)
                 || $actorType === ''
                 || (! is_string($actorId) && ! is_int($actorId))
-                || (string) $actorId !== $subject['id']) {
+                || (string) $actorId === '') {
+                return ['cacheable' => false, 'identity' => []];
+            }
+
+            // Trusted middleware may populate just user_type/user_id without
+            // attaching an Eloquent model. Keep those partitions cacheable
+            // and backwards compatible; when a model exists, verify the ID.
+            $subject = $actor === null
+                ? ['class' => 'request:actor', 'id' => (string) $actorId, 'snapshot' => null]
+                : self::subject($actor);
+
+            if ($subject === null || (string) $actorId !== $subject['id']) {
                 // An incomplete or mismatched actor must never populate a
                 // cross-request cache, even if a custom read policy opts in.
                 return ['cacheable' => false, 'identity' => []];
@@ -89,7 +98,7 @@ final class AuthenticatedCacheContext
     }
 
     /**
-     * @return array{class: class-string, id: string, snapshot: string|null}|null
+     * @return array{class: string, id: string, snapshot: string|null}|null
      */
     private static function subject(mixed $actor): ?array
     {
@@ -110,7 +119,7 @@ final class AuthenticatedCacheContext
             'class' => $actor::class,
             'id' => (string) $id,
             'snapshot' => $actor instanceof Model
-                ? hash('sha256', serialize($actor->getRawOriginal()))
+                ? hash('sha256', serialize($actor->getAttributes()))
                 : null,
         ];
     }
