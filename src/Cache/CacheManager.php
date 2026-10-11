@@ -332,6 +332,8 @@ final class CacheManager
             $observed = app(SqlReadTracker::class)->capture($callback);
             $tags = CacheTag::merge($baseTags, $observed['tags']);
             if ($tags === []) {
+                // No SQL dependencies were observed; treat it as opaque.
+                $tags[] = SqlCacheDependency::unknownReadTag($connection ?? DB::connection());
                 $tags[] = SqlCacheDependency::databaseTag($connection ?? DB::connection());
             }
             sort($tags, SORT_STRING);
