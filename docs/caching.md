@@ -385,3 +385,39 @@ key, tag list, invalidation calls or extra cache implementation.
 
 Configure a tag-capable Laravel cache driver (Redis recommended). The feature
 never executes extra SQL queries to build the cache key or invalidate data.
+
+## Automatic SQL-read dependencies (no per-repository cacheTags arrays)
+
+When `laravel-infrastructure.auto_invalidation.enabled` is true, every
+persistent repository `cacheRemember()` operation discovers its dependencies
+from the SQL **actually executed** inside the loader:
+
+- Root Eloquent table and declared relation model tags remain available.
+- A request-scoped observer records SELECT, JOIN, EXISTS, subquery, aggregate
+  and eager-load tables on cache misses without executing extra DB queries.
+- The exact observed dependency tag list is stored as cache metadata with the
+  same TTL as the result; cache hits use the identical Redis tag namespace.
+- SQL writes invalidate relevant table tags after commit. Unknown-target SQL
+  writes invalidate a separate broad fallback carried by all cached reads;
+  unparseable read SQL uses a different fallback invalidated by every write.
+- An unrelated known-table UPDATE does **not** invalidate a cached read of a
+  different physical table. This avoids the broad eviction caused by listing
+  every model in repository constructors.
+- In-transaction repository reads, non-taggable drivers and writes executed
+  inside cache loaders never publish unsafe shared cached results.
+- Nested repository cache hits propagate their known dependencies to the
+  enclosing tracked loader. Manually constructing Eloquent query builders
+  with `query()` still does **not** automatically enable caching.
+
+This makes application-side `$this->cacheTags([CacheTag::fromModel(...)])`
+lists unnecessary for dependencies visible in executed SQL. Application-only
+permissions, external state, events emitted outside the Laravel database
+connection, or computed business dependencies with **no observed SQL** cannot
+be inferred automatically; declare genuinely external dependencies or use
+uncached/request-scoped reads for those exceptions.
+
+Low-level `CacheManager::rememberObserved()` is available to standalone
+repositories that do not extend `BaseRepository`. It uses the same tracker,
+cache store and automatic SQL invalidation system; callers provide no manual
+model tags. It optionally accepts a connection to avoid caching results from
+an open transaction.

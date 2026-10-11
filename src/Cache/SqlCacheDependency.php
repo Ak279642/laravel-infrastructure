@@ -17,6 +17,16 @@ final class SqlCacheDependency
         ]));
     }
 
+    /**
+     * Only opaque/unparseable read statements use this dependency.
+     * Every database write must invalidate it, without flushing all normal
+     * table-specific repository cache entries.
+     */
+    public static function unknownReadTag(Connection $connection): string
+    {
+        return self::databaseTag($connection).':unknown-read';
+    }
+
     public static function tableTag(Connection $connection, string $table): string
     {
         return self::databaseTag($connection).':table:'.self::normalizeTable($table);

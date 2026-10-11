@@ -6,6 +6,7 @@ namespace Ak279642\LaravelInfrastructure;
 
 use Ak279642\LaravelInfrastructure\Cache\CacheInvalidator;
 use Ak279642\LaravelInfrastructure\Cache\AutomaticQueryInvalidator;
+use Ak279642\LaravelInfrastructure\Cache\SqlReadTracker;
 use Ak279642\LaravelInfrastructure\Cache\CacheManager;
 use Ak279642\LaravelInfrastructure\Console\Commands\DatabaseBackupCommand;
 use Ak279642\LaravelInfrastructure\Console\Commands\MediaRenameCommand;
@@ -53,6 +54,7 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         ));
 
         $this->app->singleton(AutomaticQueryInvalidator::class);
+        $this->app->scoped(SqlReadTracker::class);
 
         $this->app->singleton(CacheObserver::class, fn ($app): CacheObserver => new CacheObserver(
             $app->make(CacheInvalidator::class),
@@ -90,6 +92,9 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
         if ((bool) config('laravel-infrastructure.auto_invalidation.enabled', false)) {
             $watcher = $this->app->make(AutomaticQueryInvalidator::class);
             $events->listen(QueryExecuted::class, [$watcher, 'onQuery']);
+            $events->listen(QueryExecuted::class, static function (QueryExecuted $event): void {
+                app(SqlReadTracker::class)->observe($event);
+            });
             $events->listen(TransactionRolledBack::class, [$watcher, 'onRollback']);
         }
 

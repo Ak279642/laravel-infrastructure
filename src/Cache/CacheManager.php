@@ -271,6 +271,106 @@ final class CacheManager
     }
 
     /**
+     * Cache a repository read with dependencies discovered from its actual SQL.
+     *
+     * An untagged key stores the observed tag *index* (not the cached value).
+     * A hit then uses the identical full Redis tag namespace as the miss.
+     * The index has the same TTL as the value, so absent/expired metadata
+     * forces recomputation instead of returning an untracked stale entry.
+     *
+     * The loader is executed at most once per caller, with normal lock retry.
+     * No extra SQL is issued, only a small cache metadata lookup.
+     *
+     * @param list<string> $baseTags
+     */
+    public function rememberObserved(
+        string $key,
+        DateInterval|DateTimeInterface|int|null $ttl,
+        callable $callback,
+        array $baseTags,
+        int $lockSeconds = 10,
+        int $waitSeconds = 3,
+        ?Connection $connection = null,
+    ): mixed {
+        if (! (bool) config('laravel-infrastructure.auto_invalidation.enabled', false)
+            || ! $this->supportsTags()
+            || ($connection !== null && $connection->transactionLevel() > 0)) {
+            return $callback();
+        }
+
+        $key = $this->normalizeKey($key);
+        $baseTags = CacheTag::tags(...$baseTags);
+        sort($baseTags, SORT_STRING);
+        $metaKey = '_infra:read-deps:'.hash('sha256', $key);
+        $missing = new \stdClass;
+
+        $read = function () use ($key, $metaKey, $baseTags, $missing): mixed {
+            $observed = $this->store->get($metaKey);
+            if (! is_array($observed) || ! array_is_list($observed)) {
+                return $missing;
+            }
+
+            $tags = CacheTag::merge($baseTags, $observed);
+            sort($tags, SORT_STRING);
+            $value = $this->store($tags)->get($key, $missing);
+            if ($value !== $missing) {
+                app(SqlReadTracker::class)->dependOn($tags);
+            }
+
+            return $value;
+        };
+
+        $cached = $read();
+        if ($cached !== $missing) {
+            return $cached;
+        }
+
+        $populate = function () use ($read, $missing, $callback, $baseTags, $key, $metaKey, $ttl, $connection): mixed {
+            $cached = $read();
+            if ($cached !== $missing) {
+                return $cached;
+            }
+
+            $observed = app(SqlReadTracker::class)->capture($callback);
+            $tags = CacheTag::merge($baseTags, $observed['tags']);
+            if ($tags === []) {
+                // No SQL dependencies were observed; treat it as opaque.
+                $tags[] = SqlCacheDependency::unknownReadTag($connection ?? DB::connection());
+                $tags[] = SqlCacheDependency::databaseTag($connection ?? DB::connection());
+            }
+            sort($tags, SORT_STRING);
+
+            // Propagate nested cache dependencies to callers even when the
+            // nested result did not execute SQL because it was already cached.
+            app(SqlReadTracker::class)->dependOn($tags);
+
+            if (! $observed['unsafe']) {
+                // Publish index first: no reader can look up a cache value
+                // without knowing the exact tag namespace used to store it.
+                $this->store->put($metaKey, array_values(array_diff($tags, $baseTags)), $ttl);
+                $this->store($tags)->put($key, $observed['value'], $ttl);
+            }
+
+            return $observed['value'];
+        };
+
+        $lock = $this->lock('cache-observe:'.hash('sha256', $key), max(1, $lockSeconds));
+        if ($lock === null) {
+            return $populate();
+        }
+
+        try {
+            return $lock->block(max(0, $waitSeconds), $populate);
+        } catch (LockTimeoutException) {
+            // On contention preserve availability, but avoid publishing a
+            // competing result outside the lock.
+            $cached = $read();
+
+            return $cached === $missing ? $callback() : $cached;
+        }
+    }
+
+    /**
      * Populate multiple dependent cache entries with a single loader call for
      * all misses. Avoids per-entity SQL and exposes one consistent read API.
      *

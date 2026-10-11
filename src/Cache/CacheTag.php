@@ -44,6 +44,7 @@ final class CacheTag
             }
         }
         if ($hasTable) {
+            // Unknown SQL writes must invalidate every cached read on the connection.
             $expanded[] = SqlCacheDependency::databaseTag($connection);
         }
 
