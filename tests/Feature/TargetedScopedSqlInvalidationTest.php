@@ -120,6 +120,40 @@ final class TargetedScopedSqlInvalidationTest extends TestCase
         self::assertSame(3, $repo->loads);
     }
 
+    public function test_automatically_inferred_owner_transfer_refreshes_old_and_new_owners(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForUser(1));
+        self::assertSame(['pending'], $repo->statusesForUser(2));
+        self::assertSame(2, $repo->loads);
+
+        UnscopedOrder::query()->findOrFail(1)->update(['user_id' => 2]);
+
+        self::assertSame([], $repo->statusesForUser(1));
+        self::assertSame(['pending', 'pending'], $repo->statusesForUser(2));
+        self::assertSame(4, $repo->loads);
+    }
+
+    public function test_automatically_inferred_owner_cache_falls_back_for_raw_sql(): void
+    {
+        $this->needRedis();
+        $repo = $this->unscoped();
+
+        self::assertSame(['pending'], $repo->statusesForUser(1));
+        self::assertSame(['pending'], $repo->statusesForUser(2));
+        self::assertSame(2, $repo->loads);
+
+        DB::table('targeted_scope_orders')->where('id', 1)->update(['status' => 'raw']);
+
+        self::assertSame(['pending'], $repo->statusesForUser(2));
+        self::assertSame(['raw'], $repo->statusesForUser(1));
+        // Query builder writes cannot determine a changed row's actor membership
+        // without another SELECT, so conservative invalidation refreshes both.
+        self::assertSame(4, $repo->loads);
+    }
+
     public function test_admin_city_in_predicates_invalidate_only_affected_city_partitions(): void
     {
         $this->needRedis();
