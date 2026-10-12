@@ -144,8 +144,8 @@ final class CustomLogDomainConfigTest extends TestCase
             }
 
             self::assertStringContainsString('A', (string) file_get_contents($root.'/errors/errors_'.$day.'_001.log'));
-            self::assertStringContainsString('B', (string) file_get_contents($root.'/errors/errors-'.$day.'-002.log'));
-            self::assertStringContainsString('C', (string) file_get_contents($root.'/errors/errors-'.$day.'-003.log'));
+            self::assertStringContainsString('B', (string) file_get_contents($root.'/errors/errors_'.$day.'_002.log'));
+            self::assertStringContainsString('C', (string) file_get_contents($root.'/errors/errors_'.$day.'_003.log'));
         } finally {
             $handler->close();
             $this->removeTestDirectory($root);
