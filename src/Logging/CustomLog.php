@@ -162,9 +162,8 @@ final class CustomLog
 
         $message = (string) LogContextRedactor::redact($message);
 
-        // Explicit domain mappings win, followed by convention-based Laravel
-        // channels and finally the package's default channel. The host app
-        // owns every channel definition, path and rotation policy.
+        // Explicit host mappings and channels take precedence.
+        // Unmapped domains use package-managed size-rotating files.
         $mappedChannel = config('laravel-infrastructure.logging.domain_channels.'.$domainName);
         $namedChannel = 'domain_'.$domainName;
         $channel = is_string($mappedChannel) && $mappedChannel !== ''
@@ -178,6 +177,33 @@ final class CustomLog
 
             if (is_string($channel) && $channel !== '') {
                 $logger = $logger->channel($channel);
+            } elseif (method_exists($logger, 'build')) {
+                // Normalize arbitrary application-defined domain names so
+                // none can traverse directories or escape the log root.
+                $folder = trim((string) preg_replace(
+                    '/[^a-z0-9_-]+/',
+                    '-',
+                    strtolower($domainName),
+                ), '-');
+
+                if ($folder === '') {
+                    $folder = 'application';
+                }
+
+                $root = rtrim(
+                    (string) config('laravel-infrastructure.logging.directory', storage_path('logs')),
+                    '/\\',
+                );
+
+                $logger = $logger->build([
+                    'driver' => 'custom',
+                    'via' => DomainLoggerFactory::class,
+                    'name' => $domainName,
+                    'path' => $root.DIRECTORY_SEPARATOR.$folder.DIRECTORY_SEPARATOR.$folder.'.log',
+                    'level' => config('laravel-infrastructure.logging.level', 'debug'),
+                    'max_file_mb' => config('laravel-infrastructure.logging.max_file_mb', 10),
+                    'days' => config('laravel-infrastructure.logging.retention_days', 14),
+                ]);
             }
 
             $logger->log($level, $message, $context);

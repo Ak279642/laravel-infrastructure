@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Ak279642\LaravelInfrastructure\Tests\Unit;
 
 use Ak279642\LaravelInfrastructure\Logging\CustomLog;
+use Ak279642\LaravelInfrastructure\Logging\DailySizeRotatingFileHandler;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Logger;
 use Ak279642\LaravelInfrastructure\Logging\LogDomain;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
 
@@ -97,6 +100,112 @@ final class CustomLogDomainConfigTest extends TestCase
         } finally {
             @unlink($path);
         }
+    }
+
+    public function test_unmapped_domains_automatically_write_separate_folder_logs(): void
+    {
+        $root = sys_get_temp_dir().'/infra-domain-folders-'.uniqid('', true);
+        config()->set('laravel-infrastructure.logging.directory', $root);
+
+        try {
+            CustomLog::info('automatic application marker', [], LogDomain::APPLICATION);
+            CustomLog::error('automatic errors marker');
+            CustomLog::warning('automatic business marker', [], LogDomain::BUSINESS);
+
+            $day = date('Y-m-d');
+            self::assertFileExists($root.'/application/application-'.$day.'-001.log');
+            self::assertFileExists($root.'/errors/errors-'.$day.'-001.log');
+            self::assertFileExists($root.'/business/business-'.$day.'-001.log');
+            self::assertStringContainsString(
+                'automatic errors marker',
+                (string) file_get_contents($root.'/errors/errors-'.$day.'-001.log'),
+            );
+        } finally {
+            $this->removeTestDirectory($root);
+        }
+    }
+
+    public function test_size_rotation_creates_next_segment_within_same_day(): void
+    {
+        $root = sys_get_temp_dir().'/infra-rotation-'.uniqid('', true);
+        $handler = new DailySizeRotatingFileHandler($root.'/errors/errors.log', maxBytes: 90);
+        $handler->setFormatter(new LineFormatter("%message%\n"));
+        $logger = new Logger('errors');
+        $logger->pushHandler($handler);
+
+        try {
+            $logger->error(str_repeat('A', 60));
+            $logger->error(str_repeat('B', 60));
+            $logger->error(str_repeat('C', 60));
+            $day = date('Y-m-d');
+
+            foreach (['001', '002', '003'] as $segment) {
+                self::assertFileExists($root.'/errors/errors-'.$day.'-'.$segment.'.log');
+            }
+
+            self::assertStringContainsString('A', (string) file_get_contents($root.'/errors/errors-'.$day.'-001.log'));
+            self::assertStringContainsString('B', (string) file_get_contents($root.'/errors/errors-'.$day.'-002.log'));
+            self::assertStringContainsString('C', (string) file_get_contents($root.'/errors/errors-'.$day.'-003.log'));
+        } finally {
+            $handler->close();
+            $this->removeTestDirectory($root);
+        }
+    }
+
+    public function test_rotation_continues_existing_segment_across_instances(): void
+    {
+        $root = sys_get_temp_dir().'/infra-rotation-resume-'.uniqid('', true);
+        $path = $root.'/api/api.log';
+
+        try {
+            foreach (['first', 'second'] as $message) {
+                $handler = new DailySizeRotatingFileHandler($path, maxBytes: 200);
+                $handler->setFormatter(new LineFormatter("%message%\n"));
+                $logger = new Logger('api');
+                $logger->pushHandler($handler);
+                $logger->info($message);
+                $handler->close();
+            }
+
+            $current = $root.'/api/api-'.date('Y-m-d').'-001.log';
+            self::assertFileExists($current);
+            self::assertFileDoesNotExist($root.'/api/api-'.date('Y-m-d').'-002.log');
+            self::assertStringContainsString('first', (string) file_get_contents($current));
+            self::assertStringContainsString('second', (string) file_get_contents($current));
+        } finally {
+            $this->removeTestDirectory($root);
+        }
+    }
+
+    public function test_custom_domain_names_cannot_traverse_logging_root(): void
+    {
+        $root = sys_get_temp_dir().'/infra-domain-safety-'.uniqid('', true);
+        config()->set('laravel-infrastructure.logging.directory', $root);
+
+        try {
+            CustomLog::info('safe domain marker', [], '../../outside');
+            self::assertFileExists($root.'/outside/outside-'.date('Y-m-d').'-001.log');
+        } finally {
+            $this->removeTestDirectory($root);
+        }
+    }
+
+    private function removeTestDirectory(string $root): void
+    {
+        if (! is_dir($root)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+
+        foreach ($iterator as $item) {
+            $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+        }
+
+        rmdir($root);
     }
 
     public function test_global_logging_disable_overrides_enabled_domain_list(): void
