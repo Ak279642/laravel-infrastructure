@@ -95,7 +95,7 @@ final class DailySizeRotatingFileHandler extends AbstractProcessingHandler
         $directory = dirname($this->path);
         $baseName = pathinfo($this->path, PATHINFO_FILENAME);
         $extension = pathinfo($this->path, PATHINFO_EXTENSION) ?: 'log';
-        $pattern = $directory.DIRECTORY_SEPARATOR.$baseName.'_'.$date.'_*.' .$extension;
+        $pattern = $directory.DIRECTORY_SEPARATOR.$baseName.'_'.$date.'_*.'.$extension;
         $files = glob($pattern) ?: [];
         $latestSegment = 0;
         $latest = null;
@@ -158,8 +158,8 @@ final class DailySizeRotatingFileHandler extends AbstractProcessingHandler
         $extension = pathinfo($this->path, PATHINFO_EXTENSION) ?: 'log';
         $cutoff = date('Y-m-d', strtotime($today.' -'.$this->retentionDays.' days'));
 
-        foreach (glob($directory.DIRECTORY_SEPARATOR.$baseName.'_????-??-??_*.' .$extension) ?: [] as $file) {
-            $pattern = '/^'.preg_quote($baseName, '/')._([0-9]{4}-[0-9]{2}-[0-9]{2})_[0-9]+\.'
+        foreach (glob($directory.DIRECTORY_SEPARATOR.$baseName.'_????-??-??_*.' . $extension) ?: [] as $file) {
+            $pattern = '/^'.preg_quote($baseName, '/').'_([0-9]{4}-[0-9]{2}-[0-9]{2})_[0-9]+\\.'
                 .preg_quote($extension, '/').'$/D';
 
             if (preg_match($pattern, basename($file), $matches) === 1 && $matches[1] < $cutoff) {
