@@ -2,7 +2,7 @@
 
 The package provides structured logging, domains, correlation IDs, recursive redaction and daily/size-based rotation.
 
-Published config intentionally keeps only application-level logging switches:
+Published config provides automatic per-domain directories with daily and size-based rotation:
 
 ```php
 'logging' => [
@@ -15,10 +15,14 @@ Published config intentionally keeps only application-level logging switches:
     'accept_incoming_correlation_id' => true,
     'domain_enabled' => [],
     'domain_channels' => [],
+    'directory' => storage_path('logs'),
+    'level' => 'debug',
+    'max_file_mb' => 10,
+    'retention_days' => 14,
 ],
 ```
 
-Safe limits such as redaction depth, string/array truncation, file-size rotation and retention keep package defaults in code instead of expanding the published config.
+Redaction depth and string/array truncation retain safe defaults in code. Size rotation and retention are configurable through the published config or environment variables `LARAVEL_INFRASTRUCTURE_LOG_MAX_FILE_MB`, `LARAVEL_INFRASTRUCTURE_LOG_RETENTION_DAYS`, `LARAVEL_INFRASTRUCTURE_LOG_DIRECTORY`, and `LARAVEL_INFRASTRUCTURE_LOG_LEVEL`.
 
 Sensitive keys and common inline credentials are recursively redacted. Logging failures are contained so they do not crash the application.
 
@@ -42,7 +46,41 @@ CustomLog::warning(
 
 The package's `LogDomain` enum and string domains remain supported.
 
-Define separate Laravel channels in the host application's `config/logging.php`:
+## Automatic domain folders and same-day size rotation
+
+Without configuring channels in the host application's `config/logging.php`, each domain has its own automatically created folder:
+
+```text
+storage/logs/
+  application/application_2026-10-12_001.log
+  application/application_2026-10-12_002.log
+  errors/errors_2026-10-12_001.log
+  business/business_2026-10-12_001.log
+  api/api_2026-10-12_001.log
+  ivr/ivr_2026-10-12_001.log
+```
+
+Each date starts at `_001.log` using the `{domain}_{date}_{sequence}.log` format. Before writing a record that would exceed `max_file_mb` (default **10 MB**) in a nonempty segment, the handler starts the next numbered file **on the same day**. An unusually large single record is written unsplit. A per-domain file lock serializes selection and writing across PHP workers, avoiding mixed or corrupted entries. The date is based on the server timezone. Logs older than `retention_days` (default **14**) are pruned when a new segment is opened. A hidden `.domain.rotation.lock` file remains in each domain folder to coordinate writers.
+
+Set the options in `config/laravel-infrastructure.php`:
+
+```php
+'logging' => [
+    'enabled' => true,
+    'domain_enabled' => [],
+    'domain_channels' => [],
+    'directory' => storage_path('logs'),
+    'level' => 'debug',
+    'max_file_mb' => 5,
+    'retention_days' => 30,
+],
+```
+
+### Optional host-defined channels
+
+Existing Laravel channels keep precedence over automatic files. Define one only when you need a custom handler, log destination or different rotation policy:
+
+Define a separate Laravel channel in your application's `config/logging.php`:
 
 ```php
 'channels' => [
@@ -55,4 +93,4 @@ Define separate Laravel channels in the host application's `config/logging.php`:
 ],
 ```
 
-`CustomLog` automatically selects `domain_meta` for the `meta` domain. If a channel has another name, map it explicitly using `laravel-infrastructure.logging.domain_channels` (e.g. `['meta' => 'marketing_meta']`). Explicit mapping takes precedence; otherwise `domain_<name>` is used when defined, and the configured fallback channel is used only when no domain channel exists. **A channel name alone does not create a directory:** configure a distinct `path` for each domain. Ordinary Laravel framework logs use the application's `LOG_CHANNEL` independently.
+`CustomLog` chooses `logging.domain_channels` explicit mappings first, then an existing host channel named `domain_<name>`, then `logging.channel` when specified, and finally the automatic size-rotating domain files. A host channel keeps its own rotation and destination configuration. Laravel framework log calls still use the application's `LOG_CHANNEL`.

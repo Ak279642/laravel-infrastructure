@@ -25,7 +25,7 @@ final class DomainLoggerFactory
             path: (string) $config['path'],
             maxBytes: max(
                 1,
-                (int) config('laravel-infrastructure.logging.max_file_mb', 100),
+                (int) ($config['max_file_mb'] ?? config('laravel-infrastructure.logging.max_file_mb', 10)),
             ) * 1024 * 1024,
             retentionDays: max(
                 1,
@@ -34,7 +34,7 @@ final class DomainLoggerFactory
                     14,
                 )),
             ),
-            level: (string) ($config['level'] ?? 'info'),
+            level: (string) ($config['level'] ?? config('laravel-infrastructure.logging.level', 'debug')),
         );
         $handler->setFormatter(new LineFormatter(
             format: "[%datetime%] %channel%.%level_name%: %message% %context% %extra%\n",

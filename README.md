@@ -310,7 +310,7 @@ CustomLog::warning('Webhook failed.', ['operation' => 'webhook'], 'integrations'
 throw new BusinessLogicException('Insufficient stock.');
 ```
 
-Logs support domains, redaction, correlation IDs and rotation. Opt in to HTTP security middleware:
+Logs support redaction, correlation IDs and automatic `storage/logs/{domain}/{domain}_YYYY-MM-DD_NNN.log` files. Default rotation is 10 MB per segment (including multiple files on one day) and 14-day retention, configurable through `logging.max_file_mb` and `logging.retention_days` in the published config. Explicit Laravel channel mappings still take priority. Opt in to HTTP security middleware:
 
 ```php
 use Ak279642\LaravelInfrastructure\Http\Middleware\RequestCorrelationId;
