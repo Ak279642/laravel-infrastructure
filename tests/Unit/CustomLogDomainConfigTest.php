@@ -113,12 +113,12 @@ final class CustomLogDomainConfigTest extends TestCase
             CustomLog::warning('automatic business marker', [], LogDomain::BUSINESS);
 
             $day = date('Y-m-d');
-            self::assertFileExists($root.'/application/application-'.$day.'-001.log');
-            self::assertFileExists($root.'/errors/errors-'.$day.'-001.log');
-            self::assertFileExists($root.'/business/business-'.$day.'-001.log');
+            self::assertFileExists($root.'/application/application_'.$day.'_001.log');
+            self::assertFileExists($root.'/errors/errors_'.$day.'_001.log');
+            self::assertFileExists($root.'/business/business_'.$day.'_001.log');
             self::assertStringContainsString(
                 'automatic errors marker',
-                (string) file_get_contents($root.'/errors/errors-'.$day.'-001.log'),
+                (string) file_get_contents($root.'/errors/errors_'.$day.'_001.log'),
             );
         } finally {
             $this->removeTestDirectory($root);
@@ -140,10 +140,10 @@ final class CustomLogDomainConfigTest extends TestCase
             $day = date('Y-m-d');
 
             foreach (['001', '002', '003'] as $segment) {
-                self::assertFileExists($root.'/errors/errors-'.$day.'-'.$segment.'.log');
+                self::assertFileExists($root.'/errors/errors_'.$day.'_'.$segment.'.log');
             }
 
-            self::assertStringContainsString('A', (string) file_get_contents($root.'/errors/errors-'.$day.'-001.log'));
+            self::assertStringContainsString('A', (string) file_get_contents($root.'/errors/errors_'.$day.'_001.log'));
             self::assertStringContainsString('B', (string) file_get_contents($root.'/errors/errors-'.$day.'-002.log'));
             self::assertStringContainsString('C', (string) file_get_contents($root.'/errors/errors-'.$day.'-003.log'));
         } finally {
@@ -167,9 +167,9 @@ final class CustomLogDomainConfigTest extends TestCase
                 $handler->close();
             }
 
-            $current = $root.'/api/api-'.date('Y-m-d').'-001.log';
+            $current = $root.'/api/api_'.date('Y-m-d').'_001.log';
             self::assertFileExists($current);
-            self::assertFileDoesNotExist($root.'/api/api-'.date('Y-m-d').'-002.log');
+            self::assertFileDoesNotExist($root.'/api/api_'.date('Y-m-d').'_002.log');
             self::assertStringContainsString('first', (string) file_get_contents($current));
             self::assertStringContainsString('second', (string) file_get_contents($current));
         } finally {
@@ -184,7 +184,7 @@ final class CustomLogDomainConfigTest extends TestCase
 
         try {
             CustomLog::info('safe domain marker', [], '../../outside');
-            self::assertFileExists($root.'/outside/outside-'.date('Y-m-d').'-001.log');
+            self::assertFileExists($root.'/outside/outside_'.date('Y-m-d').'_001.log');
         } finally {
             $this->removeTestDirectory($root);
         }

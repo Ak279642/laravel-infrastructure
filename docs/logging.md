@@ -52,15 +52,15 @@ Without configuring channels in the host application's `config/logging.php`, eac
 
 ```text
 storage/logs/
-  application/application-2026-10-12-001.log
-  application/application-2026-10-12-002.log
-  errors/errors-2026-10-12-001.log
-  business/business-2026-10-12-001.log
-  api/api-2026-10-12-001.log
-  ivr/ivr-2026-10-12-001.log
+  application/application_2026-10-12_001.log
+  application/application_2026-10-12_002.log
+  errors/errors_2026-10-12_001.log
+  business/business_2026-10-12_001.log
+  api/api_2026-10-12_001.log
+  ivr/ivr_2026-10-12_001.log
 ```
 
-Each date starts at `001`. Before writing a record that would exceed `max_file_mb` (default **10 MB**) in a nonempty segment, the handler starts the next numbered file **on the same day**. An unusually large single record is written unsplit. A per-domain file lock serializes selection and writing across PHP workers, avoiding mixed or corrupted entries. The date is based on the server timezone. Logs older than `retention_days` (default **14**) are pruned when a new segment is opened. A hidden `.domain.rotation.lock` file remains in each domain folder to coordinate writers.
+Each date starts at `_001.log` using the `{domain}_{date}_{sequence}.log` format. Before writing a record that would exceed `max_file_mb` (default **10 MB**) in a nonempty segment, the handler starts the next numbered file **on the same day**. An unusually large single record is written unsplit. A per-domain file lock serializes selection and writing across PHP workers, avoiding mixed or corrupted entries. The date is based on the server timezone. Logs older than `retention_days` (default **14**) are pruned when a new segment is opened. A hidden `.domain.rotation.lock` file remains in each domain folder to coordinate writers.
 
 Set the options in `config/laravel-infrastructure.php`:
 

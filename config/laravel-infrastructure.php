@@ -83,7 +83,7 @@ return [
         // Optional explicit Laravel log channel for each domain (e.g. 'meta'
         // => 'marketing_meta'). Unmapped domains use domain_<name> if present.
         'domain_channels' => [],
-        // Unmapped domains: logs/{domain}/{domain}-YYYY-MM-DD-NNN.log.
+        // Unmapped domains: logs/{domain}/{domain}_YYYY-MM-DD_NNN.log.
         // Explicit channels above always override package-managed files.
         'directory' => env('LARAVEL_INFRASTRUCTURE_LOG_DIRECTORY', storage_path('logs')),
         'level' => env('LARAVEL_INFRASTRUCTURE_LOG_LEVEL', 'debug'),
