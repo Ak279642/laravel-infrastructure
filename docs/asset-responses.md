@@ -1,9 +1,9 @@
 # Asset response behavior
 
-The current public-media implementation uses **the stored relative file path**, not a model resource alias and ID.
+The current public-media implementation uses **the stored relative file path**, not a model resource alias and ID. Configure aliases as **Laravel disk => URL alias**; legacy alias => disk maps are temporarily accepted for backwards compatibility.
 
 ```php
-'assets' => ['disk_aliases' => ['media' => 'public']]
+'assets' => ['disk_aliases' => ['public' => 'media']]
 ```
 
 With a stored path `categories/gaming-console.webp`, `$category->getFileUrl('image')` generates `/media/categories/gaming-console.webp?v=...`. No extra SQL or storage metadata lookup occurs when creating the link. The public media request only resolves the configured disk and path, checks filesystem existence, and streams the file. It never queries an Eloquent model.

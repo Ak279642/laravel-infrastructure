@@ -14,33 +14,77 @@ use RuntimeException;
 
 final class MediaUrl
 {
-    /** @return array<string, string> URL alias => explicitly public Laravel disk */
+    /**
+     * Resolve public URL aliases back to their Laravel disk names.
+     *
+     * Config uses disk => alias, e.g. ['public' => 'media']. Legacy
+     * alias => disk mappings remain readable for existing applications.
+     *
+     * @return array<string, string> URL alias => public disk
+     */
     public static function aliases(): array
     {
         $disks = (array) config('laravel-infrastructure.assets.public_disks', ['public']);
         $configured = (array) config('laravel-infrastructure.assets.disk_aliases', []);
+        $namedByDisk = [];
+        $legacyByAlias = [];
         $aliases = [];
 
         foreach ($disks as $disk) {
             if (! is_string($disk) || preg_match('/^[a-zA-Z0-9_-]+$/D', $disk) !== 1) {
                 throw new RuntimeException('Invalid public media disk.');
             }
-            $names = array_keys($configured, $disk, true);
-            if ($names === []) {
-                $names = [$disk];
+        }
+
+        foreach ($configured as $diskOrAlias => $aliasOrDisk) {
+            if (! is_string($diskOrAlias) || ! is_string($aliasOrDisk)) {
+                throw new RuntimeException('Invalid media disk alias configuration.');
             }
-            foreach ($names as $alias) {
-                if (! is_string($alias) || preg_match('/^[a-zA-Z0-9_-]+$/D', $alias) !== 1
+
+            if (in_array($diskOrAlias, $disks, true)) {
+                $namedByDisk[$diskOrAlias] = $aliasOrDisk;
+
+                continue;
+            }
+
+            // Backwards compatibility for alias => disk configuration.
+            if (in_array($aliasOrDisk, $disks, true)) {
+                $legacyByAlias[$diskOrAlias] = $aliasOrDisk;
+
+                continue;
+            }
+
+            throw new RuntimeException('Media aliases cannot expose non-public disks.');
+        }
+
+        foreach ($disks as $disk) {
+            $names = [];
+
+            if (array_key_exists($disk, $namedByDisk)) {
+                $names[] = $namedByDisk[$disk];
+            }
+
+            foreach ($legacyByAlias as $alias => $legacyDisk) {
+                if ($legacyDisk === $disk) {
+                    $names[] = $alias;
+                }
+            }
+
+            if ($names === []) {
+                $names[] = $disk;
+            }
+
+            foreach (array_unique($names) as $alias) {
+                if (preg_match('/^[a-zA-Z0-9_-]+$/D', $alias) !== 1
                     || in_array($alias, ['_infrastructure', 'private'], true)) {
                     throw new RuntimeException('Invalid media disk alias.');
                 }
-                $aliases[$alias] = $disk;
-            }
-        }
 
-        foreach ($configured as $alias => $disk) {
-            if (! in_array($disk, $disks, true)) {
-                throw new RuntimeException('Media aliases cannot expose non-public disks.');
+                if (isset($aliases[$alias]) && $aliases[$alias] !== $disk) {
+                    throw new RuntimeException('Duplicate public media alias.');
+                }
+
+                $aliases[$alias] = $disk;
             }
         }
 

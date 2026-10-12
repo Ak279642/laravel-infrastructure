@@ -36,7 +36,8 @@ return [
         ],
     ],
 
-    // Public file URL aliases; a missing alias falls back to the disk name.
+    // Public disk => URL alias (e.g. ['public' => 'media']). Legacy
+    // alias => disk mappings remain supported for existing applications.
     // Only explicitly listed public disks can ever be routed publicly.
     'assets' => [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED', true),

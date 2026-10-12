@@ -20,7 +20,7 @@ final class AssetModelAuthorizationTest extends TestCase
         $app['config']->set('database.connections.testing', [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
         ]);
-        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['media' => 'public']);
+        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['public' => 'media']);
     }
 
     protected function setUp(): void

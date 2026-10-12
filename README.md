@@ -288,7 +288,7 @@ $publicUrl = $product->getFileUrl('image_path');
 $privateUrl = $product->fileAssetUrl('invoice_path', now()->addMinutes(5));
 ```
 
-Public URLs can use `'assets' => ['disk_aliases' => ['media' => 'public']]` in package config. `FileStorage::storeFromUrl()` supports direct HTTPS imports; `FileReferenceCast` is an optional field-object interface. File cleanup handles replacements, deletes, errors and transaction rollbacks. Private media uses signed, guarded/model-authorized URLs—**never store sensitive files on a public disk**. See [Files](docs/files.md), [Slugs](docs/slugs.md) and [Asset responses](docs/asset-responses.md).
+Public URLs can use `'assets' => ['disk_aliases' => ['public' => 'media']]` in package config. `FileStorage::storeFromUrl()` supports direct HTTPS imports; `FileReferenceCast` is an optional field-object interface. File cleanup handles replacements, deletes, errors and transaction rollbacks. Private media uses signed, guarded/model-authorized URLs—**never store sensitive files on a public disk**. See [Files](docs/files.md), [Slugs](docs/slugs.md) and [Asset responses](docs/asset-responses.md).
 
 ## HTTP responses, logging and security
 
