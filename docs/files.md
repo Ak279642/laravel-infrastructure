@@ -41,7 +41,7 @@ $product->save();
 ```php
 // config/laravel-infrastructure.php
 'assets' => [
-    'disk_aliases' => ['media' => 'public'],
+    'disk_aliases' => ['public' => 'media'],
 ],
 ```
 

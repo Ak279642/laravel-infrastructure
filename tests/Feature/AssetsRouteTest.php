@@ -20,7 +20,7 @@ final class AssetsRouteTest extends TestCase
         $app['config']->set('database.connections.testing', [
             'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
         ]);
-        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['media' => 'public']);
+        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['public' => 'media']);
         $app['config']->set('cache.default', 'array');
     }
 
@@ -150,9 +150,62 @@ final class AssetsRouteTest extends TestCase
         $product->getFileUrl('image', 'unrelated-filename');
     }
 
+    public function test_public_disk_to_url_alias_mapping_is_used_for_routes(): void
+    {
+        self::assertSame(
+            ['media' => 'public'],
+            \Ak279642\LaravelInfrastructure\Files\MediaUrl::aliases(),
+        );
+    }
+
+    public function test_legacy_alias_to_disk_mapping_remains_supported(): void
+    {
+        config()->set('laravel-infrastructure.assets.disk_aliases', ['media' => 'public']);
+
+        self::assertSame(
+            ['media' => 'public'],
+            \Ak279642\LaravelInfrastructure\Files\MediaUrl::aliases(),
+        );
+    }
+
+    public function test_default_public_disk_route_when_no_alias_is_set(): void
+    {
+        config()->set('laravel-infrastructure.assets.disk_aliases', []);
+
+        self::assertSame(
+            ['public' => 'public'],
+            \Ak279642\LaravelInfrastructure\Files\MediaUrl::aliases(),
+        );
+    }
+
+    public function test_multiple_public_disks_must_not_use_duplicate_alias(): void
+    {
+        config()->set('laravel-infrastructure.assets.public_disks', ['public', 'other_public']);
+        config()->set('laravel-infrastructure.assets.disk_aliases', [
+            'public' => 'media',
+            'other_public' => 'media',
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        \Ak279642\LaravelInfrastructure\Files\MediaUrl::aliases();
+    }
+
+    public function test_explicit_disk_alias_takes_precedence_and_keeps_legacy_url(): void
+    {
+        config()->set('laravel-infrastructure.assets.disk_aliases', [
+            'public' => 'media',
+            'legacy-media' => 'public',
+        ]);
+
+        self::assertSame(
+            ['media' => 'public', 'legacy-media' => 'public'],
+            \Ak279642\LaravelInfrastructure\Files\MediaUrl::aliases(),
+        );
+    }
+
     public function test_only_public_disks_can_be_aliased(): void
     {
-        config()->set('laravel-infrastructure.assets.disk_aliases', ['private-files' => 'private']);
+        config()->set('laravel-infrastructure.assets.disk_aliases', ['private' => 'private-files']);
         $this->expectException(\RuntimeException::class);
         \Ak279642\LaravelInfrastructure\Files\MediaUrl::aliases();
     }

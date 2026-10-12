@@ -11,7 +11,7 @@ final class AssetResponsesTest extends TestCase
 {
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['media' => 'public']);
+        $app['config']->set('laravel-infrastructure.assets.disk_aliases', ['public' => 'media']);
     }
 
     protected function setUp(): void
@@ -23,6 +23,13 @@ final class AssetResponsesTest extends TestCase
     public function test_missing_public_file_returns_default_404_image(): void
     {
         $this->get('/media/products/missing.webp')->assertOk()
+            ->assertHeader('X-Asset-Error-Status', '404')
+            ->assertHeader('Content-Type', 'image/webp');
+    }
+
+    public function test_extensionless_missing_media_path_uses_fallback_image(): void
+    {
+        $this->get('/media/products/missing')->assertOk()
             ->assertHeader('X-Asset-Error-Status', '404')
             ->assertHeader('Content-Type', 'image/webp');
     }
