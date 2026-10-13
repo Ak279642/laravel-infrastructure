@@ -43,6 +43,11 @@ return [
         'enabled' => env('LARAVEL_INFRASTRUCTURE_ASSETS_ENABLED', true),
         'public_disks' => ['public'],
         'disk_aliases' => [],
+        // Private URLs default to /_infrastructure/files/{token}.
+        // Override the path prefix and/or the Laravel route name per application.
+        // Do not include {token} in the configured prefix.
+        'private_route_path' => '_infrastructure/files',
+        'private_route_name' => 'laravel-infrastructure.assets.private',
         'render_error_images' => true,
         'error_images' => [403 => null, 404 => null],
     ],
