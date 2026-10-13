@@ -150,7 +150,7 @@ final class MediaUrl
             $token = rtrim(strtr(base64_encode(Crypt::encryptString($payload)), '+/', '-_'), '=');
 
             return URL::temporarySignedRoute(
-                'laravel-infrastructure.assets.private',
+                (string) config('laravel-infrastructure.assets.private_route_name', 'laravel-infrastructure.assets.private'),
                 $expiration ?? now()->addMinutes(max(1, (int) config('laravel-infrastructure.assets.url_ttl_minutes', 15))),
                 ['token' => $token],
             );
