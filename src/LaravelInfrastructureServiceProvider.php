@@ -143,9 +143,20 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
                 array_keys($aliases),
             ));
 
-            $router->get('_infrastructure/files/{token}', [MediaController::class, 'privateFile'])
+            // Private assets use the host application's session guards. Only the
+            // protected route needs web middleware; public assets stay stateless.
+            // Applications may choose another prefix/name without replacing this route.
+            $privatePath = trim((string) config('laravel-infrastructure.assets.private_route_path', '_infrastructure/files'), '/');
+            $privateName = (string) config('laravel-infrastructure.assets.private_route_name', 'laravel-infrastructure.assets.private');
+            if (preg_match('#\\A[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\\z#D', $privatePath) !== 1
+                || preg_match('/\\A[A-Za-z0-9_.-]+\\z/D', $privateName) !== 1) {
+                throw new \\InvalidArgumentException('Invalid private media route configuration.');
+            }
+
+            $router->get($privatePath.'/{token}', [MediaController::class, 'privateFile'])
+                ->middleware('web')
                 ->where('token', '[A-Za-z0-9_-]+')
-                ->name('laravel-infrastructure.assets.private');
+                ->name($privateName);
 
             $router->get('_infrastructure/media/missing', [MediaController::class, 'missing'])
                 ->name('laravel-infrastructure.assets.missing');
