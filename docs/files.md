@@ -81,6 +81,29 @@ The cast is opt-in. Noncast columns remain ordinary strings. The upload lifecycl
 
 Define the private disk outside the web-public directory in your application's `config/filesystems.php`. A private link uses `/_infrastructure/files/{encrypted-token}?expires=...&signature=...`, never `/media/... `. It reloads the model on delivery to verify that the current file path still matches, and checks guards and optional `authorizesAssetField(string $field)` authorization. A private route **can use SQL for authorization**, unlike public media. Configure ownership hooks for customer-specific documents. Private responses use `Cache-Control: private, no-store`.
 
+### Custom private route in host applications
+
+The default signed route remains `/_infrastructure/files/{token}`, named
+`laravel-infrastructure.assets.private`. Only this protected route uses Laravel's
+`web` middleware so session-based guards (such as `admin`, `partner`, and `agent`)
+can authenticate during file delivery. Public media routes stay stateless.
+
+Override either or both settings in the application's `config/laravel-infrastructure.php`:
+
+```php
+'assets' => [
+    'private_route_path' => 'secure/files', // URL: /secure/files/{token}
+    'private_route_name' => 'secure.files',  // Laravel route name
+],
+```
+
+The path is a URL prefix (do not include `{token}`), not a storage disk or
+directory. Allowed prefix segments contain letters, numbers, underscores or
+hyphens. The package generates links using the configured route name, and
+still requires the same signed token, model/file match, guard and authorization
+checks. After changing the route path, regenerate previously issued links.
+Avoid registering a duplicate private route in the host application's routes.
+
 ## Lifecycles, caching and conversions
 
 `InteractsWithFiles` auto-uploads `UploadedFile` values on save, cleans up failed/rolled-back uploads, deletes replaced files after successful commits, and respects soft-delete/force-delete options. The active disk comes from model options. `ImageProcessor` supports GD or Imagick, WebP or original format, quality, dimensions, position, and `none`, `scale`, `scale_down`, `resize`, `resize_down`, `cover`, and `cover_down`. Uploads never intentionally overwrite an existing filename. URL generation performs no storage metadata calls; `v` is derived from the path and loaded model timestamp. Public requests currently use 24-hour caching, not immutable caching.
