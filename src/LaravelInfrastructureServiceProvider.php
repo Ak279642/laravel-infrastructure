@@ -148,9 +148,9 @@ final class LaravelInfrastructureServiceProvider extends ServiceProvider
             // Applications may choose another prefix/name without replacing this route.
             $privatePath = trim((string) config('laravel-infrastructure.assets.private_route_path', '_infrastructure/files'), '/');
             $privateName = (string) config('laravel-infrastructure.assets.private_route_name', 'laravel-infrastructure.assets.private');
-            if (preg_match('#\\A[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\\z#D', $privatePath) !== 1
-                || preg_match('/\\A[A-Za-z0-9_.-]+\\z/D', $privateName) !== 1) {
-                throw new \\InvalidArgumentException('Invalid private media route configuration.');
+            if (preg_match('#^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*$#D', $privatePath) !== 1
+                || preg_match('/^[A-Za-z0-9_.-]+$/D', $privateName) !== 1) {
+                throw new \InvalidArgumentException('Invalid private media route configuration.');
             }
 
             $router->get($privatePath.'/{token}', [MediaController::class, 'privateFile'])
