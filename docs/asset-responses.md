@@ -10,6 +10,8 @@ With a stored path `categories/gaming-console.webp`, `$category->getFileUrl('ima
 
 The URL version derives from stored path and model `updated_at`; changing file content at the same path without updating the model cannot reliably invalidate a cached URL. Uploads avoid replacing existing physical filenames, and add `-2`, `-3` on conflicts. Public files are served with `Cache-Control: public, max-age=86400`. Extension and path validation block unsafe file types, dotfiles and traversal.
 
+Private file delivery runs with Laravel's `web` middleware for session guards; the default `/_infrastructure/files/{token}` path and `laravel-infrastructure.assets.private` route name can be overridden via `assets.private_route_path` and `assets.private_route_name`. The host application can choose `secure/files` and `secure.files` without editing package routes.
+
 Private files must use a nonpublic disk. The encrypted signed URL, `/_infrastructure/files/{token}?expires=...&signature=...`, requires valid signature, matching existing model field, authenticated allowed guard or an explicit model authorization hook. The handler may query the database to enforce these permissions; it never maps a private disk to a public alias. Guarded, user-owned files should implement `authorizesAssetField()` as an ownership check. Responses use `Cache-Control: private, no-store, max-age=0`.
 
 Missing and denied files render the package's default 404/403 WebP artworks. By default these render with HTTP 200 and an `X-Asset-Error-Status` header for browsers; set `assets.render_error_images=false` to use real 403/404 codes.
