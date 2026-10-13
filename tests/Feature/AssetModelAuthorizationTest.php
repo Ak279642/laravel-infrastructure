@@ -37,6 +37,10 @@ final class AssetModelAuthorizationTest extends TestCase
 
     public function test_private_model_link_requires_current_owner_and_signed_url(): void
     {
+        $privateRoute = app('router')->getRoutes()->getByName('laravel-infrastructure.assets.private');
+        self::assertNotNull($privateRoute);
+        self::assertSame('_infrastructure/files/{token}', $privateRoute->uri());
+        self::assertContains('web', $privateRoute->gatherMiddleware());
         Storage::disk('private')->put('contracts/agreement.pdf', 'private content');
         $document = PrivateMediaDocument::query()->create([
             'user_id' => 42, 'document' => 'contracts/agreement.pdf',
