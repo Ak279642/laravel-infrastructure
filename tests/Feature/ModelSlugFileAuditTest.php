@@ -236,7 +236,7 @@ final class ModelSlugFileAuditTest extends TestCase
         ModelSlugFileAuditDocument::query()->create([
             'title' => 'Unsafe Traversal',
             'seo_title' => 'Traversal Reference',
-            'avatar_path' => Storage::disk('public')->path('../models/documents/avatars/keep.jpg'),
+            'avatar_path' => rtrim(Storage::disk('public')->path(''), '/').'/../models/documents/avatars/keep.jpg',
         ]);
 
         $this->artisan('infrastructure:storage-audit', ['--delete' => true])
