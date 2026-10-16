@@ -126,3 +126,5 @@ php artisan infrastructure:storage-audit --delete
 ```
 
 This optional maintenance command scans explicitly registered models and model-owned directories across both public and private disks. It groups references by disk and directory and reads raw database paths. No disk column is needed. It intentionally executes SQL during an audit; normal public delivery does not.
+
+Model file references should normally be disk-relative, such as `products/image.jpg`. The audit also recognizes legacy absolute paths **only when they are inside the exact root of the configured local disk**, converting those paths to disk-relative references before comparing them. Absolute paths outside that disk, traversal segments, and unsafe references abort the audit before any deletion, with the model, record ID, and attribute identified in the error. Remote disk references must remain disk-relative. Always run the default dry run and review its results before using `--delete`.
