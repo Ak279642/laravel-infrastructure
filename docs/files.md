@@ -36,6 +36,56 @@ $product->image = $request->file('image');
 $product->save();
 ```
 
+## Nested and dynamic directories
+
+Static nested paths such as `invoices/2026/october` work without extra configuration.
+Dynamic directories use **whole-segment** model placeholders:
+
+```php
+'invoice' => [
+    'disk' => 'private',
+    'directory' => 'invoices/{year}/{id}/documents',
+    'filename' => 'invoice.pdf',
+    'access' => ['signed' => true, 'guard' => 'web'],
+],
+'attachment' => [
+    'disk' => 'private',
+    'directory' => 'customers/{customer_id}/attachments',
+],
+```
+
+`{year}` uses the application year at upload time. `{id}` and `{customer_id}` use
+raw scalar model attributes. Dotted tokens like `{customer.id}` require the
+relationship to be explicitly preloaded; no implicit database queries occur.
+Resolved segments must contain only ASCII letters, digits, underscores or
+hyphens. Empty, unsafe, traversal and mixed placeholders (e.g. `{year}-{id}`)
+are rejected.
+
+For new auto-increment models, an uploaded field using `{id}` is temporarily
+deferred until the model has been inserted. Its initial insert and the
+subsequent file-path update run inside one database transaction, so the file
+column **must be nullable during the initial insert**. On rollback uploaded
+files are cleaned up. To avoid two model events/writes, save the record first
+and attach the file after its ID exists.
+
+```php
+$invoice = Invoice::create(['number' => 'INV-1001']);
+$invoice->invoice = $request->file('invoice');
+$invoice->save();
+// invoices/2026/123/documents/invoice.pdf
+```
+
+Changing a directory template does not move existing files or rewrite stored
+paths. Migrate files and database references separately if needed.
+
+Storage audit scans dynamic paths recursively only underneath their first
+static prefix (e.g. `invoices`), then filters to the complete template shape.
+Templates beginning with a placeholder are deliberately not auditable, to
+avoid scanning the entire disk. Referenced files from all registered models
+on the same disk are protected even if their templates overlap. Audit dry-run
+is strongly recommended before `--delete`. Legacy flat paths not matching the
+new dynamic template are ignored, not deleted.
+
 ## Public URLs
 
 ```php
