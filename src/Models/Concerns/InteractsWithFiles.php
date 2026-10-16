@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Models\Concerns;
 
+use Ak279642\LaravelInfrastructure\Files\FileDirectoryTemplate;
 use Ak279642\LaravelInfrastructure\Files\FileStorage;
 use Ak279642\LaravelInfrastructure\Files\ImageProcessor;
 use Ak279642\LaravelInfrastructure\Files\PendingFileUploads;
@@ -34,6 +35,57 @@ trait InteractsWithFiles
 
     public function save(array $options = [])
     {
+        // Auto-increment IDs do not exist during the "creating" event.
+        // Persist once without the deferred upload, then store the file and
+        // update its path in the same transaction after an ID is assigned.
+        if (! $this->exists && $this->getKey() === null) {
+            $deferred = [];
+
+            foreach ($this->configuredFileAttributes() as $column => $config) {
+                $template = $config['directory'] ?? null;
+
+                if (! (bool) ($config['auto_upload'] ?? true)
+                    || ! is_string($template)
+                    || ! FileDirectoryTemplate::usesModelKey($template, $this->getKeyName())) {
+                    continue;
+                }
+
+                $value = $this->getAttribute($column);
+
+                if ($value instanceof UploadedFile
+                    || (is_string($value) && preg_match('~^https?://~i', $value) === 1)) {
+                    $deferred[$column] = $value;
+                    $this->setAttribute($column, null);
+                }
+            }
+
+            if ($deferred !== []) {
+                try {
+                    return $this->getConnection()->transaction(function () use ($deferred, $options): bool {
+                        if (! $this->save($options)) {
+                            return false;
+                        }
+
+                        foreach ($deferred as $column => $value) {
+                            $this->setAttribute($column, $value);
+                        }
+
+                        if (! $this->save($options)) {
+                            throw new RuntimeException(
+                                'Unable to persist deferred model file uploads.',
+                            );
+                        }
+
+                        return true;
+                    });
+                } catch (Throwable $exception) {
+                    // Never silently leave a successful first insert with a
+                    // missing file reference. The transaction has rolled back.
+                    throw $exception;
+                }
+            }
+        }
+
         $this->infrastructureUploadedDuringSave = [];
         $this->infrastructurePendingFileDeletes = [];
         $this->infrastructureExistedBeforeSave = $this->exists;
@@ -262,7 +314,7 @@ trait InteractsWithFiles
                 );
             }
 
-            $directory = trim($directory, '/');
+            $directory = FileDirectoryTemplate::resolve(trim($directory, '/'), $this);
 
             $disk = (string) (
                 $options['disk']
