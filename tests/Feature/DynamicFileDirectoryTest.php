@@ -7,7 +7,6 @@ namespace Ak279642\LaravelInfrastructure\Tests\Feature;
 use Ak279642\LaravelInfrastructure\Files\FileDirectoryTemplate;
 use Ak279642\LaravelInfrastructure\Models\BaseModel;
 use Ak279642\LaravelInfrastructure\Tests\TestCase;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Schema;
@@ -145,7 +144,7 @@ final class DynamicFileDirectoryTest extends TestCase
     public function test_directory_resolver_uses_preloaded_relationship_attributes(): void
     {
         $invoice = DynamicDirectoryInvoice::query()->create(['partner_id' => 9]);
-        $partner = new Model;
+        $partner = new DynamicDirectoryInvoice;
         $partner->setRawAttributes(['id' => 77]);
         $invoice->setRelation('partner', $partner);
 
