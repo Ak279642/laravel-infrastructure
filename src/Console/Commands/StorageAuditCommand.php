@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Console\Commands;
 
+use Ak279642\LaravelInfrastructure\Files\FileDirectoryTemplate;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -102,6 +103,7 @@ final class StorageAuditCommand extends Command
         $delete = (bool) $this->option('delete');
         $orphanCount = 0;
         $deletedCount = 0;
+        $seen = [];
 
         foreach (array_keys($targetScopeKeys) as $scopeKey) {
             $scope = $this->scopeFromDefinitions(
@@ -116,7 +118,14 @@ final class StorageAuditCommand extends Command
             $disk = $scope['disk'];
             $directory = $scope['directory'];
             $filesystem = $this->files->disk($disk);
-            $known = $references[$scopeKey] ?? [];
+            $known = $references[$disk] ?? [];
+            $knownCount = count(array_filter(
+                array_keys($known),
+                static fn (string $path): bool => FileDirectoryTemplate::matchesFile(
+                    $directory,
+                    $path,
+                ),
+            ));
 
             $this->newLine();
             $this->line(
@@ -124,17 +133,22 @@ final class StorageAuditCommand extends Command
                     'Auditing [%s:%s] (%d referenced path%s)',
                     $disk,
                     $directory,
-                    count($known),
-                    count($known) === 1 ? '' : 's',
+                    $knownCount,
+                    $knownCount === 1 ? '' : 's',
                 ),
             );
 
-            foreach ($filesystem->allFiles($directory) as $file) {
+            // Resolve templates by scanning only their static owned prefix.
+            // Never recursively audit a disk root for a dynamic template.
+            foreach ($filesystem->allFiles($scope['root']) as $file) {
                 $path = $this->normalizePath((string) $file);
 
-                if (! $this->belongsToDirectory($path, $directory)) {
+                if (! FileDirectoryTemplate::matchesFile($directory, $path)
+                    || isset($seen[$disk][$path])) {
                     continue;
                 }
+
+                $seen[$disk][$path] = true;
 
                 if (isset($known[$path])) {
                     continue;
@@ -185,6 +199,7 @@ final class StorageAuditCommand extends Command
      *     scopes:array<string, array{
      *         disk:string,
      *         directory:string,
+     *         root:string,
      *         columns:list<string>
      *     }>
      * }>
@@ -236,6 +251,7 @@ final class StorageAuditCommand extends Command
                 $scopes[$scopeKey] ??= [
                     'disk' => $disk,
                     'directory' => $directory,
+                    'root' => FileDirectoryTemplate::auditRoot($directory),
                     'columns' => [],
                 ];
 
@@ -287,6 +303,7 @@ final class StorageAuditCommand extends Command
      * @param  array<string, array{
      *     disk:string,
      *     directory:string,
+     *     root:string,
      *     columns:list<string>
      * }>  $scopes
      * @param  array<string, array<string, true>>  $references
@@ -359,14 +376,16 @@ final class StorageAuditCommand extends Command
                                     );
                                 }
 
-                                if (! $this->belongsToDirectory(
-                                    $path,
+                                if (! FileDirectoryTemplate::matchesFile(
                                     $scope['directory'],
+                                    $path,
                                 )) {
                                     continue;
                                 }
 
-                                $references[$scopeKey][$path] = true;
+                                // All registered models protect references
+                                // across overlapping scope templates on a disk.
+                                $references[$scope['disk']][$path] = true;
                             }
                         }
                     }
@@ -382,6 +401,7 @@ final class StorageAuditCommand extends Command
      *     scopes:array<string, array{
      *         disk:string,
      *         directory:string,
+     *         root:string,
      *         columns:list<string>
      *     }>
      * }>  $definitions
