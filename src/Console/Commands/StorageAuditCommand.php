@@ -345,8 +345,8 @@ final class StorageAuditCommand extends Command
                                         $value,
                                         $scope['disk'],
                                     );
-                                } catch (\\RuntimeException $exception) {
-                                    throw new \\RuntimeException(
+                                } catch (\RuntimeException $exception) {
+                                    throw new \RuntimeException(
                                         sprintf(
                                             'Invalid storage reference for model [%s], record [%s], attribute [%s]: %s',
                                             $record::class,
@@ -447,15 +447,15 @@ final class StorageAuditCommand extends Command
      */
     private function normalizeStoredReferencePath(string $value, string $disk): string
     {
-        $path = str_replace('\\\\', '/', trim($value));
+        $path = str_replace('\\', '/', trim($value));
 
         if (! str_starts_with($path, '/')
-            && preg_match('/^[A-Za-z]:\\//', $path) !== 1) {
+            && preg_match('/^[A-Za-z]:\//', $path) !== 1) {
             return $this->normalizePath($path);
         }
 
         if (config('filesystems.disks.'.$disk.'.driver') !== 'local') {
-            throw new \\RuntimeException(
+            throw new \RuntimeException(
                 'Absolute storage references require a local filesystem disk.',
             );
         }
@@ -463,14 +463,14 @@ final class StorageAuditCommand extends Command
         // Ask the active adapter, not config('...root'), so Storage::fake()
         // and runtime disks work without changing what the audit can scan.
         $root = rtrim(str_replace(
-            '\\\\',
+            '\\',
             '/',
             $this->files->disk($disk)->path(''),
         ), '/');
 
         if ($root === '' || (! str_starts_with($root, '/')
-            && preg_match('/^[A-Za-z]:\\//', $root) !== 1)) {
-            throw new \\RuntimeException(
+            && preg_match('/^[A-Za-z]:\//', $root) !== 1)) {
+            throw new \RuntimeException(
                 'The local filesystem disk root must be absolute.',
             );
         }
@@ -478,7 +478,7 @@ final class StorageAuditCommand extends Command
         $prefix = $root.'/';
 
         if (! str_starts_with($path, $prefix)) {
-            throw new \\RuntimeException(
+            throw new \RuntimeException(
                 'Absolute storage reference is outside its configured disk root.',
             );
         }
