@@ -180,6 +180,71 @@ final class ModelSlugFileAuditTest extends TestCase
         Storage::disk('public')->assertExists($model->document_path);
     }
 
+    public function test_storage_audit_preserves_legacy_absolute_paths_inside_the_local_disk(): void
+    {
+        $referenced = 'models/documents/avatars/legacy-reference.jpg';
+        $orphan = 'models/documents/avatars/unreferenced.jpg';
+
+        Storage::disk('public')->put($referenced, 'keep');
+        Storage::disk('public')->put($orphan, 'remove');
+
+        ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Legacy Absolute Path',
+            'seo_title' => 'Legacy File Reference',
+            'avatar_path' => Storage::disk('public')->path($referenced),
+        ]);
+
+        $this->artisan('infrastructure:storage-audit')
+            ->assertSuccessful();
+
+        Storage::disk('public')->assertExists($referenced);
+        Storage::disk('public')->assertExists($orphan);
+
+        $this->artisan('infrastructure:storage-audit', ['--delete' => true])
+            ->assertSuccessful();
+
+        Storage::disk('public')->assertExists($referenced);
+        Storage::disk('public')->assertMissing($orphan);
+    }
+
+    public function test_storage_audit_aborts_before_deletion_for_paths_outside_the_disk_root(): void
+    {
+        $referenced = 'models/documents/avatars/keep.jpg';
+        $orphan = 'models/documents/avatars/orphan.jpg';
+
+        Storage::disk('public')->put($referenced, 'keep');
+        Storage::disk('public')->put($orphan, 'do not delete');
+
+        ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Outside Disk Root',
+            'seo_title' => 'Unsafe Legacy Path',
+            'avatar_path' => '/outside-disk-root/models/documents/avatars/keep.jpg',
+        ]);
+
+        $this->artisan('infrastructure:storage-audit', ['--delete' => true])
+            ->assertFailed();
+
+        Storage::disk('public')->assertExists($referenced);
+        Storage::disk('public')->assertExists($orphan);
+    }
+
+    public function test_storage_audit_rejects_absolute_paths_with_traversal_segments(): void
+    {
+        $orphan = 'models/documents/avatars/keep.jpg';
+        Storage::disk('public')->put($orphan, 'not safe to delete');
+
+        ModelSlugFileAuditDocument::query()->create([
+            'title' => 'Unsafe Traversal',
+            'seo_title' => 'Traversal Reference',
+            'avatar_path' => Storage::disk('public')->path('../models/documents/avatars/keep.jpg'),
+        ]);
+
+        $this->artisan('infrastructure:storage-audit', ['--delete' => true])
+            ->assertFailed();
+
+        Storage::disk('public')->assertExists($orphan);
+    }
+
     public function test_storage_audit_is_dry_run_by_default_and_never_scans_outside_model_owned_directories(): void
     {
         $model = ModelSlugFileAuditDocument::query()->create([
