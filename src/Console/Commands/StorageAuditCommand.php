@@ -340,7 +340,24 @@ final class StorageAuditCommand extends Command
                                     continue;
                                 }
 
-                                $path = $this->normalizePath($value);
+                                try {
+                                    $path = $this->normalizeStoredReferencePath(
+                                        $value,
+                                        $scope['disk'],
+                                    );
+                                } catch (\RuntimeException $exception) {
+                                    throw new \RuntimeException(
+                                        sprintf(
+                                            'Invalid storage reference for model [%s], record [%s], attribute [%s]: %s',
+                                            $record::class,
+                                            (string) $record->getKey(),
+                                            $column,
+                                            $exception->getMessage(),
+                                        ),
+                                        0,
+                                        $exception,
+                                    );
+                                }
 
                                 if (! $this->belongsToDirectory(
                                     $path,
@@ -419,6 +436,54 @@ final class StorageAuditCommand extends Command
         }
 
         return implode('/', $segments);
+    }
+
+    /**
+     * Convert an existing model file reference into a disk-relative path.
+     *
+     * Legacy absolute filesystem paths are accepted only when they belong
+     * to this exact local disk root. Never strip arbitrary prefixes: doing
+     * so could cause an audit to remove a still-referenced file.
+     */
+    private function normalizeStoredReferencePath(string $value, string $disk): string
+    {
+        $path = str_replace('\\', '/', trim($value));
+
+        if (! str_starts_with($path, '/')
+            && preg_match('/^[A-Za-z]:\//', $path) !== 1) {
+            return $this->normalizePath($path);
+        }
+
+        if (config('filesystems.disks.'.$disk.'.driver') !== 'local') {
+            throw new \RuntimeException(
+                'Absolute storage references require a local filesystem disk.',
+            );
+        }
+
+        // Ask the active adapter, not config('...root'), so Storage::fake()
+        // and runtime disks work without changing what the audit can scan.
+        $root = rtrim(str_replace(
+            '\\',
+            '/',
+            $this->files->disk($disk)->path(''),
+        ), '/');
+
+        if ($root === '' || (! str_starts_with($root, '/')
+            && preg_match('/^[A-Za-z]:\//', $root) !== 1)) {
+            throw new \RuntimeException(
+                'The local filesystem disk root must be absolute.',
+            );
+        }
+
+        $prefix = $root.'/';
+
+        if (! str_starts_with($path, $prefix)) {
+            throw new \RuntimeException(
+                'Absolute storage reference is outside its configured disk root.',
+            );
+        }
+
+        return $this->normalizePath(substr($path, strlen($prefix)));
     }
 
     private function normalizePath(string $path): string
