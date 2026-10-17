@@ -52,19 +52,37 @@ Dynamic directories use **whole-segment** model placeholders:
     'disk' => 'private',
     'directory' => 'customers/{customer_id}/attachments',
 ],
+'lead_photo' => [
+    'disk' => 'private',
+    'directory' => 'leads/{created_year}/{id}/photos',
+],
 ```
 
-`{year}` uses the application year at upload time. `{id}` and `{customer_id}` use
-raw scalar model attributes. Dotted tokens like `{customer.id}` require the
-relationship to be explicitly preloaded; no implicit database queries occur.
+`{year}` uses the application year **at upload time**. `{created_year}` uses the
+year of the model's `created_at` timestamp (or its configured `CREATED_AT`
+column). This keeps all later uploads for a record in the same year directory,
+even across New Year. The creation timestamp must exist and be a valid date;
+it never silently falls back to the current year. Models without timestamps
+must provide their creation timestamp explicitly.
+
+`{created_year}` refers to the **file-owning model's** creation year, not the
+creation date of a related lead or parent model. For a parent's year, configure
+that relationship explicitly and preload it or expose a safe scalar year field.
+Treat creation timestamps as immutable when using them for file organization.
+
+`{id}` and `{customer_id}` use raw scalar model attributes. Dotted tokens like
+`{customer.id}` require the relationship to be explicitly preloaded; no
+implicit database queries occur.
 Resolved segments must contain only ASCII letters, digits, underscores or
 hyphens. Empty, unsafe, traversal and mixed placeholders (e.g. `{year}-{id}`)
 are rejected.
 
-For new auto-increment models, an uploaded field using `{id}` is temporarily
-deferred until the model has been inserted. Its initial insert and the
-subsequent file-path update run inside one database transaction, so the file
-column **must be nullable during the initial insert**. On rollback uploaded
+For newly created models, an uploaded field using `{created_year}` is
+temporarily deferred until `created_at` is available after the initial insert.
+The same behavior applies to `{id}` when the model key has not yet been
+generated. Its initial insert and the subsequent file-path update run inside
+one database transaction, so the file column **must be nullable during the
+initial insert**. On rollback uploaded
 files are cleaned up. To avoid two model events/writes, save the record first
 and attach the file after its ID exists.
 
@@ -80,6 +98,8 @@ paths. Migrate files and database references separately if needed.
 
 Storage audit scans dynamic paths recursively only underneath their first
 static prefix (e.g. `invoices`), then filters to the complete template shape.
+Both `{year}` and `{created_year}` match four-digit historical year folders;
+an audit running in a later year still recognizes older creation-year paths.
 Templates beginning with a placeholder are deliberately not auditable, to
 avoid scanning the entire disk. Referenced files from all registered models
 on the same disk are protected even if their templates overlap. Audit dry-run

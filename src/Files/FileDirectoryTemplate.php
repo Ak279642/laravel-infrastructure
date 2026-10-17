@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ak279642\LaravelInfrastructure\Files;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
@@ -66,6 +67,17 @@ final class FileDirectoryTemplate
         return false;
     }
 
+    public static function usesCreatedYear(string $template): bool
+    {
+        foreach (self::segments($template) as $segment) {
+            if (($segment['placeholder'] ?? null) === 'created_year') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function resolve(string $template, Model $model): string
     {
         $parts = [];
@@ -78,9 +90,11 @@ final class FileDirectoryTemplate
             }
 
             $name = $segment['placeholder'];
-            $value = $name === 'year'
-                ? now()->format('Y')
-                : self::attribute($model, $name);
+            $value = match ($name) {
+                'year' => now()->format('Y'),
+                'created_year' => self::createdYear($model),
+                default => self::attribute($model, $name),
+            };
 
             if (! is_scalar($value) || trim((string) $value) === ''
                 || preg_match('/^[A-Za-z0-9_-]+$/D', (string) $value) !== 1) {
@@ -121,7 +135,7 @@ final class FileDirectoryTemplate
 
     /**
      * Match an actual file inside the resolved template directory, including
-     * recursive subfolders. The date token is constrained to a 4-digit year.
+     * recursive subfolders. Year tokens are constrained to four digits.
      */
     public static function matchesFile(string $template, string $path): bool
     {
@@ -143,7 +157,7 @@ final class FileDirectoryTemplate
                 continue;
             }
 
-            $expression = $segment['placeholder'] === 'year'
+            $expression = in_array($segment['placeholder'], ['year', 'created_year'], true)
                 ? '/^[0-9]{4}$/D'
                 : '/^[A-Za-z0-9_-]+$/D';
 
@@ -153,6 +167,20 @@ final class FileDirectoryTemplate
         }
 
         return true;
+    }
+
+    private static function createdYear(Model $model): string
+    {
+        $column = $model->getCreatedAtColumn();
+        $createdAt = $column === null ? null : $model->getAttribute($column);
+
+        if (! $createdAt instanceof DateTimeInterface) {
+            throw new RuntimeException(
+                'File directory placeholder [created_year] requires a valid model creation timestamp.',
+            );
+        }
+
+        return $createdAt->format('Y');
     }
 
     private static function attribute(Model $model, string $source): mixed
