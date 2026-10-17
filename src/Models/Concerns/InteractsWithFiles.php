@@ -35,18 +35,24 @@ trait InteractsWithFiles
 
     public function save(array $options = [])
     {
-        // Auto-increment IDs do not exist during the "creating" event.
-        // Persist once without the deferred upload, then store the file and
-        // update its path in the same transaction after an ID is assigned.
-        if (! $this->exists && $this->getKey() === null) {
+        // Auto-increment IDs and created_at are not guaranteed to exist
+        // during "creating". Defer uploads needing either value until after
+        // the first insert, then update the file paths in the same transaction.
+        if (! $this->exists) {
             $deferred = [];
 
             foreach ($this->configuredFileAttributes() as $column => $config) {
                 $template = $config['directory'] ?? null;
 
-                if (! (bool) ($config['auto_upload'] ?? true)
-                    || ! is_string($template)
-                    || ! FileDirectoryTemplate::usesModelKey($template, $this->getKeyName())) {
+                if (! (bool) ($config['auto_upload'] ?? true) || ! is_string($template)) {
+                    continue;
+                }
+
+                $needsModelKey = $this->getKey() === null
+                    && FileDirectoryTemplate::usesModelKey($template, $this->getKeyName());
+                $needsCreatedYear = FileDirectoryTemplate::usesCreatedYear($template);
+
+                if (! $needsModelKey && ! $needsCreatedYear) {
                     continue;
                 }
 
